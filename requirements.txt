@@ -1,0 +1,29 @@
+# Core ML
+torch>=2.1.0
+torchrl>=0.3.0
+tensordict>=0.3.0
+
+# RL Environment
+gymnasium>=0.29.0
+
+# Scientific Computing
+numpy>=1.24.0
+scipy>=1.11.0
+numba>=0.58.0
+
+# Physics Simulation (DisMech)
+# Install from local directory: pip install -e ./dismech-python
+dismech-python @ file:./dismech-python
+
+# Visualization
+matplotlib>=3.8.0
+plotly>=5.18.0
+tensorboard>=2.15.0
+
+# Utilities
+tqdm>=4.66.0
+pyyaml>=6.0
+
+# Development
+pytest>=7.4.0
+pytest-cov>=4.1.0

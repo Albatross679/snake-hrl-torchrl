@@ -1,0 +1,23 @@
+\begin{Verbatim}[commandchars=\\\{\}]
+\PYG{k+kn}{from}\PYG{+w}{ }\PYG{n+nn}{snake\PYGZus{}hrl.configs.env}\PYG{+w}{ }\PYG{k+kn}{import} \PYG{p}{(}
+    \PYG{n}{ApproachEnvConfig}\PYG{p}{,} \PYG{n}{CoilEnvConfig}\PYG{p}{,} \PYG{n}{HRLEnvConfig}\PYG{p}{,}
+    \PYG{n}{StateRepresentation}\PYG{p}{,}
+\PYG{p}{)}
+
+\PYG{c+c1}{\PYGZsh{} Approach worker with full representation}
+\PYG{n}{approach\PYGZus{}config} \PYG{o}{=} \PYG{n}{ApproachEnvConfig}\PYG{p}{(}
+    \PYG{n}{state\PYGZus{}representation}\PYG{o}{=}\PYG{n}{StateRepresentation}\PYG{o}{.}\PYG{n}{FULL}\PYG{p}{,}  \PYG{c+c1}{\PYGZsh{} 151\PYGZhy{}dim}
+\PYG{p}{)}
+
+\PYG{c+c1}{\PYGZsh{} Coil worker with reduced representation (faster training)}
+\PYG{n}{coil\PYGZus{}config} \PYG{o}{=} \PYG{n}{CoilEnvConfig}\PYG{p}{(}
+    \PYG{n}{state\PYGZus{}representation}\PYG{o}{=}\PYG{n}{StateRepresentation}\PYG{o}{.}\PYG{n}{REDUCED}\PYG{p}{,}  \PYG{c+c1}{\PYGZsh{} 16\PYGZhy{}dim}
+\PYG{p}{)}
+
+\PYG{c+c1}{\PYGZsh{} Manager with reduced representation}
+\PYG{n}{hrl\PYGZus{}config} \PYG{o}{=} \PYG{n}{HRLEnvConfig}\PYG{p}{(}
+    \PYG{n}{state\PYGZus{}representation}\PYG{o}{=}\PYG{n}{StateRepresentation}\PYG{o}{.}\PYG{n}{REDUCED}\PYG{p}{,}  \PYG{c+c1}{\PYGZsh{} 16\PYGZhy{}dim base + 3\PYGZhy{}dim hierarchical}
+    \PYG{n}{approach\PYGZus{}config}\PYG{o}{=}\PYG{n}{approach\PYGZus{}config}\PYG{p}{,}
+    \PYG{n}{coil\PYGZus{}config}\PYG{o}{=}\PYG{n}{coil\PYGZus{}config}\PYG{p}{,}
+\PYG{p}{)}
+\end{Verbatim}

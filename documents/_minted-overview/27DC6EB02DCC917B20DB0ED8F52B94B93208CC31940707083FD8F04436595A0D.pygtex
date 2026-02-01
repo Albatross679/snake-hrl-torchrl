@@ -1,0 +1,40 @@
+\begin{Verbatim}[commandchars=\\\{\}]
+snake\PYGZhy{}hrl/
+├── src/snake\PYGZus{}hrl/                    \PYGZsh{} Core library
+│   ├── configs/                      \PYGZsh{} Dataclass configurations
+│   │   ├── env.py                    \PYGZsh{}   Environment configs (CPGConfig, GaitConfig, etc.)
+│   │   ├── network.py                \PYGZsh{}   Network architecture configs
+│   │   └── training.py               \PYGZsh{}   Training hyperparameters
+│   ├── physics/                      \PYGZsh{} Physics simulation
+│   │   ├── snake\PYGZus{}robot.py            \PYGZsh{}   DisMech\PYGZhy{}based DER simulation
+│   │   ├── elastica\PYGZus{}snake\PYGZus{}robot.py   \PYGZsh{}   Alternative Elastica backend
+│   │   └── geometry.py               \PYGZsh{}   Geometry utilities
+│   ├── envs/                         \PYGZsh{} TorchRL environments
+│   │   ├── base\PYGZus{}env.py, approach\PYGZus{}env.py, coil\PYGZus{}env.py, hrl\PYGZus{}env.py
+│   ├── networks/                     \PYGZsh{} Neural network architectures
+│   │   ├── actor.py, critic.py
+│   ├── trainers/                     \PYGZsh{} Training algorithms
+│   │   ├── ppo.py, sac.py, hrl.py, behavioral\PYGZus{}cloning.py
+│   ├── rewards/                      \PYGZsh{} Reward shaping
+│   │   ├── shaping.py, gait\PYGZus{}potential.py
+│   ├── features/                     \PYGZsh{} Feature extractors
+│   │   ├── extractors.py, curvature\PYGZus{}modes.py, virtual\PYGZus{}chassis.py, contact\PYGZus{}features.py
+│   ├── demonstrations/               \PYGZsh{} Demo generation and storage
+│   │   ├── buffer.py, generators.py, io.py, fitness.py
+│   │   ├── approach\PYGZus{}experiences.py, curvature\PYGZus{}action\PYGZus{}experiences.py
+│   └── cpg/                          \PYGZsh{} Central Pattern Generator
+│       ├── oscillators.py, action\PYGZus{}wrapper.py
+├── scripts/                          \PYGZsh{} Executable scripts
+│   ├── train\PYGZus{}*.py                    \PYGZsh{}   Training scripts (approach, coil, hrl)
+│   ├── generate\PYGZus{}*.py                 \PYGZsh{}   Demo generation scripts
+│   ├── pretrain\PYGZus{}approach\PYGZus{}policy.py   \PYGZsh{}   Behavioral cloning pretraining
+│   ├── evaluate.py, visualize\PYGZus{}coil.py
+│   └── verify\PYGZus{}*.py, *\PYGZus{}test.py        \PYGZsh{}   Verification and test scripts
+├── tests/                            \PYGZsh{} Unit tests
+│   ├── test\PYGZus{}physics.py, test\PYGZus{}envs.py
+├── dismech\PYGZhy{}python/                   \PYGZsh{} DisMech physics library (local)
+├── data/demos/                       \PYGZsh{} Training data and demonstrations
+├── checkpoints/                      \PYGZsh{} Saved model checkpoints
+├── figures/                          \PYGZsh{} Generated visualizations
+└── documents/                        \PYGZsh{} Documentation (this file)
+\end{Verbatim}

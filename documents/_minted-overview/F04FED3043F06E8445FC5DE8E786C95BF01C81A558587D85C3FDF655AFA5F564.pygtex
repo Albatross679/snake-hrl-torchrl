@@ -1,0 +1,38 @@
+\begin{Verbatim}[commandchars=\\\{\}]
+\PYG{k+kn}{from}\PYG{+w}{ }\PYG{n+nn}{snake\PYGZus{}hrl.configs.env}\PYG{+w}{ }\PYG{k+kn}{import} \PYG{n}{ApproachEnvConfig}\PYG{p}{,} \PYG{n}{CoilEnvConfig}\PYG{p}{,} \PYG{n}{HRLEnvConfig}\PYG{p}{,} \PYG{n}{GaitConfig}
+
+\PYG{c+c1}{\PYGZsh{} Approach environment with gait\PYGZhy{}based shaping}
+\PYG{n}{approach\PYGZus{}config} \PYG{o}{=} \PYG{n}{ApproachEnvConfig}\PYG{p}{(}
+    \PYG{n}{energy\PYGZus{}penalty\PYGZus{}weight}\PYG{o}{=}\PYG{l+m+mf}{0.01}\PYG{p}{,}
+    \PYG{n}{success\PYGZus{}bonus}\PYG{o}{=}\PYG{l+m+mf}{1.0}\PYG{p}{,}
+    \PYG{n}{distance\PYGZus{}reward\PYGZus{}weight}\PYG{o}{=}\PYG{l+m+mf}{1.0}\PYG{p}{,}
+    \PYG{n}{velocity\PYGZus{}reward\PYGZus{}weight}\PYG{o}{=}\PYG{l+m+mf}{0.1}\PYG{p}{,}
+    \PYG{n}{gait}\PYG{o}{=}\PYG{n}{GaitConfig}\PYG{p}{(}
+        \PYG{n}{use\PYGZus{}gait\PYGZus{}potential}\PYG{o}{=}\PYG{k+kc}{True}\PYG{p}{,}
+        \PYG{n}{potential\PYGZus{}type}\PYG{o}{=}\PYG{l+s+s2}{\PYGZdq{}curriculum\PYGZdq{}}\PYG{p}{,}
+        \PYG{n}{curriculum\PYGZus{}schedule}\PYG{o}{=}\PYG{l+s+s2}{\PYGZdq{}cosine\PYGZdq{}}\PYG{p}{,}
+        \PYG{n}{sigma\PYGZus{}init}\PYG{o}{=}\PYG{l+m+mf}{2.0}\PYG{p}{,}
+        \PYG{n}{sigma\PYGZus{}final}\PYG{o}{=}\PYG{l+m+mf}{0.5}\PYG{p}{,}
+        \PYG{n}{gait\PYGZus{}weight}\PYG{o}{=}\PYG{l+m+mf}{0.5}\PYG{p}{,}
+    \PYG{p}{),}
+\PYG{p}{)}
+
+\PYG{c+c1}{\PYGZsh{} Coil environment}
+\PYG{n}{coil\PYGZus{}config} \PYG{o}{=} \PYG{n}{CoilEnvConfig}\PYG{p}{(}
+    \PYG{n}{stability\PYGZus{}reward\PYGZus{}weight}\PYG{o}{=}\PYG{l+m+mf}{0.5}\PYG{p}{,}
+    \PYG{n}{energy\PYGZus{}penalty\PYGZus{}weight}\PYG{o}{=}\PYG{l+m+mf}{0.001}\PYG{p}{,}
+    \PYG{n}{success\PYGZus{}bonus}\PYG{o}{=}\PYG{l+m+mf}{2.0}\PYG{p}{,}
+    \PYG{n}{contact\PYGZus{}reward\PYGZus{}weight}\PYG{o}{=}\PYG{l+m+mf}{1.0}\PYG{p}{,}
+    \PYG{n}{wrap\PYGZus{}reward\PYGZus{}weight}\PYG{o}{=}\PYG{l+m+mf}{2.0}\PYG{p}{,}
+    \PYG{n}{constriction\PYGZus{}reward\PYGZus{}weight}\PYG{o}{=}\PYG{l+m+mf}{1.5}\PYG{p}{,}
+\PYG{p}{)}
+
+\PYG{c+c1}{\PYGZsh{} HRL manager environment}
+\PYG{n}{hrl\PYGZus{}config} \PYG{o}{=} \PYG{n}{HRLEnvConfig}\PYG{p}{(}
+    \PYG{n}{skill\PYGZus{}switch\PYGZus{}penalty}\PYG{o}{=}\PYG{l+m+mf}{0.1}\PYG{p}{,}
+    \PYG{n}{approach\PYGZus{}completion\PYGZus{}bonus}\PYG{o}{=}\PYG{l+m+mf}{10.0}\PYG{p}{,}
+    \PYG{n}{task\PYGZus{}completion\PYGZus{}bonus}\PYG{o}{=}\PYG{l+m+mf}{100.0}\PYG{p}{,}
+    \PYG{n}{approach\PYGZus{}shaper\PYGZus{}weight}\PYG{o}{=}\PYG{l+m+mf}{1.0}\PYG{p}{,}
+    \PYG{n}{coil\PYGZus{}shaper\PYGZus{}weight}\PYG{o}{=}\PYG{l+m+mf}{1.5}\PYG{p}{,}
+\PYG{p}{)}
+\end{Verbatim}

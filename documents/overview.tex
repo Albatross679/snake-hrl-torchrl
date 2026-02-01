@@ -1,0 +1,1675 @@
+\documentclass[11pt]{article}
+
+% Font
+\usepackage{palatino}
+\usepackage[T1]{fontenc}
+
+% Page layout
+\usepackage[top=0.6in, bottom=0.6in, hmargin=0.75in, includehead, includefoot, headheight=14pt, footskip=0.25in]{geometry}
+\usepackage{setspace}
+\setstretch{1.1}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.5em}
+
+% Header and footer
+\usepackage{fancyhdr}
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[C]{\small Snake-HRL Project Documentation}
+\fancyfoot[C]{\small \textsf{\href{https://github.com/snake-hrl/snake-hrl}{github.com/snake-hrl/snake-hrl}}}
+\fancyfoot[R]{\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+\renewcommand{\footrulewidth}{0pt}
+\fancypagestyle{plain}{
+  \fancyhf{}
+  \fancyhead[C]{\small Snake-HRL Project Documentation}
+  \fancyfoot[C]{\small \textsf{\href{https://github.com/snake-hrl/snake-hrl}{github.com/snake-hrl/snake-hrl}}}
+  \fancyfoot[R]{\thepage}
+  \renewcommand{\headrulewidth}{0.4pt}
+}
+
+% Standard packages
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage{booktabs}
+\usepackage[hidelinks]{hyperref}
+\usepackage{microtype}
+\usepackage{xcolor}
+
+% Code listings with minted (requires --shell-escape flag)
+\usepackage{minted}
+\usemintedstyle{friendly}  % Clean, readable style
+
+\setminted{
+    fontsize=\footnotesize,
+    frame=lines,
+    framesep=2mm,
+    baselinestretch=1.1,
+    bgcolor=gray!5,
+    linenos,
+    numbersep=6pt,
+    breaklines,
+}
+
+% For floating listings with captions
+\usepackage{newfloat}
+\SetupFloatingEnvironment{listing}{name=Listing}
+
+% TikZ for diagrams
+\usepackage{tikz}
+\usetikzlibrary{shapes,arrows,positioning,fit,backgrounds,calc,decorations.pathreplacing}
+
+% Compact spacing
+\usepackage{titlesec}
+\titlespacing*{\section}{0pt}{1em}{0.5em}
+\titlespacing*{\subsection}{0pt}{0.8em}{0.3em}
+\titlespacing*{\subsubsection}{0pt}{0.6em}{0.2em}
+
+\usepackage{enumitem}
+\setlist[itemize]{nosep, topsep=0.3em, partopsep=0pt, parsep=0pt, itemsep=0.2em}
+\setlist[enumerate]{nosep, topsep=0.3em, partopsep=0pt, parsep=0pt, itemsep=0.2em}
+\setlist[description]{nosep, topsep=0.3em, partopsep=0pt, parsep=0pt, itemsep=0.2em}
+
+% Title formatting
+\usepackage{titling}
+\setlength{\droptitle}{-5em}
+\pretitle{\begin{center}\LARGE\bfseries}
+\posttitle{\end{center}\vspace{-1em}}
+\preauthor{\begin{center}}
+\postauthor{\end{center}\vspace{-2em}}
+\predate{}
+\postdate{}
+
+% Table of contents depth (ensure sections appear)
+\setcounter{tocdepth}{2}
+\setcounter{secnumdepth}{3}
+
+\title{Snake-HRL\\[0.3em]\large Hierarchical Reinforcement Learning for Snake Predation Behavior}
+\author{Project Documentation}
+\date{}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+\noindent Snake-HRL is a hierarchical reinforcement learning framework designed to simulate and control snake predation behavior. The system implements a manager-worker architecture where a high-level manager policy selects between low-level skills (approach and coil) to accomplish the complex task of prey capture. Built on TorchRL, the framework features a physics-based simulation using discrete elastic rod models using the DisMech library with implicit time integration, providing realistic soft-body dynamics for the snake robot. This document provides a comprehensive overview of the system architecture, physics simulation, environment design, training algorithms, and implementation details.
+\end{abstract}
+
+\tableofcontents
+\newpage
+
+\section{Introduction}
+
+\subsection{Problem Statement}
+
+Snake robots represent a promising paradigm for robotic locomotion and manipulation in constrained environments. Their ability to navigate through narrow spaces and conform to irregular surfaces makes them valuable for applications ranging from search and rescue to medical endoscopy. However, controlling these hyper-redundant systems presents significant challenges due to their high-dimensional action spaces and complex dynamics.
+
+This project addresses the specific challenge of snake predation behavior---the ability for a snake robot to approach, capture, and constrict prey. This task requires:
+\begin{itemize}
+    \item Coordinated locomotion toward a target
+    \item Precise positioning relative to prey
+    \item Controlled wrapping and constriction
+    \item Seamless transitions between behavioral modes
+\end{itemize}
+
+\subsection{Motivation for Hierarchical RL}
+
+Traditional reinforcement learning approaches struggle with such complex, multi-stage tasks due to:
+\begin{enumerate}
+    \item \textbf{Sparse rewards}: Success requires completing multiple subtasks in sequence
+    \item \textbf{Long horizons}: Many timesteps separate initial state from goal
+    \item \textbf{Mode switching}: Different control strategies needed for different phases
+\end{enumerate}
+
+Hierarchical Reinforcement Learning (HRL) addresses these challenges by decomposing the problem into:
+\begin{itemize}
+    \item A \textbf{manager} policy that selects high-level skills
+    \item \textbf{Worker} policies that execute specific skills (approach, coil)
+\end{itemize}
+
+This decomposition enables curriculum learning, skill transfer, and more efficient exploration.
+
+\subsection{Project Goals}
+
+The primary objectives of the Snake-HRL project are:
+\begin{enumerate}
+    \item Develop a realistic physics simulation for soft snake robots
+    \item Implement TorchRL-based reinforcement learning environments
+    \item Train hierarchical policies for prey capture behavior
+    \item Provide a modular, extensible framework for future research
+\end{enumerate}
+
+\section{Background}
+
+\subsection{Reinforcement Learning Fundamentals}
+
+Reinforcement learning frames control problems as Markov Decision Processes (MDPs) defined by the tuple $(S, A, P, R, \gamma)$ where:
+\begin{itemize}
+    \item $S$ is the state space
+    \item $A$ is the action space
+    \item $P(s'|s,a)$ is the transition probability
+    \item $R(s,a,s')$ is the reward function
+    \item $\gamma \in [0,1]$ is the discount factor
+\end{itemize}
+
+The goal is to learn a policy $\pi(a|s)$ that maximizes expected cumulative discounted reward:
+\begin{equation}
+    J(\pi) = \mathbb{E}_{\tau \sim \pi} \left[ \sum_{t=0}^{\infty} \gamma^t R(s_t, a_t, s_{t+1}) \right]
+\end{equation}
+
+\subsection{Hierarchical RL Concepts}
+
+Hierarchical RL extends the standard RL framework by introducing temporal abstraction through the options framework. An option $\omega$ consists of:
+\begin{itemize}
+    \item An initiation set $\mathcal{I}_\omega \subseteq S$
+    \item A policy $\pi_\omega: S \times A \rightarrow [0,1]$
+    \item A termination condition $\beta_\omega: S \rightarrow [0,1]$
+\end{itemize}
+
+In our manager-worker architecture:
+\begin{itemize}
+    \item The \textbf{manager} operates at a lower temporal frequency, selecting skills
+    \item \textbf{Workers} execute skills for multiple timesteps
+    \item Skills can signal completion via termination conditions
+\end{itemize}
+
+\subsection{Physics-Based Simulation}
+
+The snake robot is modeled using the Discrete Elastic Rod (DER) framework, which represents the continuous snake body as a chain of connected segments with:
+\begin{itemize}
+    \item Stretching resistance (spring forces between nodes)
+    \item Bending resistance (angular forces at joints)
+    \item Damping forces for stability
+\end{itemize}
+
+This provides a computationally efficient yet physically plausible simulation suitable for RL training.
+
+\section{System Architecture}
+
+\subsection{Overall System Design}
+
+The Snake-HRL system consists of three main layers:
+
+\begin{center}
+\begin{tikzpicture}[
+    node distance=1.5cm,
+    block/.style={rectangle, draw, fill=blue!20, text width=6em, text centered, rounded corners, minimum height=3em},
+    layer/.style={rectangle, draw, fill=gray!10, minimum width=14cm, minimum height=2.5cm},
+]
+    % Layers
+    \node[layer] (l1) at (0,4) {};
+    \node[layer] (l2) at (0,1.5) {};
+    \node[layer] (l3) at (0,-1) {};
+
+    % Labels
+    \node[left] at (-7,4) {\textbf{Manager Layer}};
+    \node[left] at (-7,1.5) {\textbf{Worker Layer}};
+    \node[left] at (-7,-1) {\textbf{Environment Layer}};
+
+    % Manager
+    \node[block, fill=green!30] (manager) at (0,4) {Manager Policy};
+
+    % Workers
+    \node[block, fill=orange!30] (approach) at (-3,1.5) {Approach Worker};
+    \node[block, fill=orange!30] (coil) at (3,1.5) {Coil Worker};
+
+    % Environment
+    \node[block, fill=purple!20] (env) at (-3,-1) {TorchRL Environment};
+    \node[block, fill=red!20] (physics) at (3,-1) {Physics Simulation};
+
+    % Arrows
+    \draw[->, thick] (manager) -- (-3,3) -- (approach);
+    \draw[->, thick] (manager) -- (3,3) -- (coil);
+    \draw[->, thick] (approach) -- (env);
+    \draw[->, thick] (coil) -- (env);
+    \draw[<->, thick] (env) -- (physics);
+
+\end{tikzpicture}
+\end{center}
+
+\subsection{Manager-Worker Hierarchy}
+
+\subsubsection{Manager Policy}
+
+The manager operates at a reduced temporal resolution, making skill selection decisions every $k$ timesteps (default: 50 steps). It:
+\begin{itemize}
+    \item Observes the current state
+    \item Outputs a categorical distribution over skills
+    \item Receives cumulative reward from skill execution
+\end{itemize}
+
+The manager uses a categorical actor network that outputs logits for skill selection:
+\begin{equation}
+    P(\text{skill}_i | s) = \frac{\exp(f_\theta(s)_i)}{\sum_j \exp(f_\theta(s)_j)}
+\end{equation}
+
+\subsubsection{Worker Policies}
+
+Two worker policies handle the primitive skills:
+\begin{enumerate}
+    \item \textbf{Approach Worker}: Locomotes toward prey until within striking distance
+    \item \textbf{Coil Worker}: Wraps around and constricts the prey
+\end{enumerate}
+
+Each worker uses a continuous Gaussian policy with TanhNormal distribution for bounded actions.
+
+\subsection{Environment Structure}
+
+The environment hierarchy consists of:
+\begin{itemize}
+    \item \texttt{BaseSnakeEnv}: Core environment with physics integration
+    \item \texttt{ApproachEnv}: Specialized for approach skill training
+    \item \texttt{CoilEnv}: Specialized for coil skill training
+    \item \texttt{HRLEnv}: Orchestrates hierarchical policy execution
+\end{itemize}
+
+\section{Physics Simulation}
+
+\subsection{Discrete Elastic Rod Model}
+
+The snake is represented as a chain of $N = 20$ segments (21 nodes). The discrete structure consists of nodes connected by segments, with internal joints where curvature is defined:
+
+\begin{center}
+\begin{tikzpicture}[
+    node distance=1.2cm,
+    every node/.style={font=\small},
+]
+    % Nodes 0-4 (first few nodes)
+    \foreach \i in {0,...,4} {
+        \node[circle, draw, fill=blue!20, minimum size=0.6cm] (n\i) at (\i*1.4, 0) {\i};
+    }
+
+    % Segments between nodes 0-4
+    \foreach \i [evaluate=\i as \j using int(\i+1)] in {0,...,3} {
+        \draw[thick] (n\i) -- (n\j);
+    }
+
+    % Segment labels for first segments
+    \foreach \i [evaluate=\i as \j using int(\i+1)] in {0,...,3} {
+        \node[below=0.25cm] at ($(n\i)!0.5!(n\j)$) {$s_{\i}$};
+    }
+
+    % Ellipsis (dots) to indicate skipped portion
+    \draw[thick] (n4) -- ++(0.5, 0);
+    \node at (6.3, 0) {$\cdots \cdots$};
+    \draw[thick] (7.1, 0) -- ++(0.5, 0);
+
+    % Last few nodes (18, 19, 20)
+    \node[circle, draw, fill=blue!20, minimum size=0.6cm] (n18) at (8, 0) {18};
+    \node[circle, draw, fill=blue!20, minimum size=0.6cm] (n19) at (9.4, 0) {19};
+    \node[circle, draw, fill=blue!20, minimum size=0.6cm] (n20) at (10.8, 0) {20};
+
+    % Segments between last nodes
+    \draw[thick] (n18) -- (n19);
+    \draw[thick] (n19) -- (n20);
+
+    % Segment labels for last segments
+    \node[below=0.25cm] at ($(n18)!0.5!(n19)$) {$s_{18}$};
+    \node[below=0.25cm] at ($(n19)!0.5!(n20)$) {$s_{19}$};
+
+    % Brace annotation for nodes
+    \draw[decorate, decoration={brace, amplitude=5pt, raise=5pt}] (n0.north) -- (n20.north)
+        node[midway, above=10pt] {Nodes: $0, 1, 2, \ldots, N$ \quad ($N+1 = 21$ total)};
+
+    % Endpoint indicator (no curvature)
+    \draw[->, red, thick] (-0.5, -1.8) -- (n0.south);
+    \node[red, anchor=north] at (-0.5, -1.85) {Endpoint};
+    \node[red, anchor=north] at (-0.5, -2.25) {(no curvature)};
+
+    % Internal joint indicator (curvature defined)
+    \draw[->, green!60!black, thick] (4, -1.8) -- (n2.south);
+    \node[green!60!black, anchor=north] at (4, -1.85) {Internal joint};
+    \node[green!60!black, anchor=north] at (4, -2.25) {(curvature defined)};
+
+    % Another endpoint indicator
+    \draw[->, red, thick] (11.3, -1.8) -- (n20.south);
+    \node[red, anchor=north] at (11.3, -1.85) {Endpoint};
+    \node[red, anchor=north] at (11.3, -2.25) {(no curvature)};
+
+\end{tikzpicture}
+\end{center}
+
+\paragraph{Structural Relationships.}
+For a discrete rod with $N$ segments:
+\begin{itemize}
+    \item \textbf{Nodes}: $N + 1$ nodes (endpoints of segments), indexed $0, 1, \ldots, N$
+    \item \textbf{Segments}: $N$ segments connecting consecutive nodes
+    \item \textbf{Internal joints}: $N - 1$ joints where curvature is defined (nodes $1, 2, \ldots, N-1$)
+\end{itemize}
+
+Curvature at node $i$ requires three consecutive nodes $(\mathbf{x}_{i-1}, \mathbf{x}_i, \mathbf{x}_{i+1})$ to compute the angle between adjacent segments. The endpoint nodes (0 and $N$) each have only one adjacent segment, so curvature is undefined at these locations. With $N = 20$ segments:
+\begin{itemize}
+    \item 21 nodes $\rightarrow$ 63 position values, 63 velocity values
+    \item 19 internal joints $\rightarrow$ 19 curvature values
+\end{itemize}
+
+The physical parameters of the snake are:
+
+\begin{table}[H]
+\centering
+\caption{Snake Physical Parameters}
+\begin{tabular}{@{}lll@{}}
+\toprule
+\textbf{Parameter} & \textbf{Value} & \textbf{Description} \\
+\midrule
+Total length & 1.0 m & End-to-end length \\
+Body radius & 0.001 m & Cross-sectional radius \\
+Number of segments & 20 & Discrete elements \\
+Young's modulus & $2 \times 10^6$ Pa & Material stiffness \\
+Density & 1200 kg/m$^3$ & Material density \\
+Poisson's ratio & 0.5 & Material incompressibility \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Force Computation}
+
+The simulation uses DisMech's discrete elastic rod framework, which computes forces through elastic energy minimization with implicit time integration:
+
+\subsubsection{Elastic (Stretching) Forces}
+
+Spring forces maintain segment lengths:
+\begin{equation}
+    \mathbf{F}_{\text{elastic}} = k_s (\|\mathbf{x}_{i+1} - \mathbf{x}_i\| - L_0) \hat{\mathbf{e}}_{i,i+1}
+\end{equation}
+where $k_s$ is the stiffness and $L_0$ is the rest length.
+
+\subsubsection{Bending Forces}
+
+Bending forces achieve target curvatures (the control input):
+\begin{equation}
+    \mathbf{F}_{\text{bend}} = k_b (\kappa_{\text{target}} - \kappa_{\text{current}}) \hat{\mathbf{n}}
+\end{equation}
+where $k_b$ is the bending stiffness and $\hat{\mathbf{n}}$ is the bending axis.
+
+\subsubsection{Ground Contact and Friction}
+
+Ground interaction includes:
+\begin{itemize}
+    \item Normal force: Spring-like contact prevents penetration
+    \item Friction force: Coulomb friction model with coefficient $\mu = 0.5$
+\end{itemize}
+
+\subsection{Prey Representation}
+
+The prey is modeled as a cylinder with:
+\begin{itemize}
+    \item Radius: 0.1 m
+    \item Length: 0.3 m
+    \item Static (does not move during simulation)
+\end{itemize}
+
+\subsection{Contact Detection and Wrapping}
+
+Contact detection determines which snake nodes are in contact with the prey cylinder. The \texttt{wrap\_angle} metric measures total angular coverage around the prey, computed from contact point positions.
+
+\subsection{Time Integration}
+
+The simulation uses implicit Euler integration (via DisMech's ImplicitEulerTimeStepper) with:
+\begin{itemize}
+    \item Base timestep: $\Delta t = 0.05$ s
+    \item Newton iterations: max 25 per step
+    \item Convergence tolerance: $10^{-4}$
+    \item Action repeat: 1 (configurable)
+\end{itemize}
+
+\section{Environment Design}
+
+\subsection{State Representation}
+
+The framework supports four configurable base state representations via the \texttt{StateRepresentation} enum: \texttt{FULL} (high-dimensional), \texttt{REDUCED} (compact feature-based), \texttt{REDUCED\_APPROACH} (minimal approach-specific), and \texttt{REDUCED\_COIL} (coil-specific with contact features). Different policies in the hierarchy may use different representations or augment the base representation with task-specific information.
+
+\subsubsection{Base Representation Options}
+
+All policies (workers and manager) share the same base representation, configurable via the \texttt{state\_representation} parameter.
+
+\paragraph{Option A: Full Representation (151-dim).}
+The full observation vector has dimension 151 (with default 20 segments) and includes:
+
+\begin{table}[H]
+\centering
+\caption{Full Base Representation (151-dim)}
+\begin{tabular}{@{}lll@{}}
+\toprule
+\textbf{Component} & \textbf{Dimensions} & \textbf{Description} \\
+\midrule
+Snake positions & $21 \times 3 = 63$ & 3D position of each node \\
+Snake velocities & $21 \times 3 = 63$ & 3D velocity of each node \\
+Current curvatures & $19$ & Curvature at each internal joint \\
+Prey position & 3 & Prey center coordinates \\
+Prey orientation & 3 & Prey cylinder axis \\
+\midrule
+\textbf{Total} & \textbf{151} & \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The current curvatures $\kappa_{\text{current}, i}$ for $i = 1, \ldots, 19$ are included in the observation to provide direct feedback on the snake's body configuration. As described in Section~5.2.1, while curvature is mathematically derivable from positions, including it explicitly reduces the representational burden on the policy network and improves learning efficiency when the control law depends on curvature error.
+
+\paragraph{Option B: Reduced Representation (16-dim).}
+The reduced representation provides a compact feature-based observation suitable for faster training and transfer learning:
+
+\begin{table}[H]
+\centering
+\caption{Reduced Base Representation (16-dim)}
+\begin{tabular}{@{}lll@{}}
+\toprule
+\textbf{Component} & \textbf{Dimensions} & \textbf{Description} \\
+\midrule
+Curvature modes & 3 & Amplitude, wave number, phase (FFT analysis) \\
+Virtual chassis & 9 & CoG position (3), orientation (3), angular velocity (3) \\
+Goal-relative & 4 & Direction to prey (3) + distance (1) \\
+\midrule
+\textbf{Total} & \textbf{16} & \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The reduced representation uses three feature extractors:
+\begin{itemize}
+    \item \textbf{CurvatureModeExtractor}: Extracts serpenoid parameters via FFT analysis of the curvature profile---amplitude, wave number, and phase
+    \item \textbf{VirtualChassisExtractor}: Computes the center of gravity, body orientation (head-to-tail unit vector), and angular velocity
+    \item \textbf{GoalRelativeExtractor}: Provides goal-relative features including direction to prey (unit vector) and scalar distance
+\end{itemize}
+
+\paragraph{Option C: Reduced Approach Representation (13-dim).}
+A minimal representation optimized for the approach task, excluding absolute position (which is irrelevant for locomotion toward a goal):
+
+\begin{table}[H]
+\centering
+\caption{Reduced Approach Representation (13-dim)}
+\begin{tabular}{@{}lll@{}}
+\toprule
+\textbf{Component} & \textbf{Dimensions} & \textbf{Description} \\
+\midrule
+Curvature modes & 3 & Amplitude, wave number, phase (FFT analysis) \\
+Orientation & 3 & Snake's facing direction (unit vector) \\
+Angular velocity & 3 & Rotational dynamics \\
+Goal direction & 3 & World-frame direction to goal (unit vector) \\
+Goal distance & 1 & Scalar distance to goal \\
+\midrule
+\textbf{Total} & \textbf{13} & \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+This representation is designed for the approach task where the snake must locomote toward prey. By excluding the center of gravity position, the policy learns position-invariant locomotion skills that generalize across different starting locations.
+
+\paragraph{Option D: Reduced Coil Representation (22-dim).}
+A representation designed specifically for the coiling task, augmenting the standard reduced features with contact information critical for successful wrapping behavior:
+
+\begin{table}[H]
+\centering
+\caption{Reduced Coil Representation (22-dim)}
+\begin{tabular}{@{}lll@{}}
+\toprule
+\textbf{Component} & \textbf{Dimensions} & \textbf{Description} \\
+\midrule
+Curvature modes & 3 & Amplitude, wave number, phase (FFT analysis) \\
+Virtual chassis & 9 & CoG position (3), orientation (3), angular velocity (3) \\
+Goal-relative & 4 & Direction to prey (3) + distance (1) \\
+Contact features & 6 & See below \\
+\midrule
+\textbf{Total} & \textbf{22} & \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The contact features (6-dim) include:
+\begin{itemize}
+    \item \texttt{contact\_fraction}: Fraction of snake body in contact with prey
+    \item \texttt{wrap\_count}: Number of wraps around prey
+    \item \texttt{head\_contact}: Binary indicator for head region contact
+    \item \texttt{mid\_contact}: Binary indicator for middle region contact
+    \item \texttt{tail\_contact}: Binary indicator for tail region contact
+    \item \texttt{continuity}: Measure of contact continuity along the body
+\end{itemize}
+
+This representation is the default for \texttt{CoilEnvConfig} as the contact features provide essential feedback for learning successful coiling behavior.
+
+\subsubsection{Worker Observations}
+
+Both worker policies (Approach and Coil) use the base representation directly, with access to task-relevant metrics via the state dictionary.
+
+\paragraph{Approach Worker.}
+Uses the base representation (FULL or REDUCED) to learn locomotion toward prey. Key metrics available via state dictionary:
+\begin{itemize}
+    \item \texttt{prey\_distance}: Primary task metric---distance from snake head to prey surface
+    \item \texttt{prey\_position}: 3D prey center for computing approach direction
+\end{itemize}
+
+\paragraph{Coil Worker.}
+Uses the same base representation as the Approach worker, but relies on contact-related metrics:
+\begin{itemize}
+    \item \texttt{contact\_mask}: Boolean mask indicating which nodes contact prey ($N+1$ values)
+    \item \texttt{contact\_fraction}: Scalar in $[0, 1]$---fraction of snake body in contact
+    \item \texttt{wrap\_angle}: Total angle wrapped around prey (radians)
+    \item \texttt{wrap\_count}: Number of complete wraps ($= \texttt{wrap\_angle} / 2\pi$)
+\end{itemize}
+
+\begin{table}[H]
+\centering
+\caption{Worker Observation Dimensions}
+\begin{tabular}{@{}lcccc@{}}
+\toprule
+\textbf{Worker} & \textbf{FULL} & \textbf{REDUCED} & \textbf{REDUCED\_APPROACH} & \textbf{REDUCED\_COIL} \\
+\midrule
+Approach Worker & 151 & 16 & 13 & --- \\
+Coil Worker & 151 & 16 & --- & 22 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsubsection{Manager Observations}
+
+The manager policy uses the base representation augmented with hierarchical state information for skill selection:
+
+\begin{table}[H]
+\centering
+\caption{Manager Observation Components}
+\begin{tabular}{@{}llll@{}}
+\toprule
+\textbf{Component} & \textbf{Dimensions} & \textbf{Type} & \textbf{Description} \\
+\midrule
+Base observation & 151 or 16 & Float & FULL or REDUCED representation \\
+\texttt{current\_skill} & 1 & Integer & Active skill index (0=approach, 1=coil) \\
+\texttt{task\_progress} & 2 & Float & [approach\_progress, coil\_progress] in $[0,1]$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The \texttt{task\_progress} vector provides normalized progress toward each subtask goal:
+\begin{itemize}
+    \item \texttt{approach\_progress}: $(d_{\max} - d_{\text{current}}) / (d_{\max} - d_{\text{threshold}})$, clipped to $[0, 1]$
+    \item \texttt{coil\_progress}: $0.5 \cdot (f_c / f_{\text{threshold}}) + 0.5 \cdot (n_w / n_{\text{target}})$, clipped to $[0, 1]$
+\end{itemize}
+
+\begin{table}[H]
+\centering
+\caption{Manager Observation Dimensions}
+\begin{tabular}{@{}lcccc@{}}
+\toprule
+\textbf{Component} & \textbf{FULL} & \textbf{REDUCED} & \textbf{REDUCED\_APPROACH} & \textbf{REDUCED\_COIL} \\
+\midrule
+Base observation & 151 & 16 & 13 & 22 \\
+Hierarchical state & 3 & 3 & 3 & 3 \\
+\midrule
+\textbf{Total (TensorDict)} & \textbf{151 + 3} & \textbf{16 + 3} & \textbf{13 + 3} & \textbf{22 + 3} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Note: The manager receives observations as a TensorDict with separate keys for the base observation and hierarchical state, allowing flexible network architectures that can process these components independently or concatenated.
+
+\subsubsection{Configuration Example}
+
+\begin{listing}[H]
+\begin{minted}{python}
+from snake_hrl.configs.env import (
+    ApproachEnvConfig, CoilEnvConfig, HRLEnvConfig,
+    StateRepresentation,
+)
+
+# Approach worker with full representation
+approach_config = ApproachEnvConfig(
+    state_representation=StateRepresentation.FULL,  # 151-dim
+)
+
+# Approach worker with task-specific reduced representation (recommended)
+approach_config_reduced = ApproachEnvConfig(
+    state_representation=StateRepresentation.REDUCED_APPROACH,  # 13-dim
+)
+
+# Coil worker with task-specific representation (default, includes contact features)
+coil_config = CoilEnvConfig(
+    state_representation=StateRepresentation.REDUCED_COIL,  # 22-dim
+)
+
+# Coil worker with legacy reduced representation
+coil_config_legacy = CoilEnvConfig(
+    state_representation=StateRepresentation.REDUCED,  # 16-dim (no contact features)
+)
+
+# Manager with reduced representation
+hrl_config = HRLEnvConfig(
+    state_representation=StateRepresentation.REDUCED,  # 16-dim base + 3-dim hierarchical
+    approach_config=approach_config_reduced,
+    coil_config=coil_config,
+)
+\end{minted}
+\caption{Configuring State Representation}
+\end{listing}
+
+\subsubsection{Additional State Information}
+
+Regardless of representation, all environments provide additional state information via the state dictionary (accessible for reward computation, logging, and debugging):
+\begin{itemize}
+    \item \texttt{prey\_distance}: Distance from snake head to prey surface
+    \item \texttt{contact\_mask}: Boolean mask of nodes in contact with prey
+    \item \texttt{contact\_fraction}: Fraction of snake body in contact
+    \item \texttt{wrap\_angle}: Total wrap angle around prey (radians)
+    \item \texttt{wrap\_count}: Number of complete wraps around prey
+\end{itemize}
+
+\subsection{Action Space}
+
+The framework supports three control methods via the \texttt{ControlMethod} enum, each with different action space dimensions and characteristics.
+
+\subsubsection{Control Method Options}
+
+\begin{table}[H]
+\centering
+\caption{Control Method Comparison}
+\begin{tabular}{@{}lllll@{}}
+\toprule
+\textbf{Method} & \textbf{Action Dim} & \textbf{Parameters} & \textbf{Steering} & \textbf{Characteristics} \\
+\midrule
+DIRECT & 19 & Curvature per joint & Yes & Full control, high-dimensional \\
+CPG & 4 & Amplitude, freq, wave\_num, phase & No & Smooth via oscillator dynamics \\
+SERPENOID & 4 & Amplitude, freq, wave\_num, phase & No & Analytical formula, no dynamics \\
+SERPENOID\_STEERING & 5 & Amplitude, freq, wave\_num, phase, turn\_bias & Yes & Analytical formula with steering \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Option A: Direct Control (19-dim).}
+The policy outputs one curvature command per internal joint:
+\begin{itemize}
+    \item Range: $[-1, 1]$ (normalized)
+    \item Scaled by \texttt{action\_scale} (default: 1.0)
+    \item Applied as target curvatures to bending forces
+    \item Provides maximum control authority but requires learning coordination
+\end{itemize}
+
+\paragraph{Option B: CPG Control (4-dim).}
+Uses coupled neural oscillators (Matsuoka or Hopf) to generate coordinated joint curvatures:
+\begin{itemize}
+    \item Parameters: amplitude $A$, frequency $\omega$, wave number $k$, phase $\phi$
+    \item Oscillator dynamics provide smooth, biologically-inspired transitions
+    \item Inter-oscillator coupling enforces traveling wave patterns
+    \item Reduces exploration space while maintaining expressive gaits
+\end{itemize}
+
+\paragraph{Option C: Serpenoid Control (4-dim).}
+Uses the analytical serpenoid formula directly without oscillator dynamics:
+\begin{equation}
+    \kappa(s, t) = A \sin(ks - \omega t + \phi)
+\end{equation}
+\begin{itemize}
+    \item Same 4 parameters as CPG: amplitude, frequency, wave number, phase
+    \item Instantaneous mapping from parameters to joint curvatures
+    \item No temporal smoothing from oscillator dynamics
+    \item Simpler but may produce abrupt gait changes
+\end{itemize}
+
+\paragraph{Option D: Serpenoid Steering Control (5-dim).}
+Extends the basic serpenoid formula with a constant turn bias for directional control:
+\begin{equation}
+    \kappa(s, t) = A \sin(ks - \omega t + \phi) + \kappa_{\text{turn}}
+\end{equation}
+\begin{itemize}
+    \item 5 parameters: amplitude $A$, frequency $\omega$, wave number $k$, phase $\phi$, turn bias $\kappa_{\text{turn}}$
+    \item Turn bias enables steering capability not available in basic SERPENOID or CPG
+    \item Turn radius $R = 1/|\kappa_{\text{turn}}|$ when $\kappa_{\text{turn}} \neq 0$
+    \item $\kappa_{\text{turn}} > 0$: curves left (counterclockwise)
+    \item $\kappa_{\text{turn}} < 0$: curves right (clockwise)
+    \item $\kappa_{\text{turn}} = 0$: straight path (equivalent to basic SERPENOID)
+    \item Default turn bias range: $[-2.0, 2.0]$ (configurable via \texttt{CPGConfig.turn\_bias\_range})
+\end{itemize}
+
+\subsubsection{Configuration Example}
+
+\begin{listing}[H]
+\begin{minted}{python}
+from snake_hrl.configs.env import EnvConfig, CPGConfig, ControlMethod
+
+# Direct control (19-dim action space)
+config_direct = EnvConfig(
+    cpg=CPGConfig(control_method=ControlMethod.DIRECT),
+)
+
+# CPG control (4-dim action space with oscillators)
+config_cpg = EnvConfig(
+    cpg=CPGConfig(
+        control_method=ControlMethod.CPG,
+        oscillator_type="matsuoka",
+        num_oscillators=4,
+    ),
+)
+
+# Serpenoid control (4-dim action space, analytical)
+config_serpenoid = EnvConfig(
+    cpg=CPGConfig(control_method=ControlMethod.SERPENOID),
+)
+
+# Serpenoid with steering (5-dim action space, can steer)
+config_serpenoid_steering = EnvConfig(
+    cpg=CPGConfig(
+        control_method=ControlMethod.SERPENOID_STEERING,
+        turn_bias_range=(-2.0, 2.0),  # Configurable steering range
+    ),
+)
+\end{minted}
+\caption{Selecting Control Method}
+\end{listing}
+
+\subsubsection{Control Pipeline (Policy to Forces)}
+
+Worker policies do not output joint torques directly. Instead, they output normalized curvature commands that are scaled into target curvatures and converted into bending forces by the physics simulation. The control pipeline is:
+\begin{align}
+    u_t &= \mu(o_t) + \sigma(o_t) \odot \epsilon, \quad \epsilon \sim \mathcal{N}(0, I) \\
+    a_t &= \tanh(u_t), \quad a_t \in [-1, 1]^{N-1} \\
+    \kappa^{*} &= \mathrm{clip}(5\,s\,a_t,\,-10,\,10)
+\end{align}
+where $s = \texttt{action\_scale}$. The current curvature at joint $i$ is computed from adjacent segments:
+\begin{align}
+    \theta_i &= \arccos\left(\frac{\mathbf{v}_1 \cdot \mathbf{v}_2}{\|\mathbf{v}_1\|\,\|\mathbf{v}_2\|}\right), \quad
+    \bar{\ell}_i = \frac{\|\mathbf{v}_1\| + \|\mathbf{v}_2\|}{2} \\
+    \kappa_{\text{current}, i} &= \theta_i / \bar{\ell}_i
+\end{align}
+
+\paragraph{Curvature as a Function of Position.}
+The current curvature $\kappa_{\text{current}, i}$ is fully determined by the node positions. The segment vectors $\mathbf{v}_1$ and $\mathbf{v}_2$ are defined as:
+\begin{equation}
+    \mathbf{v}_1 = \mathbf{x}_i - \mathbf{x}_{i-1}, \quad \mathbf{v}_2 = \mathbf{x}_{i+1} - \mathbf{x}_i
+\end{equation}
+where $\mathbf{x}_{i-1}, \mathbf{x}_i, \mathbf{x}_{i+1} \in \mathbb{R}^3$ are the positions of three consecutive nodes. Substituting into the curvature formula yields:
+\begin{equation}
+    \kappa_{\text{current}, i} = \frac{2 \arccos\left(\frac{(\mathbf{x}_i - \mathbf{x}_{i-1}) \cdot (\mathbf{x}_{i+1} - \mathbf{x}_i)}{\|\mathbf{x}_i - \mathbf{x}_{i-1}\|\,\|\mathbf{x}_{i+1} - \mathbf{x}_i\|}\right)}{\|\mathbf{x}_i - \mathbf{x}_{i-1}\| + \|\mathbf{x}_{i+1} - \mathbf{x}_i\|}
+\end{equation}
+Thus, $\kappa_{\text{current}, i} = f(\mathbf{x}_{i-1}, \mathbf{x}_i, \mathbf{x}_{i+1})$ is a nonlinear function of exactly three node positions. This means the current curvature is not an independent state variable---it is implicitly encoded in the position vector. However, extracting curvature from positions requires the policy network to learn this nonlinear transformation (involving normalization, dot product, and $\arccos$). Including curvature explicitly in the observation can reduce the representational burden on the network and improve learning efficiency when the control law depends directly on curvature error.
+
+The bending force applied at each internal node is proportional to curvature error:
+\begin{equation}
+    \mathbf{F}_{\text{bend}, i} = k_b \left(\kappa^{*}_i - \kappa_{\text{current}, i}\right) \hat{\mathbf{n}}_i,
+    \quad k_b = E \pi r^4 / 4
+\end{equation}
+
+\subsection{Reward Structures}
+
+The reward system uses a clean separation between base rewards (true objectives) and Potential-Based Reward Shaping (PBRS) for dense guidance. This section documents the complete reward formulas for all three environments: Approach Worker, Coil Worker, and HRL Manager.
+
+\subsubsection{Reward Architecture Overview}
+
+The framework employs a consistent reward architecture across all environments:
+\begin{equation}
+    r_{\text{total}} = \underbrace{r_{\text{base}}}_{\text{sparse objectives}} + \underbrace{F_{\text{task}}(s, s')}_{\text{task PBRS}} + \underbrace{F_{\text{gait}}(s, s')}_{\text{gait PBRS (optional)}}
+\end{equation}
+
+where the PBRS shaping reward preserves optimal policies:
+\begin{equation}
+    F(s, s') = \gamma \Phi(s') - \Phi(s)
+\end{equation}
+
+\paragraph{Clean Architecture Benefits.}
+\begin{itemize}
+    \item \textbf{No double counting}: Base rewards define sparse objectives; PBRS provides all dense guidance
+    \item \textbf{Theoretical guarantees}: PBRS preserves optimal policies when used correctly
+    \item \textbf{Simplified tuning}: Clear separation of objective weights vs. shaping weights
+\end{itemize}
+
+\paragraph{Available Potential Functions.}
+
+\begin{table}[H]
+\centering
+\caption{Task-Specific Potentials}
+\begin{tabular}{@{}lll@{}}
+\toprule
+\textbf{Potential} & \textbf{Task} & \textbf{Description} \\
+\midrule
+\texttt{ApproachPotential} & Approach & Distance to prey + velocity towards prey \\
+\texttt{CoilPotential} & Coil & Contact fraction + wrap count + constriction \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[H]
+\centering
+\caption{Factory Functions}
+\begin{tabular}{@{}ll@{}}
+\toprule
+\textbf{Function} & \textbf{Description} \\
+\midrule
+\texttt{create\_approach\_shaper()} & Creates ApproachPotential with PBRS wrapper \\
+\texttt{create\_coil\_shaper()} & Creates CoilPotential with PBRS wrapper \\
+\texttt{create\_gait\_shaper()} & Creates GaitPotential with demo buffer \\
+\texttt{create\_full\_task\_shaper()} & Composite shaper combining task + gait potentials \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsubsection{Approach Worker Rewards}
+
+The approach skill trains the snake to locomote toward prey until within striking distance.
+
+\paragraph{Complete Summation Formula.}
+\begin{equation}
+    r_{\text{approach}} = \underbrace{-w_e \|\mathbf{a}\|^2}_{\text{energy penalty}}
+    + \underbrace{b_s \cdot \mathbf{1}[d < d_{\text{thresh}}]}_{\text{success bonus}}
+    + \underbrace{w_{\text{task}} \cdot F_{\text{approach}}(s, s')}_{\text{task PBRS}}
+    + \underbrace{w_{\text{gait}} \cdot F_{\text{gait}}(s, s')}_{\text{gait PBRS (optional)}}
+\end{equation}
+
+\paragraph{Approach Potential Function.}
+\begin{equation}
+    \Phi_{\text{approach}}(s) = -w_d \cdot \frac{d}{d_{\max}} + w_v \cdot \max(0, \mathbf{v}_{\text{head}} \cdot \hat{\mathbf{d}}_{\text{prey}})
+\end{equation}
+
+The first term rewards proximity to prey (normalized by maximum distance), while the second term rewards velocity directed toward the prey.
+
+\paragraph{Potential Components.}
+The approach potential is composed of modular, configurable components. Each component can be enabled or disabled by setting its weight to zero.
+
+\begin{table}[H]
+\centering
+\caption{Approach Potential Components}
+\begin{tabular}{@{}llll@{}}
+\toprule
+\textbf{Component} & \textbf{Formula} & \textbf{Weight} & \textbf{Default} \\
+\midrule
+Proximity & $-\frac{d}{d_{\max}}$ & $w_d$ & 1.0 \\
+Velocity & $\max(0, \mathbf{v}_{\text{head}} \cdot \hat{\mathbf{d}}_{\text{prey}})$ & $w_v$ & 0.1 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The composite potential is the weighted sum of components:
+\begin{equation}
+    \Phi_{\text{approach}}(s) = \sum_{i} w_i \cdot \phi_i(s)
+\end{equation}
+
+\paragraph{Variable Definitions.}
+
+\begin{table}[H]
+\centering
+\caption{Approach Worker Variables and Parameters}
+\begin{tabular}{@{}llc@{}}
+\toprule
+\textbf{Symbol} & \textbf{Description} & \textbf{Default} \\
+\midrule
+$\mathbf{a}$ & Action vector (curvature commands) & --- \\
+$d$ & \texttt{prey\_distance} --- distance from head to prey & --- \\
+$d_{\text{thresh}}$ & \texttt{approach\_distance\_threshold} & 0.15 m \\
+$d_{\max}$ & \texttt{max\_distance} for normalization & 2.0 m \\
+$\mathbf{v}_{\text{head}}$ & Velocity of snake head node & --- \\
+$\hat{\mathbf{d}}_{\text{prey}}$ & Unit vector from head toward prey & --- \\
+$w_e$ & \texttt{energy\_penalty\_weight} & 0.01 \\
+$b_s$ & \texttt{success\_bonus} & 1.0 \\
+$w_d$ & \texttt{distance\_reward\_weight} & 1.0 \\
+$w_v$ & \texttt{velocity\_reward\_weight} & 0.1 \\
+$w_{\text{task}}$ & \texttt{task\_shaping\_weight} & 1.0 \\
+$w_{\text{gait}}$ & \texttt{gait\_shaping\_weight} & 0.5 \\
+$\gamma$ & Discount factor & 0.99 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsubsection{Coil Worker Rewards}
+
+The coil skill trains the snake to wrap around and constrict the prey.
+
+\paragraph{Complete Summation Formula.}
+\begin{equation}
+    r_{\text{coil}} = \underbrace{w_t \cdot \frac{1}{1 + \|\mathbf{v}\|} \cdot \mathbf{1}[f_c > 0.5]}_{\text{stability reward}}
+    + \underbrace{b_s \cdot \mathbf{1}[\text{success}]}_{\text{success bonus}}
+    - \underbrace{w_e \|\mathbf{a}\|^2}_{\text{energy penalty}}
+    + \underbrace{w_{\text{task}} \cdot F_{\text{coil}}(s, s')}_{\text{task PBRS}}
+    + \underbrace{w_{\text{gait}} \cdot F_{\text{gait}}(s, s')}_{\text{gait PBRS (optional)}}
+\end{equation}
+
+\paragraph{Success Condition.}
+\begin{equation}
+    \text{success} = (f_c \geq f_{c,\text{thresh}}) \land (|n_w| \geq n_{w,\text{min}})
+\end{equation}
+
+Success requires both sufficient contact with the prey and completing the minimum number of wraps.
+
+\paragraph{Coil Potential Function.}
+\begin{equation}
+    \Phi_{\text{coil}}(s) = w_c \cdot f_c + w_w \cdot \min\left(\frac{|n_w|}{n_{\text{target}}}, 1\right) + \frac{w_s}{1 + \bar{d}_{\text{contact}}}
+\end{equation}
+
+The three terms reward: (1) contact fraction, (2) wrap count progress toward target, and (3) tight constriction (inverse of mean contact distance).
+
+\paragraph{Potential Components.}
+The coil potential is composed of modular, configurable components. Each component can be enabled or disabled by setting its weight to zero.
+
+\begin{table}[H]
+\centering
+\caption{Coil Potential Components}
+\begin{tabular}{@{}llll@{}}
+\toprule
+\textbf{Component} & \textbf{Formula} & \textbf{Weight} & \textbf{Default} \\
+\midrule
+Contact & $f_c$ & $w_c$ & 1.0 \\
+Wrap & $\min(|n_w|/n_{\text{target}}, 1)$ & $w_w$ & 2.0 \\
+Constriction & $\frac{1}{1 + \bar{d}_{\text{contact}}}$ & $w_s$ & 1.5 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The composite potential is the weighted sum of components:
+\begin{equation}
+    \Phi_{\text{coil}}(s) = \sum_{i} w_i \cdot \phi_i(s)
+\end{equation}
+
+\paragraph{Variable Definitions.}
+
+\begin{table}[H]
+\centering
+\caption{Coil Worker Variables and Parameters}
+\begin{tabular}{@{}llc@{}}
+\toprule
+\textbf{Symbol} & \textbf{Description} & \textbf{Default} \\
+\midrule
+$\mathbf{a}$ & Action vector (curvature commands) & --- \\
+$f_c$ & \texttt{contact\_fraction} --- fraction of body in contact & --- \\
+$n_w$ & \texttt{wrap\_count} --- number of wraps around prey & --- \\
+$\|\mathbf{v}\|$ & Velocity magnitude of snake body & --- \\
+$\bar{d}_{\text{contact}}$ & Mean distance of contact nodes to prey center & --- \\
+$f_{c,\text{thresh}}$ & \texttt{contact\_fraction\_threshold} & 0.6 \\
+$n_{w,\text{min}}$ & \texttt{min\_coil\_wraps} & 1.5 \\
+$n_{\text{target}}$ & \texttt{target\_wraps} for potential normalization & 2.0 \\
+$w_t$ & \texttt{stability\_reward\_weight} & 0.5 \\
+$w_e$ & \texttt{energy\_penalty\_weight} & 0.001 \\
+$b_s$ & \texttt{success\_bonus} & 2.0 \\
+$w_c$ & \texttt{contact\_reward\_weight} & 1.0 \\
+$w_w$ & \texttt{wrap\_reward\_weight} & 2.0 \\
+$w_s$ & \texttt{constriction\_reward\_weight} & 1.5 \\
+$w_{\text{task}}$ & \texttt{task\_shaping\_weight} & 1.0 \\
+$\gamma$ & Discount factor & 0.99 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsubsection{HRL Manager Rewards}
+
+The HRL manager selects between approach and coil skills to accomplish the full predation task. The manager receives rewards based on overall task progress and successful phase transitions.
+
+\paragraph{Complete Summation Formula.}
+\begin{equation}
+    r_{\text{HRL}} = \underbrace{r_{\text{phase}}}_{\text{phase-specific}}
+    - \underbrace{w_e \|\mathbf{a}\|^2}_{\text{energy penalty}}
+    - \underbrace{w_{\text{switch}} \cdot \mathbf{1}[\text{skill switch}]}_{\text{switch penalty}}
+    + \underbrace{F_{\text{composite}}(s, s')}_{\text{composite PBRS}}
+\end{equation}
+
+\paragraph{Phase-Specific Rewards.}
+
+During the approach phase:
+\begin{equation}
+    r_{\text{phase}}^{\text{approach}} = b_{\text{approach}} \cdot \mathbf{1}[d < d_{\text{thresh}} \land \neg \text{approach\_complete}]
+\end{equation}
+
+During the coil phase:
+\begin{equation}
+    r_{\text{phase}}^{\text{coil}} = w_t \cdot \frac{1}{1 + \|\mathbf{v}\|} \cdot \mathbf{1}[f_c > 0.5] + b_{\text{task}} \cdot \mathbf{1}[\text{task\_success} \land \neg \text{coil\_complete}]
+\end{equation}
+
+The one-time bonuses ($b_{\text{approach}}$, $b_{\text{task}}$) are awarded only on the first transition to prevent repeated triggering.
+
+\paragraph{Composite PBRS.}
+The manager uses a weighted combination of approach and coil potentials:
+\begin{equation}
+    F_{\text{composite}}(s, s') = w_{\text{app}} \cdot F_{\text{approach}}(s, s') + w_{\text{coil}} \cdot F_{\text{coil}}(s, s')
+\end{equation}
+
+This provides continuous guidance toward both subgoals, with the coil potential becoming more relevant as the snake approaches the prey.
+
+\paragraph{Variable Definitions.}
+
+\begin{table}[H]
+\centering
+\caption{HRL Manager Variables and Parameters}
+\begin{tabular}{@{}llc@{}}
+\toprule
+\textbf{Symbol} & \textbf{Description} & \textbf{Default} \\
+\midrule
+$\mathbf{a}$ & Manager action (skill selection) & --- \\
+$d$ & \texttt{prey\_distance} --- distance from head to prey & --- \\
+$d_{\text{thresh}}$ & \texttt{approach\_distance\_threshold} & 0.15 m \\
+$f_c$ & \texttt{contact\_fraction} --- fraction of body in contact & --- \\
+$\|\mathbf{v}\|$ & Velocity magnitude of snake body & --- \\
+$w_e$ & \texttt{energy\_penalty\_weight} & 0.001 \\
+$w_{\text{switch}}$ & \texttt{skill\_switch\_penalty} & 0.1 \\
+$b_{\text{approach}}$ & \texttt{approach\_completion\_bonus} & 10.0 \\
+$b_{\text{task}}$ & \texttt{task\_completion\_bonus} & 100.0 \\
+$w_t$ & \texttt{stability\_reward\_weight} & 0.5 \\
+$w_{\text{app}}$ & \texttt{approach\_shaper\_weight} & 1.0 \\
+$w_{\text{coil}}$ & \texttt{coil\_shaper\_weight} & 1.5 \\
+$\gamma$ & Discount factor & 0.99 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsubsection{Gait-Based Reward Shaping}
+
+The framework supports optional demonstration-based reward shaping through Gaussian potentials in feature space. This encourages the agent to match demonstrated locomotion patterns while preserving PBRS theoretical guarantees.
+
+\paragraph{Gait Potential.}
+\begin{equation}
+    \Phi_{\text{gait}}(s) = w_g \exp\left(-\frac{\|f(s) - f(s_d)\|^2}{2\sigma^2}\right)
+\end{equation}
+where $f(s) \in \mathbb{R}^{16}$ extracts compact features from state $s$, $s_d$ is the nearest demonstration state in the buffer, and $\sigma$ controls the kernel width.
+
+\paragraph{Gait Potential Variants.}
+
+\begin{table}[H]
+\centering
+\caption{Gait-Based Potentials}
+\begin{tabular}{@{}ll@{}}
+\toprule
+\textbf{Potential} & \textbf{Description} \\
+\midrule
+\texttt{GaitPotential} & Fixed Gaussian kernel matching to demonstrations \\
+\texttt{CurriculumGaitPotential} & Sigma annealing (linear/cosine/exponential schedules) \\
+\texttt{AdaptiveGaitPotential} & Density-adaptive sigma based on local demo density \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{description}
+    \item[\texttt{GaitPotential}] Uses a fixed sigma value throughout training. Simple but may not adapt well to changing policy behavior.
+
+    \item[\texttt{CurriculumGaitPotential}] Anneals sigma over training with configurable schedules:
+    \begin{itemize}
+        \item \textbf{Linear}: $\sigma(p) = \sigma_{\text{init}} + p \cdot (\sigma_{\text{final}} - \sigma_{\text{init}})$
+        \item \textbf{Cosine}: $\sigma(p) = \sigma_{\text{final}} + \frac{1}{2}(\sigma_{\text{init}} - \sigma_{\text{final}})(1 + \cos(\pi p))$
+        \item \textbf{Exponential}: $\sigma(p) = \sigma_{\text{init}} \cdot (\sigma_{\text{final}}/\sigma_{\text{init}})^p$
+    \end{itemize}
+    where $p \in [0, 1]$ is training progress.
+
+    \item[\texttt{AdaptiveGaitPotential}] Adjusts sigma based on local demonstration density, providing tighter matching in well-demonstrated regions and looser matching in sparse regions.
+\end{description}
+
+\paragraph{Feature Extraction.}
+The compact state representation $f(s) \in \mathbb{R}^{16}$ comprises three configurable feature extractor components. Each component can be enabled or disabled by setting its weight to zero.
+
+\begin{table}[H]
+\centering
+\caption{Gait Potential Feature Components}
+\begin{tabular}{@{}lllll@{}}
+\toprule
+\textbf{Component} & \textbf{Dims} & \textbf{Formula/Description} & \textbf{Weight} & \textbf{Default} \\
+\midrule
+Curvature Modes & 3 & Amplitude, wave number, phase from FFT & $w_{\text{curv}}$ & 1.0 \\
+Virtual Chassis & 9 & CoG position, orientation, angular velocity & $w_{\text{chassis}}$ & 1.0 \\
+Goal Relative & 4 & Direction to prey, distance & $w_{\text{goal}}$ & 1.0 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The weighted feature combination is:
+\begin{equation}
+    f(s) = [w_{\text{curv}} \cdot f_{\text{curv}}(s), w_{\text{chassis}} \cdot f_{\text{chassis}}(s), w_{\text{goal}} \cdot f_{\text{goal}}(s)]
+\end{equation}
+
+\paragraph{Demonstration Buffer.}
+Demonstrations are stored in a buffer with KDTree indexing for efficient nearest-neighbor queries. Demonstrations can be:
+\begin{itemize}
+    \item Generated automatically using serpenoid controllers with varied parameters
+    \item Loaded from saved files for reproducibility
+\end{itemize}
+
+\paragraph{Integration with Task Rewards.}
+The total shaped reward combines base rewards with both task and gait PBRS:
+\begin{equation}
+    r_{\text{shaped}} = r_{\text{base}} + \underbrace{\gamma \Phi_{\text{task}}(s') - \Phi_{\text{task}}(s)}_{\text{task PBRS}} + \underbrace{\gamma \Phi_{\text{gait}}(s') - \Phi_{\text{gait}}(s)}_{\text{gait PBRS}}
+\end{equation}
+
+\subsubsection{Reward Configuration Example}
+
+\begin{listing}[H]
+\begin{minted}{python}
+from snake_hrl.configs.env import ApproachEnvConfig, CoilEnvConfig, HRLEnvConfig, GaitConfig
+
+# Approach environment with gait-based shaping
+approach_config = ApproachEnvConfig(
+    energy_penalty_weight=0.01,
+    success_bonus=1.0,
+    distance_reward_weight=1.0,
+    velocity_reward_weight=0.1,
+    gait=GaitConfig(
+        use_gait_potential=True,
+        potential_type="curriculum",
+        curriculum_schedule="cosine",
+        sigma_init=2.0,
+        sigma_final=0.5,
+        gait_weight=0.5,
+    ),
+)
+
+# Coil environment
+coil_config = CoilEnvConfig(
+    stability_reward_weight=0.5,
+    energy_penalty_weight=0.001,
+    success_bonus=2.0,
+    contact_reward_weight=1.0,
+    wrap_reward_weight=2.0,
+    constriction_reward_weight=1.5,
+)
+
+# HRL manager environment
+hrl_config = HRLEnvConfig(
+    skill_switch_penalty=0.1,
+    approach_completion_bonus=10.0,
+    task_completion_bonus=100.0,
+    approach_shaper_weight=1.0,
+    coil_shaper_weight=1.5,
+)
+\end{minted}
+\caption{Configuring Reward Shaping}
+\end{listing}
+
+\subsection{Termination Conditions}
+
+\subsubsection{Approach Environment}
+\begin{itemize}
+    \item Success: Head within \texttt{approach\_distance\_threshold} (0.15 m) for \texttt{success\_hold\_steps} (10 steps)
+    \item Truncation: Episode length exceeds \texttt{max\_episode\_steps} (1000)
+\end{itemize}
+
+\subsubsection{Coil Environment}
+\begin{itemize}
+    \item Success: Contact fraction $\geq 0.6$ AND wrap count $\geq 1.5$ for 20 steps
+    \item Truncation: Episode length exceeds maximum
+\end{itemize}
+
+\section{Hierarchical RL Implementation}
+
+\subsection{Manager Policy}
+
+The manager selects between skills using a discrete action space:
+\begin{itemize}
+    \item Action 0: Execute approach skill
+    \item Action 1: Execute coil skill
+\end{itemize}
+
+Configuration:
+\begin{itemize}
+    \item \texttt{skill\_duration}: 50 steps between manager decisions
+    \item \texttt{allow\_early\_termination}: Skills can signal completion early
+\end{itemize}
+
+\subsection{Worker Policies}
+
+Each worker is a continuous control policy trained on its respective environment. Workers output curvature control signals that are executed by the physics simulation.
+
+\subsection{Training Strategies}
+
+The framework supports three training strategies:
+
+\subsubsection{Sequential Training}
+\begin{enumerate}
+    \item Train approach skill to convergence (500K frames)
+    \item Train coil skill to convergence (500K frames)
+    \item Freeze skills and train manager (500K frames)
+\end{enumerate}
+
+\subsubsection{Joint Training}
+
+All policies trained simultaneously from scratch, with experience shared appropriately between hierarchical levels.
+
+\subsubsection{Pretrain-then-Finetune}
+\begin{enumerate}
+    \item Sequential training of skills and manager
+    \item Unfreeze skills and fine-tune jointly with reduced learning rate
+\end{enumerate}
+
+\subsection{Curriculum Learning}
+
+Optional curriculum stages:
+\begin{enumerate}
+    \item \texttt{approach\_only}: Train only approach skill
+    \item \texttt{coil\_only}: Train only coil skill
+    \item \texttt{full}: Full hierarchical training
+\end{enumerate}
+
+Advancement threshold: 80\% success rate on current stage.
+
+\subsection{Policy Initialization via Behavioral Cloning}
+
+Training hierarchical policies from scratch with sparse rewards is challenging due to the exploration problem---the agent must discover successful trajectories before it can learn from them. The framework addresses this through a behavioral cloning (BC) pipeline that pre-trains worker policies from physics-based demonstrations, providing a warm start for subsequent RL fine-tuning.
+
+\subsubsection{Trajectory Generation}
+
+Demonstration trajectories are generated using serpenoid controllers executed in the physics simulation. The serpenoid gait produces coordinated body undulations through the curvature wave equation:
+\begin{equation}
+    \kappa(s, t) = A \sin(ks - \omega t + \phi)
+\end{equation}
+where $A$ is amplitude, $k$ is wave number, $\omega = 2\pi f$ is angular frequency, and $\phi$ is phase offset.
+
+\paragraph{Grid Search Generation.}
+The generator performs a systematic grid search over CPG parameters to produce diverse locomotion patterns:
+
+\begin{table}[H]
+\centering
+\caption{Serpenoid Parameter Ranges for Trajectory Generation}
+\begin{tabular}{@{}llll@{}}
+\toprule
+\textbf{Parameter} & \textbf{Symbol} & \textbf{Range} & \textbf{Description} \\
+\midrule
+Amplitude & $A$ & 0.5--2.0 rad & Peak curvature magnitude \\
+Frequency & $f$ & 0.5--2.0 Hz & Wave propagation speed \\
+Wave number & $k$ & 1.0--3.0 & Number of body waves \\
+Phase & $\phi$ & 0--$2\pi$ rad & Initial phase offset \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+For each parameter combination, the physics simulation runs for a fixed duration (default: 5 seconds), recording state trajectories at a configurable sample rate.
+
+\paragraph{Fitness Evaluation and Filtering.}
+Not all generated trajectories represent useful locomotion. Each trajectory is evaluated for fitness based on:
+\begin{itemize}
+    \item \textbf{Displacement magnitude}: $\|\mathbf{x}_{\text{final}} - \mathbf{x}_{\text{init}}\|$, measuring net movement
+    \item \textbf{Displacement direction}: Normalized 2D direction vector (xy-plane)
+    \item \textbf{Average speed}: Displacement magnitude divided by trajectory duration
+\end{itemize}
+
+Trajectories below a minimum displacement threshold (default: 0.05--0.1 m) are discarded as unsuccessful.
+
+\paragraph{Direction Diversity.}
+To ensure the policy learns to move in all directions, trajectories are binned into 8 directional categories (N, NE, E, SE, S, SW, W, NW). The top-$K$ trajectories per bin (ranked by displacement magnitude) are retained, ensuring balanced coverage of the locomotion space.
+
+\subsubsection{Retrospective Goal Setting}
+
+A key design choice is \emph{retrospective goal setting}---rather than specifying target directions a priori, the system:
+\begin{enumerate}
+    \item Executes trajectories with various CPG parameters (no predefined goal)
+    \item Computes the actual displacement achieved: $\mathbf{d} = \mathbf{x}_{\text{final}} - \mathbf{x}_{\text{init}}$
+    \item Sets the goal direction as $\hat{\mathbf{g}} = \mathbf{d} / \|\mathbf{d}\|$ and goal distance as $\|\mathbf{d}\|$
+    \item Creates (state, action, goal) tuples where the action provably achieves the goal
+\end{enumerate}
+
+This guarantees all training experiences are valid---the demonstrated action successfully moves the snake in the labeled goal direction---without requiring inverse kinematics or trajectory optimization.
+
+\subsubsection{State and Action Representations for BC}
+
+The BC pipeline uses compact representations optimized for imitation learning:
+
+\paragraph{REDUCED\_APPROACH State (13-dim).}
+\begin{table}[H]
+\centering
+\caption{BC State Representation}
+\begin{tabular}{@{}lll@{}}
+\toprule
+\textbf{Component} & \textbf{Dims} & \textbf{Description} \\
+\midrule
+Curvature modes & 3 & Amplitude, wave number, phase (FFT extraction) \\
+Orientation & 3 & Unit vector of snake's facing direction \\
+Angular velocity & 3 & Rotational velocity from virtual chassis \\
+Goal direction & 3 & Unit vector toward target (retrospective) \\
+Goal distance & 1 & Scalar distance to target \\
+\midrule
+\textbf{Total} & \textbf{13} & \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{SERPENOID Action (4-dim).}
+The action space matches the serpenoid parameters: $[A, f, k, \phi]$ (amplitude, frequency, wave number, phase).
+
+\subsubsection{Behavioral Cloning Training}
+
+The BC trainer uses supervised learning to map states to demonstrated actions:
+
+\paragraph{Loss Function.}
+Mean squared error between predicted and expert actions:
+\begin{equation}
+    \mathcal{L}_{\text{BC}}(\theta) = \mathbb{E}_{(s, a) \sim \mathcal{D}} \left[ \|\pi_\theta(s) - a\|^2 \right]
+\end{equation}
+where $\mathcal{D}$ is the demonstration buffer and $\pi_\theta$ is the policy network.
+
+\paragraph{Training Configuration.}
+
+\begin{table}[H]
+\centering
+\caption{Behavioral Cloning Hyperparameters}
+\begin{tabular}{@{}llc@{}}
+\toprule
+\textbf{Parameter} & \textbf{Description} & \textbf{Default} \\
+\midrule
+Learning rate & Adam optimizer step size & $10^{-3}$ \\
+Batch size & Samples per gradient update & 64 \\
+Weight decay & L2 regularization coefficient & $10^{-4}$ \\
+Validation split & Fraction held out for validation & 10\% \\
+Epochs & Maximum training iterations & 100 \\
+Early stopping & Patience before stopping & Optional \\
+Network & MLP hidden layers & [64, 64] \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Early Stopping and Checkpointing.}
+The trainer monitors validation loss and saves the best-performing model. If validation loss fails to improve for a configurable number of epochs (patience), training terminates early to prevent overfitting.
+
+\subsubsection{Transition to RL Fine-tuning}
+
+After BC pre-training, the policy weights are transferred to the RL training pipeline:
+
+\begin{enumerate}
+    \item \textbf{Weight initialization}: The approach worker loads pre-trained weights from the BC checkpoint
+    \item \textbf{Reduced learning rate}: Fine-tuning uses 10$\times$ lower learning rate than training from scratch
+    \item \textbf{Optional freezing}: During initial manager training, worker policies can be frozen to stabilize hierarchical learning
+    \item \textbf{Joint fine-tuning}: After manager convergence, all policies are unfrozen for end-to-end optimization
+\end{enumerate}
+
+This BC$\rightarrow$RL pipeline significantly accelerates training by:
+\begin{itemize}
+    \item Providing a competent initial policy that can reach the prey (solving the sparse reward problem)
+    \item Establishing reasonable action distributions that RL can refine
+    \item Reducing total training frames required for convergence
+\end{itemize}
+
+\subsubsection{Pipeline Summary}
+
+The complete workflow from demonstration generation to RL training:
+
+\begin{listing}[H]
+\begin{minted}{bash}
+# Phase 1: Generate demonstration trajectories
+python scripts/generate_demos.py --output data/demos/serpenoid.npz
+
+# Phase 2: Extract BC training experiences
+python scripts/generate_approach_experiences.py \
+    --output data/approach_experiences.npz \
+    --min-displacement 0.1 --ensure-direction-diversity
+
+# Phase 3: Pre-train approach policy via BC
+python scripts/pretrain_approach_policy.py \
+    --experiences data/approach_experiences.npz \
+    --output checkpoints/approach_pretrained.pt \
+    --epochs 100 --lr 1e-3
+
+# Phase 4: RL fine-tuning with pre-trained initialization
+python scripts/train_hrl.py \
+    --strategy pretrain_finetune \
+    --approach_checkpoint checkpoints/approach_pretrained.pt
+\end{minted}
+\caption{Behavioral Cloning Pipeline Commands}
+\end{listing}
+
+\section{Training Algorithms}
+
+\subsection{PPO (Proximal Policy Optimization)}
+
+PPO is the primary algorithm for both worker and manager policies.
+
+\subsubsection{Algorithm Overview}
+
+PPO optimizes a clipped surrogate objective:
+\begin{equation}
+    L^{\text{CLIP}}(\theta) = \mathbb{E}_t \left[ \min\left( r_t(\theta) \hat{A}_t, \text{clip}(r_t(\theta), 1-\epsilon, 1+\epsilon) \hat{A}_t \right) \right]
+\end{equation}
+where $r_t(\theta) = \frac{\pi_\theta(a_t|s_t)}{\pi_{\theta_{\text{old}}}(a_t|s_t)}$ is the probability ratio.
+
+\subsubsection{Hyperparameters}
+
+\begin{table}[H]
+\centering
+\caption{PPO Hyperparameters}
+\begin{tabular}{@{}ll@{}}
+\toprule
+\textbf{Parameter} & \textbf{Value} \\
+\midrule
+Learning rate & $3 \times 10^{-4}$ \\
+Clip epsilon ($\epsilon$) & 0.2 \\
+GAE lambda ($\lambda$) & 0.95 \\
+Discount factor ($\gamma$) & 0.99 \\
+Entropy coefficient & 0.01 \\
+Value coefficient & 0.5 \\
+Number of epochs & 10 \\
+Mini-batch size & 256 \\
+Max gradient norm & 0.5 \\
+Frames per batch & 4096 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsubsection{Advantage Estimation}
+
+Generalized Advantage Estimation (GAE) is used:
+\begin{equation}
+    \hat{A}_t = \sum_{l=0}^{\infty} (\gamma \lambda)^l \delta_{t+l}
+\end{equation}
+where $\delta_t = r_t + \gamma V(s_{t+1}) - V(s_t)$.
+
+\subsection{SAC (Soft Actor-Critic)}
+
+SAC is available as an alternative for continuous control:
+
+\subsubsection{Key Features}
+\begin{itemize}
+    \item Maximum entropy framework
+    \item Automatic entropy tuning
+    \item Twin Q-networks (min-Q trick)
+    \item Off-policy with replay buffer
+\end{itemize}
+
+\subsubsection{Hyperparameters}
+
+\begin{table}[H]
+\centering
+\caption{SAC Hyperparameters}
+\begin{tabular}{@{}ll@{}}
+\toprule
+\textbf{Parameter} & \textbf{Value} \\
+\midrule
+Actor learning rate & $3 \times 10^{-4}$ \\
+Critic learning rate & $3 \times 10^{-4}$ \\
+Target update rate ($\tau$) & 0.005 \\
+Initial entropy coefficient & 0.2 \\
+Buffer size & $10^6$ \\
+Batch size & 256 \\
+Warmup steps & 10,000 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Network Architectures}
+
+\subsection{Actor Networks}
+
+\subsubsection{Continuous Actor (Workers)}
+
+MLP architecture for Gaussian policy:
+\begin{itemize}
+    \item Hidden layers: [256, 256, 128]
+    \item Activation: Tanh
+    \item Output: Mean and log-std for each action dimension
+    \item Distribution: TanhNormal (bounded to $[-1, 1]$)
+\end{itemize}
+
+Standard deviation bounds:
+\begin{itemize}
+    \item Minimum std: 0.1
+    \item Maximum std: 1.0
+    \item Initial std: 0.5
+\end{itemize}
+
+\subsubsection{Discrete Actor (Manager)}
+
+MLP architecture for categorical policy:
+\begin{itemize}
+    \item Hidden layers: [256, 256, 128]
+    \item Activation: Tanh
+    \item Output: Logits for each skill
+    \item Distribution: Categorical (softmax)
+\end{itemize}
+
+\subsection{Critic Networks}
+
+Value function networks:
+\begin{itemize}
+    \item Hidden layers: [256, 256, 128]
+    \item Activation: Tanh
+    \item Output: Single scalar value
+\end{itemize}
+
+\subsection{Initialization}
+\begin{itemize}
+    \item Orthogonal initialization for hidden layers (gain = 1.0)
+    \item Small gain (0.01) for output layers
+    \item Optional layer normalization
+    \item Optional spectral normalization
+\end{itemize}
+
+\subsection{Optional Features}
+\begin{itemize}
+    \item CNN feature extraction (for image observations)
+    \item LSTM/GRU recurrence (for partial observability)
+    \item Shared encoder across policies
+\end{itemize}
+
+\section{Project Structure}
+
+\subsection{Directory Layout}
+
+The project is organized into core library code (\texttt{src/}), executable scripts (\texttt{scripts/}), and supporting directories. The structure below shows key files; some modules contain additional utilities not listed.
+
+\begin{listing}[H]
+\begin{minted}[fontsize=\scriptsize,linenos=false,baselinestretch=1.0]{text}
+snake-hrl/
+├── src/snake_hrl/                    # Core library
+│   ├── configs/                      # Dataclass configurations
+│   │   ├── env.py                    #   Environment configs (CPGConfig, GaitConfig, etc.)
+│   │   ├── network.py                #   Network architecture configs
+│   │   └── training.py               #   Training hyperparameters
+│   ├── physics/                      # Physics simulation
+│   │   ├── snake_robot.py            #   DisMech-based DER simulation
+│   │   ├── elastica_snake_robot.py   #   Alternative Elastica backend
+│   │   └── geometry.py               #   Geometry utilities
+│   ├── envs/                         # TorchRL environments
+│   │   ├── base_env.py, approach_env.py, coil_env.py, hrl_env.py
+│   ├── networks/                     # Neural network architectures
+│   │   ├── actor.py, critic.py
+│   ├── trainers/                     # Training algorithms
+│   │   ├── ppo.py, sac.py, hrl.py, behavioral_cloning.py
+│   ├── rewards/                      # Reward shaping
+│   │   ├── shaping.py, gait_potential.py
+│   ├── features/                     # Feature extractors
+│   │   ├── extractors.py, curvature_modes.py, virtual_chassis.py, contact_features.py
+│   ├── demonstrations/               # Demo generation and storage
+│   │   ├── buffer.py, generators.py, io.py, fitness.py
+│   │   ├── approach_experiences.py, curvature_action_experiences.py
+│   └── cpg/                          # Central Pattern Generator
+│       ├── oscillators.py, action_wrapper.py
+├── scripts/                          # Executable scripts
+│   ├── train_*.py                    #   Training scripts (approach, coil, hrl)
+│   ├── generate_*.py                 #   Demo generation scripts
+│   ├── pretrain_approach_policy.py   #   Behavioral cloning pretraining
+│   ├── evaluate.py, visualize_coil.py
+│   └── verify_*.py, *_test.py        #   Verification and test scripts
+├── tests/                            # Unit tests
+│   ├── test_physics.py, test_envs.py
+├── dismech-python/                   # DisMech physics library (local)
+├── data/demos/                       # Training data and demonstrations
+├── checkpoints/                      # Saved model checkpoints
+├── figures/                          # Generated visualizations
+└── documents/                        # Documentation (this file)
+\end{minted}
+\caption{Project Directory Structure}
+\end{listing}
+
+\subsection{Module Descriptions}
+
+\begin{description}
+    \item[configs/] Dataclass configurations for environments, networks, and training (includes \texttt{GaitConfig}, \texttt{CPGConfig}, \texttt{StateRepresentation})
+    \item[physics/] Physics simulation with DisMech-based DER and alternative Elastica backend
+    \item[envs/] TorchRL-compatible environments with TensorDict interface
+    \item[networks/] PyTorch neural network architectures for actors and critics
+    \item[trainers/] Training algorithms: PPO, SAC, hierarchical RL, and behavioral cloning
+    \item[rewards/] Potential-based reward shaping utilities including task and gait potentials
+    \item[features/] Compact feature extraction (curvature modes, virtual chassis, goal-relative, contact features)
+    \item[demonstrations/] Demo buffer with KDTree, trajectory generators, fitness evaluation, and BC experience generation
+    \item[cpg/] Central Pattern Generator module with neural oscillators for action space reduction
+\end{description}
+
+\subsection{Entry Points}
+
+Training and evaluation scripts in \texttt{scripts/}:
+\begin{itemize}
+    \item \texttt{train\_approach.py}, \texttt{train\_coil.py}, \texttt{train\_hrl.py}: Skill and hierarchical training
+    \item \texttt{train\_approach\_curvature.py}: Train approach with direct curvature control
+    \item \texttt{evaluate.py}, \texttt{visualize\_coil.py}: Policy evaluation and visualization
+\end{itemize}
+Demonstration generation:
+\begin{itemize}
+    \item \texttt{generate\_demos.py}: Generate serpenoid demonstration trajectories
+    \item \texttt{generate\_approach\_experiences.py}: Generate BC training data from trajectories
+    \item \texttt{generate\_curvature\_demos.py}: Generate 19-dim curvature action demos
+    \item \texttt{pretrain\_approach\_policy.py}: Behavioral cloning pretraining
+\end{itemize}
+Verification and testing:
+\begin{itemize}
+    \item \texttt{verify\_*.py}: Physics and control verification scripts
+    \item \texttt{*\_test.py}: Feasibility and stability tests
+\end{itemize}
+
+\section{Dependencies and Requirements}
+
+\subsection{Python Version}
+
+Python 3.8 or higher is required.
+
+\subsection{Key Libraries}
+
+\begin{table}[H]
+\centering
+\caption{Core Dependencies}
+\begin{tabular}{@{}lll@{}}
+\toprule
+\textbf{Library} & \textbf{Purpose} & \textbf{Version} \\
+\midrule
+PyTorch & Deep learning framework & $\geq$ 2.0 \\
+TorchRL & RL library & $\geq$ 0.3 \\
+TensorDict & Tensor container & $\geq$ 0.2 \\
+NumPy & Numerical computation & $\geq$ 1.20 \\
+Numba & JIT compilation & $\geq$ 0.58 \\
+DisMech-Python & Physics simulation & local (./dismech-python) \\
+tqdm & Progress bars & $\geq$ 4.0 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Optional Dependencies}
+\begin{itemize}
+    \item \textbf{TensorBoard}: Training visualization
+    \item \textbf{Matplotlib}: Plotting and analysis
+    \item \textbf{PyTest}: Testing framework
+\end{itemize}
+
+\section{Conclusion}
+
+\subsection{Summary of Contributions}
+
+The Snake-HRL project provides:
+\begin{enumerate}
+    \item A physics-based snake robot simulation using discrete elastic rods
+    \item TorchRL-compatible environments for skill and hierarchical training
+    \item Implementation of PPO and SAC algorithms with hierarchical extensions
+    \item Modular architecture supporting multiple training strategies
+    \item Curriculum learning for progressive skill acquisition
+    \item Demonstration-based gait reward shaping with compact feature extraction
+    \item Optional CPG-based action transformation for reduced action spaces
+\end{enumerate}
+
+\subsection{Future Directions}
+
+Potential extensions include:
+\begin{itemize}
+    \item Additional skills (strike, release, locomotion patterns)
+    \item Multi-prey scenarios
+    \item Sim-to-real transfer for physical snake robots
+    \item Vision-based observation space
+    \item Distributed training for faster convergence
+    \item Learning from human demonstrations via teleoperation
+    \item Adaptive CPG parameters learned end-to-end
+    \item Multi-modal locomotion (lateral undulation, sidewinding, rectilinear)
+\end{itemize}
+
+\end{document}
