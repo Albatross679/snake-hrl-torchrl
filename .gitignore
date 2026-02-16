@@ -57,7 +57,17 @@ logs/
 *.pt
 tensorboard/
 Media/
+output/
+model/
+.claude/
 
 # Numba cache
 *.nbc
 *.nbi
+
+# External dependencies (built from source)
+dismech-rods/
+
+# Temporary / auto-generated
+MUJOCO_LOG.TXT
+temp.md

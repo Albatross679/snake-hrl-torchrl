@@ -4,8 +4,8 @@ import pytest
 import torch
 import numpy as np
 
-from snake_hrl.envs import BaseSnakeEnv, ApproachEnv, CoilEnv, HRLEnv
-from snake_hrl.configs.env import (
+from envs import BaseSnakeEnv, ApproachEnv, CoilEnv, HRLEnv
+from configs.env import (
     EnvConfig,
     ApproachEnvConfig,
     CoilEnvConfig,
