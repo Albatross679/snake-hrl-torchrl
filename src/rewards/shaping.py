@@ -360,7 +360,7 @@ def create_gait_shaper(
 
     Example:
         >>> from observations import CompositeFeatureExtractor, CurvatureModeExtractor
-        >>> from demonstrations import DemonstrationBuffer, SerpenoidGenerator
+        >>> from behavioral_cloning import DemonstrationBuffer, SerpenoidGenerator
         >>> from rewards.shaping import create_gait_shaper
         >>>
         >>> # Create and populate buffer

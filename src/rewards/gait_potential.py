@@ -14,7 +14,7 @@ from typing import Any, Dict, Optional
 import numpy as np
 
 from rewards.shaping import PotentialFunction
-from demonstrations.buffer import DemonstrationBuffer
+from behavioral_cloning.buffer import DemonstrationBuffer
 
 
 class GaitPotential(PotentialFunction):
@@ -30,7 +30,7 @@ class GaitPotential(PotentialFunction):
 
     Example:
         >>> from observations import CompositeFeatureExtractor, CurvatureModeExtractor
-        >>> from demonstrations import DemonstrationBuffer
+        >>> from behavioral_cloning import DemonstrationBuffer
         >>> extractor = CompositeFeatureExtractor([CurvatureModeExtractor()])
         >>> buffer = DemonstrationBuffer(extractor)
         >>> # ... populate buffer ...

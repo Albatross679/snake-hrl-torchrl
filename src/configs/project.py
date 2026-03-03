@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass, field
 
-from configs.base import MLBaseConfig, Checkpointing, TensorBoard
+from configs.base import MLBaseConfig, Checkpointing
 from configs.training import PPOConfig
 from configs.env import ApproachEnvConfig, CoilEnvConfig
 from configs.network import NetworkConfig, HRLNetworkConfig
@@ -16,7 +16,6 @@ class SnakeApproachConfig(PPOConfig):
     env: ApproachEnvConfig = field(default_factory=ApproachEnvConfig)
     network: NetworkConfig = field(default_factory=NetworkConfig)
     checkpointing: Checkpointing = field(default_factory=Checkpointing)
-    tensorboard: TensorBoard = field(default_factory=TensorBoard)
 
 
 @dataclass
@@ -27,7 +26,6 @@ class SnakeCoilConfig(PPOConfig):
     env: CoilEnvConfig = field(default_factory=CoilEnvConfig)
     network: NetworkConfig = field(default_factory=NetworkConfig)
     checkpointing: Checkpointing = field(default_factory=Checkpointing)
-    tensorboard: TensorBoard = field(default_factory=TensorBoard)
 
 
 @dataclass

@@ -9,7 +9,7 @@ from typing import Optional, Dict, Any
 import os
 import numpy as np
 
-from configs.physics import PhysicsConfig
+from configs.physics import PhysicsConfig, FrictionModel
 from configs.env import StateRepresentation
 
 # PARDISO solver in dismech-rods requires single-threaded MKL to avoid
@@ -220,7 +220,15 @@ class DismechRodsSnakeRobot:
             force = py_dismech.GravityForce(soft_robots, gravity_vec)
             self._sim_manager.forces.addForce(force)
 
-        # Add damping if configured
+        # Add ground interaction forces based on friction config
+        friction = self.config.friction
+        if friction.model in (FrictionModel.RFT, FrictionModel.COULOMB, FrictionModel.STRIBECK):
+            raise NotImplementedError(
+                f"FrictionModel.{friction.model.name} is not supported by the "
+                f"dismech-rods (C++) backend. Use NATIVE or NONE."
+            )
+
+        # Add damping if configured (used by both NATIVE and NONE modes)
         if self.config.dismech_rods_damping_viscosity > 0:
             damping = py_dismech.DampingForce(
                 soft_robots, self.config.dismech_rods_damping_viscosity

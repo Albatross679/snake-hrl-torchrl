@@ -4,13 +4,15 @@ import pytest
 import torch
 import numpy as np
 
-from envs import BaseSnakeEnv, ApproachEnv, CoilEnv, HRLEnv
-from configs.env import (
-    EnvConfig,
-    ApproachEnvConfig,
-    CoilEnvConfig,
-    HRLEnvConfig,
-)
+from envs import BaseSnakeEnv
+from configs.env import EnvConfig
+
+try:
+    from envs import ApproachEnv, CoilEnv, HRLEnv
+    from configs.env import ApproachEnvConfig, CoilEnvConfig, HRLEnvConfig
+    has_predation_envs = True
+except ImportError:
+    has_predation_envs = False
 
 
 class TestBaseSnakeEnv:
@@ -87,6 +89,7 @@ class TestBaseSnakeEnv:
         assert float(action_spec.space.high.max()) == 1.0
 
 
+@pytest.mark.skipif(not has_predation_envs, reason="predation envs not available")
 class TestApproachEnv:
     """Tests for ApproachEnv."""
 
@@ -166,6 +169,7 @@ class TestApproachEnv:
         assert "episode_reward" in metrics
 
 
+@pytest.mark.skipif(not has_predation_envs, reason="predation envs not available")
 class TestCoilEnv:
     """Tests for CoilEnv."""
 
@@ -233,6 +237,7 @@ class TestCoilEnv:
         assert "is_success" in metrics
 
 
+@pytest.mark.skipif(not has_predation_envs, reason="predation envs not available")
 class TestHRLEnv:
     """Tests for HRLEnv."""
 

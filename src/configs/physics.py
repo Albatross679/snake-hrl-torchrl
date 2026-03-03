@@ -2,13 +2,20 @@
 
 Hierarchy:
     PhysicsConfig (base: geometry, dt, density, gravity, solver, prey)
-    └── RodConfig (material: youngs_modulus, poisson_ratio, convergence, RFT)
+    └── RodConfig (material: youngs_modulus, poisson_ratio, convergence, friction)
         ├── DERConfig (Discrete Elastic Rods)
         │   ├── DismechConfig (DisMech Python — no extra fields)
         │   └── DismechRodsConfig (dismech-rods C++ — integrator, adaptive, damping)
         └── CosseratConfig (Cosserat Rod Theory)
-            └── ElasticaConfig (PyElastica — damping, time_stepper, substeps, ground_contact)
+            └── ElasticaConfig (PyElastica — damping, time_stepper, substeps)
     MujocoPhysicsConfig(PhysicsConfig) (timestep, substeps, joint_damping, joint_stiffness, friction)
+
+Friction models (FrictionModel enum):
+    NONE: No ground forces
+    RFT: Resistive Force Theory (viscous drag)
+    COULOMB: Coulomb friction with smooth barrier normal force
+    STRIBECK: Coulomb + Stribeck static-to-kinetic transition
+    NATIVE: Backend's built-in model (MuJoCo soft contact, dismech-rods DampingForce)
 """
 
 from dataclasses import dataclass, field
@@ -50,6 +57,8 @@ class SolverFramework(str, Enum):
 class ElasticaGroundContact(str, Enum):
     """Ground contact method for PyElastica.
 
+    Deprecated: Use FrictionModel instead.
+
     RFT: Resistive Force Theory (custom implementation matching DisMech)
     DAMPING: Use Elastica's built-in damping mechanisms
     NONE: No ground contact forces
@@ -57,6 +66,49 @@ class ElasticaGroundContact(str, Enum):
     RFT = "rft"
     DAMPING = "damping"
     NONE = "none"
+
+
+class FrictionModel(str, Enum):
+    """Friction/contact model for ground interaction.
+
+    NONE: No ground forces
+    RFT: Resistive Force Theory (viscous drag, anisotropic ct/cn)
+    COULOMB: Coulomb friction with smooth barrier normal force
+    STRIBECK: Coulomb + Stribeck static-to-kinetic transition
+    NATIVE: Backend's built-in model (MuJoCo soft contact, dismech-rods DampingForce)
+    """
+    NONE = "none"
+    RFT = "rft"
+    COULOMB = "coulomb"
+    STRIBECK = "stribeck"
+    NATIVE = "native"
+
+
+@dataclass
+class FrictionConfig:
+    """Configurable friction/contact parameters for ground interaction.
+
+    Parameters are used selectively depending on which FrictionModel is active:
+    - RFT: uses rft_ct, rft_cn
+    - COULOMB: uses mu_kinetic, ground_stiffness, ground_delta
+    - STRIBECK: uses mu_kinetic, mu_static, stribeck_velocity, ground_stiffness, ground_delta
+    - NATIVE: uses backend-specific defaults
+    - NONE: no parameters used
+    """
+    model: FrictionModel = FrictionModel.RFT
+
+    # RFT parameters
+    rft_ct: float = 0.01   # Tangential drag coefficient
+    rft_cn: float = 0.1    # Normal drag coefficient
+
+    # Coulomb parameters
+    mu_kinetic: float = 0.3       # Kinetic friction coefficient
+    mu_static: float = 0.5        # Static friction coefficient (Stribeck only)
+    stribeck_velocity: float = 0.01  # Stribeck transition velocity v_s
+
+    # Ground contact (barrier-based normal force)
+    ground_stiffness: float = 50000.0  # Normal force stiffness
+    ground_delta: float = 0.01         # Barrier activation distance
 
 
 # ---------------------------------------------------------------------------
@@ -129,10 +181,28 @@ class RodConfig(PhysicsConfig):
     youngs_modulus: float = 2e6  # Young's modulus for rod (Pa)
     poisson_ratio: float = 0.5  # Poisson's ratio for rod
 
-    # Resistive Force Theory (RFT) for ground interaction
-    use_rft: bool = True  # Enable RFT for ground forces
-    rft_ct: float = 0.01  # Tangential drag coefficient
-    rft_cn: float = 0.1  # Normal drag coefficient
+    # Friction / ground interaction
+    friction: FrictionConfig = field(default_factory=FrictionConfig)
+
+    # --- Deprecated fields (kept for backward compat) ---
+    use_rft: bool = True  # Deprecated: use friction.model instead
+    rft_ct: float = 0.01  # Deprecated: use friction.rft_ct instead
+    rft_cn: float = 0.1   # Deprecated: use friction.rft_cn instead
+
+    def __post_init__(self):
+        """Migrate deprecated fields to FrictionConfig."""
+        # If friction is still at defaults but deprecated fields were customized,
+        # migrate them into the FrictionConfig
+        default_friction = FrictionConfig()
+        if self.friction == default_friction:
+            if not self.use_rft:
+                self.friction = FrictionConfig(model=FrictionModel.NONE)
+            elif self.rft_ct != 0.01 or self.rft_cn != 0.1:
+                self.friction = FrictionConfig(
+                    model=FrictionModel.RFT,
+                    rft_ct=self.rft_ct,
+                    rft_cn=self.rft_cn,
+                )
 
 
 # ---------------------------------------------------------------------------
@@ -160,11 +230,18 @@ class DismechRodsConfig(DERConfig):
     """dismech-rods (C++) backend config.
 
     Adds C++-specific integrator and adaptive time stepping options.
+    Default friction is NATIVE (DampingForce) since dismech-rods C++ API
+    does not expose RFT or Coulomb forces.
     """
     solver_framework: SolverFramework = SolverFramework.DISMECH_RODS
     dismech_rods_integrator: str = "BACKWARD_EULER"  # Time integration scheme
     dismech_rods_adaptive_time_stepping: int = 0  # 0 = disabled, 1 = enabled
     dismech_rods_damping_viscosity: float = 0.0  # Viscous damping coefficient
+
+    # Override default: NATIVE uses DampingForce
+    friction: FrictionConfig = field(
+        default_factory=lambda: FrictionConfig(model=FrictionModel.NATIVE)
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -189,7 +266,19 @@ class ElasticaConfig(CosseratConfig):
     elastica_damping: float = 0.1  # Numerical damping coefficient
     elastica_time_stepper: str = "PositionVerlet"  # "PositionVerlet" or "PEFRL"
     elastica_substeps: int = 50  # Internal substeps per RL step
-    elastica_ground_contact: ElasticaGroundContact = ElasticaGroundContact.RFT
+    elastica_ground_contact: ElasticaGroundContact = ElasticaGroundContact.RFT  # Deprecated
+
+    def __post_init__(self):
+        """Migrate deprecated elastica_ground_contact to friction config."""
+        super().__post_init__()
+        # If friction is at RFT default but elastica_ground_contact was changed,
+        # migrate the old field
+        if self.friction.model == FrictionModel.RFT:
+            if self.elastica_ground_contact == ElasticaGroundContact.NONE:
+                self.friction = FrictionConfig(model=FrictionModel.NONE)
+            elif self.elastica_ground_contact == ElasticaGroundContact.DAMPING:
+                # DAMPING was Elastica-specific, map to NONE (damping is added separately)
+                self.friction = FrictionConfig(model=FrictionModel.NONE)
 
 
 # ---------------------------------------------------------------------------
@@ -210,3 +299,8 @@ class MujocoPhysicsConfig(PhysicsConfig):
     mujoco_joint_damping: float = 0.1  # Joint damping coefficient
     mujoco_joint_stiffness: float = 50.0  # Position actuator kp
     mujoco_friction: Tuple[float, float, float] = (1.0, 0.005, 0.0001)
+
+    # Friction / ground interaction (default NATIVE for MuJoCo)
+    friction: FrictionConfig = field(
+        default_factory=lambda: FrictionConfig(model=FrictionModel.NATIVE)
+    )

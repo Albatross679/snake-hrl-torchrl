@@ -8,7 +8,7 @@ time integration.
 from typing import Optional, Tuple, Dict, Any
 import numpy as np
 
-from configs.physics import PhysicsConfig
+from configs.physics import PhysicsConfig, FrictionModel
 from configs.env import StateRepresentation
 from observations import (
     CompositeFeatureExtractor,
@@ -265,9 +265,27 @@ class SnakeRobot:
         if self.config.enable_gravity:
             env.add_force('gravity', g=np.array(self.config.gravity))
 
-        # Add RFT for ground interaction
-        if self.config.use_rft:
-            env.add_force('rft', ct=self.config.rft_ct, cn=self.config.rft_cn)
+        # Add ground interaction forces based on friction config
+        friction = self.config.friction
+        if friction.model == FrictionModel.RFT:
+            env.add_force('rft', ct=friction.rft_ct, cn=friction.rft_cn)
+        elif friction.model in (FrictionModel.COULOMB, FrictionModel.STRIBECK):
+            # DisMech has built-in barrier contact + Coulomb friction with
+            # sigmoid regularization (which provides Stribeck-like behavior).
+            # For STRIBECK, stribeck_velocity maps to vel_tol.
+            env.add_force(
+                'floorContact',
+                ground_z=0.0,
+                stiffness=friction.ground_stiffness,
+                delta=friction.ground_delta,
+                h=self.config.snake_radius,
+            )
+            env.add_force(
+                'floorFriction',
+                mu=friction.mu_kinetic,
+                vel_tol=friction.stribeck_velocity,
+            )
+        # FrictionModel.NONE or FrictionModel.NATIVE: no ground forces added
 
         # Create rod geometry
         geometry = _create_rod_geometry(

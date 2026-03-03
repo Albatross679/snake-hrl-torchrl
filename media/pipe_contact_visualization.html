@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Pipe Contact Physics — Snake in Tube</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    background: #0a0a0f; color: #e0e0e0;
+    overflow: hidden;
+  }
+  #container { width: 100vw; height: 100vh; }
+  #info {
+    position: absolute; top: 12px; left: 12px;
+    background: rgba(10,10,20,0.85); border: 1px solid #333;
+    border-radius: 8px; padding: 14px 18px; max-width: 380px;
+    font-size: 13px; line-height: 1.5; z-index: 10;
+  }
+  #info h2 { font-size: 15px; margin-bottom: 8px; color: #7cacf8; }
+  #info h3 { font-size: 13px; margin-top: 10px; margin-bottom: 4px; color: #f8c87c; }
+  #info p { margin-bottom: 6px; }
+  .key {
+    display: inline-block; background: #222; border: 1px solid #555;
+    border-radius: 3px; padding: 1px 6px; font-size: 11px; font-family: monospace;
+  }
+  #controls {
+    position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%);
+    background: rgba(10,10,20,0.85); border: 1px solid #333;
+    border-radius: 8px; padding: 10px 18px; z-index: 10;
+    display: flex; gap: 16px; align-items: center; font-size: 13px;
+  }
+  #controls label { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+  #controls input[type="checkbox"] { cursor: pointer; }
+  #controls input[type="range"] { width: 100px; cursor: pointer; }
+  .legend {
+    position: absolute; top: 12px; right: 12px;
+    background: rgba(10,10,20,0.85); border: 1px solid #333;
+    border-radius: 8px; padding: 12px 16px; z-index: 10; font-size: 12px;
+  }
+  .legend-item { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+  .legend-swatch { width: 14px; height: 14px; border-radius: 3px; }
+  #equation {
+    position: absolute; bottom: 70px; left: 50%; transform: translateX(-50%);
+    background: rgba(10,10,20,0.9); border: 1px solid #555;
+    border-radius: 8px; padding: 14px 20px; z-index: 10;
+    font-family: 'Times New Roman', serif; font-size: 16px; text-align: center;
+    display: none;
+  }
+</style>
+</head>
+<body>
+
+<div id="container"></div>
+
+<div id="info">
+  <h2>Pipe Contact Physics Visualization</h2>
+  <p>A snake rod (blue) inside a pipe made of ring-shaped wall rods (gray).
+     Contact forces (red arrows) push the snake away from walls.</p>
+
+  <h3>Staggered Rings</h3>
+  <p>Adjacent rings are rotated by half the angular step. Toggle stagger to see
+     how gaps align without it vs. get covered with it.</p>
+
+  <h3>Contact Model (IMC Penalty)</h3>
+  <p>When distance &Delta; between a snake edge and wall edge falls below threshold &delta;,
+     an exponential penalty force activates:<br>
+     <em>E = k<sub>c</sub> &middot; h &middot; (2v&middot;ln(v+1)) / (K<sub>1</sub>(v+1))</em><br>
+     where <em>v = e<sup>-K<sub>1</sub>&Delta;</sup></em>. Smooth and C&sup2;.</p>
+
+  <h3>Controls</h3>
+  <p><span class="key">Drag</span> Orbit &nbsp; <span class="key">Scroll</span> Zoom &nbsp; <span class="key">Right-drag</span> Pan</p>
+</div>
+
+<div class="legend">
+  <div class="legend-item"><div class="legend-swatch" style="background:#4488ff"></div> Snake rod</div>
+  <div class="legend-item"><div class="legend-swatch" style="background:#888"></div> Wall rings (even)</div>
+  <div class="legend-item"><div class="legend-swatch" style="background:#666"></div> Wall rings (odd/staggered)</div>
+  <div class="legend-item"><div class="legend-swatch" style="background:#ff4444"></div> Contact forces</div>
+  <div class="legend-item"><div class="legend-swatch" style="background:#44ff44"></div> Lumelsky closest points</div>
+  <div class="legend-item"><div class="legend-swatch" style="background:rgba(255,200,80,0.3)"></div> Penalty activation zone</div>
+</div>
+
+<div id="controls">
+  <label><input type="checkbox" id="cbStagger" checked> Stagger rings</label>
+  <label><input type="checkbox" id="cbForces" checked> Show forces</label>
+  <label><input type="checkbox" id="cbZone" checked> Penalty zone</label>
+  <label><input type="checkbox" id="cbAnimate" checked> Animate snake</label>
+  <label>Pipe sides: <input type="range" id="slSides" min="4" max="24" value="12"> <span id="lblSides">12</span></label>
+</div>
+
+<div id="equation"></div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+// ======================== Setup ========================
+const container = document.getElementById('container');
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0a0a0f);
+
+const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.01, 100);
+camera.position.set(0.35, 0.25, 0.3);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(window.devicePixelRatio);
+container.appendChild(renderer.domElement);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(0.2, 0, 0);
+controls.enableDamping = true;
+
+// Lights
+scene.add(new THREE.AmbientLight(0x404060, 1.5));
+const dirLight = new THREE.DirectionalLight(0xffffff, 1.0);
+dirLight.position.set(1, 2, 3);
+scene.add(dirLight);
+
+// ======================== Parameters ========================
+const PIPE_RADIUS = 0.06;
+const PIPE_LENGTH = 0.5;
+const SNAKE_RADIUS = 0.008;
+const RING_SPACING = 0.04;
+const WALL_RADIUS = 0.003;
+const DELTA = 0.012; // penalty activation distance
+const N_SNAKE_NODES = 16;
+
+let N_SIDES = 12;
+let stagger = true;
+let showForces = true;
+let showZone = true;
+let animate = true;
+let time = 0;
+
+// ======================== Groups ========================
+const pipeGroup = new THREE.Group();
+const snakeGroup = new THREE.Group();
+const forceGroup = new THREE.Group();
+const zoneGroup = new THREE.Group();
+scene.add(pipeGroup, snakeGroup, forceGroup, zoneGroup);
+
+// ======================== Materials ========================
+const wallMatEven = new THREE.MeshPhongMaterial({ color: 0x888888, transparent: true, opacity: 0.6 });
+const wallMatOdd = new THREE.MeshPhongMaterial({ color: 0x666666, transparent: true, opacity: 0.6 });
+const snakeMat = new THREE.MeshPhongMaterial({ color: 0x4488ff, emissive: 0x112244 });
+const forceMat = new THREE.MeshBasicMaterial({ color: 0xff4444 });
+const closestMat = new THREE.MeshBasicMaterial({ color: 0x44ff44 });
+const gapMat = new THREE.MeshBasicMaterial({ color: 0xff8800, transparent: true, opacity: 0.4 });
+const zoneMat = new THREE.MeshPhongMaterial({
+  color: 0xffc850, transparent: true, opacity: 0.08, side: THREE.DoubleSide
+});
+
+// ======================== Geometry builders ========================
+
+function buildRingNodes(center, axis, radius, nSides, angleOffset) {
+  // Build orthonormal frame
+  const ax = new THREE.Vector3(...axis).normalize();
+  const tmp = Math.abs(ax.x) < 0.9 ? new THREE.Vector3(1,0,0) : new THREE.Vector3(0,1,0);
+  const e1 = new THREE.Vector3().crossVectors(ax, tmp).normalize();
+  const e2 = new THREE.Vector3().crossVectors(ax, e1).normalize();
+
+  const nodes = [];
+  for (let i = 0; i < nSides; i++) {
+    const theta = (2 * Math.PI * i / nSides) + angleOffset;
+    const x = center[0] + radius * (Math.cos(theta) * e1.x + Math.sin(theta) * e2.x);
+    const y = center[1] + radius * (Math.cos(theta) * e1.y + Math.sin(theta) * e2.y);
+    const z = center[2] + radius * (Math.cos(theta) * e1.z + Math.sin(theta) * e2.z);
+    nodes.push(new THREE.Vector3(x, y, z));
+  }
+  return nodes;
+}
+
+function createCapsule(p1, p2, radius, material) {
+  const dir = new THREE.Vector3().subVectors(p2, p1);
+  const len = dir.length();
+  const mid = new THREE.Vector3().addVectors(p1, p2).multiplyScalar(0.5);
+
+  const geo = new THREE.CapsuleGeometry(radius, len, 4, 8);
+  const mesh = new THREE.Mesh(geo, material);
+  mesh.position.copy(mid);
+
+  // Orient along direction
+  const up = new THREE.Vector3(0, 1, 0);
+  const quat = new THREE.Quaternion().setFromUnitVectors(up, dir.normalize());
+  mesh.quaternion.copy(quat);
+
+  return mesh;
+}
+
+function createArrow(origin, direction, length, color) {
+  const group = new THREE.Group();
+
+  // Shaft
+  const shaftGeo = new THREE.CylinderGeometry(0.001, 0.001, length * 0.75, 6);
+  const shaftMat = new THREE.MeshBasicMaterial({ color });
+  const shaft = new THREE.Mesh(shaftGeo, shaftMat);
+  shaft.position.set(0, length * 0.375, 0);
+  group.add(shaft);
+
+  // Head
+  const headGeo = new THREE.ConeGeometry(0.003, length * 0.25, 6);
+  const head = new THREE.Mesh(headGeo, shaftMat);
+  head.position.set(0, length * 0.875, 0);
+  group.add(head);
+
+  group.position.copy(origin);
+  const up = new THREE.Vector3(0, 1, 0);
+  const quat = new THREE.Quaternion().setFromUnitVectors(up, direction.clone().normalize());
+  group.quaternion.copy(quat);
+
+  return group;
+}
+
+// ======================== Snake wave function ========================
+
+function getSnakePositions(t) {
+  const positions = [];
+  const segLen = PIPE_LENGTH / (N_SNAKE_NODES - 1) * 0.7;
+
+  for (let i = 0; i < N_SNAKE_NODES; i++) {
+    const s = i / (N_SNAKE_NODES - 1);
+    const x = 0.05 + s * 0.4;
+    // Serpentine wave with time evolution
+    const amp = 0.025 * Math.sin(Math.PI * s); // amplitude envelope
+    const y = amp * Math.sin(4 * Math.PI * s - t * 2);
+    const z = amp * Math.cos(4 * Math.PI * s - t * 2) * 0.5;
+    positions.push(new THREE.Vector3(x, y, z));
+  }
+  return positions;
+}
+
+// ======================== Build scene ========================
+
+let wallRings = []; // store ring data for contact computation
+
+function rebuildPipe() {
+  pipeGroup.clear();
+  zoneGroup.clear();
+  wallRings = [];
+
+  const nRings = Math.ceil(PIPE_LENGTH / RING_SPACING) + 1;
+  const actualSpacing = PIPE_LENGTH / (nRings - 1);
+
+  for (let i = 0; i < nRings; i++) {
+    const cx = i * actualSpacing;
+    const isOdd = i % 2 === 1;
+    const angleOffset = (stagger && isOdd) ? (Math.PI / N_SIDES) : 0;
+
+    const nodes = buildRingNodes([cx, 0, 0], [1, 0, 0], PIPE_RADIUS, N_SIDES, angleOffset);
+    wallRings.push({ nodes, center: new THREE.Vector3(cx, 0, 0) });
+
+    const mat = isOdd ? wallMatOdd : wallMatEven;
+
+    // Draw capsule edges between consecutive nodes
+    for (let j = 0; j < nodes.length - 1; j++) {
+      const capsule = createCapsule(nodes[j], nodes[j + 1], WALL_RADIUS, mat);
+      pipeGroup.add(capsule);
+    }
+
+    // Highlight the gap
+    if (nodes.length > 1) {
+      const gapStart = nodes[nodes.length - 1];
+      const gapEnd = nodes[0];
+      const gapMid = new THREE.Vector3().addVectors(gapStart, gapEnd).multiplyScalar(0.5);
+      const gapGeo = new THREE.SphereGeometry(WALL_RADIUS * 1.5, 8, 8);
+      // Don't draw gap markers — they're just visual noise
+    }
+
+    // Node spheres
+    for (const node of nodes) {
+      const sphere = new THREE.Mesh(
+        new THREE.SphereGeometry(WALL_RADIUS * 1.2, 6, 6), mat
+      );
+      sphere.position.copy(node);
+      pipeGroup.add(sphere);
+    }
+  }
+
+  // Penalty activation zone (transparent cylinder)
+  if (showZone) {
+    const innerRadius = PIPE_RADIUS - DELTA;
+    const zoneGeo = new THREE.CylinderGeometry(innerRadius, innerRadius, PIPE_LENGTH, 32, 1, true);
+    const zoneMesh = new THREE.Mesh(zoneGeo, zoneMat);
+    zoneMesh.rotation.z = -Math.PI / 2;
+    zoneMesh.position.set(PIPE_LENGTH / 2, 0, 0);
+    zoneGroup.add(zoneMesh);
+
+    // Outer reference (pipe wall location)
+    const outerGeo = new THREE.CylinderGeometry(PIPE_RADIUS, PIPE_RADIUS, PIPE_LENGTH, 32, 1, true);
+    const outerMat = new THREE.MeshBasicMaterial({
+      color: 0x444444, transparent: true, opacity: 0.05, side: THREE.DoubleSide
+    });
+    const outerMesh = new THREE.Mesh(outerGeo, outerMat);
+    outerMesh.rotation.z = -Math.PI / 2;
+    outerMesh.position.set(PIPE_LENGTH / 2, 0, 0);
+    zoneGroup.add(outerMesh);
+  }
+}
+
+function rebuildSnake() {
+  snakeGroup.clear();
+  const positions = getSnakePositions(time);
+
+  for (let i = 0; i < positions.length - 1; i++) {
+    const capsule = createCapsule(positions[i], positions[i + 1], SNAKE_RADIUS, snakeMat);
+    snakeGroup.add(capsule);
+  }
+
+  // Node spheres
+  for (const pos of positions) {
+    const sphere = new THREE.Mesh(
+      new THREE.SphereGeometry(SNAKE_RADIUS * 1.3, 8, 8), snakeMat
+    );
+    sphere.position.copy(pos);
+    snakeGroup.add(sphere);
+  }
+}
+
+function rebuildForces() {
+  forceGroup.clear();
+  if (!showForces) return;
+
+  const snakePositions = getSnakePositions(time);
+
+  // For each snake node, find nearest wall edge and compute contact force direction
+  for (const snakePos of snakePositions) {
+    let minDist = Infinity;
+    let closestPoint = null;
+
+    for (const ring of wallRings) {
+      // Project snake position onto ring plane
+      const toSnake = new THREE.Vector3().subVectors(snakePos, ring.center);
+      const axialDist = toSnake.x; // pipe axis is X
+
+      // Only consider nearby rings
+      if (Math.abs(axialDist) > RING_SPACING) continue;
+
+      const radialVec = new THREE.Vector3(0, toSnake.y, toSnake.z);
+      const radialDist = radialVec.length();
+
+      // Distance to pipe wall
+      const wallDist = PIPE_RADIUS - radialDist;
+
+      if (wallDist < minDist) {
+        minDist = wallDist;
+        // Closest point on wall is in the radial direction at pipe radius
+        if (radialDist > 0.001) {
+          closestPoint = new THREE.Vector3(
+            ring.center.x,
+            ring.center.y + PIPE_RADIUS * radialVec.y / radialDist,
+            ring.center.z + PIPE_RADIUS * radialVec.z / radialDist
+          );
+        }
+      }
+    }
+
+    // Draw force if within penalty zone
+    if (minDist < DELTA && closestPoint) {
+      // Force direction: from wall toward pipe center (inward)
+      const forceDir = new THREE.Vector3().subVectors(snakePos, closestPoint).normalize().negate();
+      // Force is actually away from wall = toward center
+      forceDir.negate();
+
+      // Force magnitude (exponential penalty)
+      const K1 = 15 / DELTA;
+      const v = Math.exp(-K1 * minDist);
+      const forceMag = (2 * v * Math.log(v + 1)) / (K1 * (v + 1));
+
+      const arrowLen = 0.01 + forceMag * 0.15;
+
+      // Force arrow (red): pushes snake away from wall
+      const forceDirection = new THREE.Vector3().subVectors(
+        new THREE.Vector3(snakePos.x, 0, 0), // toward center axis
+        snakePos
+      ).normalize();
+
+      // Actually: force = -gradient of energy = pushes AWAY from wall = toward center
+      const radialToCenter = new THREE.Vector3(0, -snakePos.y, -snakePos.z).normalize();
+
+      const arrow = createArrow(snakePos, radialToCenter, arrowLen, 0xff4444);
+      forceGroup.add(arrow);
+
+      // Closest point marker (green sphere)
+      const cpSphere = new THREE.Mesh(
+        new THREE.SphereGeometry(0.002, 8, 8), closestMat
+      );
+      cpSphere.position.copy(closestPoint);
+      forceGroup.add(cpSphere);
+
+      // Dashed line from snake to closest point
+      const lineGeo = new THREE.BufferGeometry().setFromPoints([snakePos, closestPoint]);
+      const lineMat = new THREE.LineBasicMaterial({ color: 0x44ff44, transparent: true, opacity: 0.5 });
+      const line = new THREE.Line(lineGeo, lineMat);
+      forceGroup.add(line);
+    }
+  }
+}
+
+// ======================== Initial build ========================
+rebuildPipe();
+rebuildSnake();
+rebuildForces();
+
+// ======================== Controls ========================
+document.getElementById('cbStagger').addEventListener('change', (e) => {
+  stagger = e.target.checked;
+  rebuildPipe();
+  rebuildForces();
+});
+
+document.getElementById('cbForces').addEventListener('change', (e) => {
+  showForces = e.target.checked;
+  rebuildForces();
+});
+
+document.getElementById('cbZone').addEventListener('change', (e) => {
+  showZone = e.target.checked;
+  rebuildPipe();
+});
+
+document.getElementById('cbAnimate').addEventListener('change', (e) => {
+  animate = e.target.checked;
+});
+
+document.getElementById('slSides').addEventListener('input', (e) => {
+  N_SIDES = parseInt(e.target.value);
+  document.getElementById('lblSides').textContent = N_SIDES;
+  rebuildPipe();
+  rebuildForces();
+});
+
+// ======================== Animation loop ========================
+function render() {
+  requestAnimationFrame(render);
+
+  if (animate) {
+    time += 0.016;
+    rebuildSnake();
+    rebuildForces();
+  }
+
+  controls.update();
+  renderer.render(scene, camera);
+}
+
+render();
+
+// Resize
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+</script>
+</body>
+</html>

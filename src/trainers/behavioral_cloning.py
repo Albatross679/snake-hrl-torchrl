@@ -8,7 +8,7 @@ from successful locomotion experiences generated via grid search.
 
 Example:
     >>> from trainers.behavioral_cloning import BehavioralCloningPretrainer
-    >>> from demonstrations.approach_experiences import ApproachExperienceBuffer
+    >>> from behavioral_cloning.approach_experiences import ApproachExperienceBuffer
     >>> import torch.nn as nn
     >>>
     >>> # Load experiences
@@ -40,7 +40,7 @@ import torch.nn as nn
 from torch.utils.data import DataLoader, TensorDataset, random_split
 from tqdm import tqdm
 
-from demonstrations.approach_experiences import ApproachExperienceBuffer
+from behavioral_cloning.approach_experiences import ApproachExperienceBuffer
 
 
 class BehavioralCloningPretrainer:

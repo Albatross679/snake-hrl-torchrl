@@ -16,8 +16,11 @@ from physics.snake_robot import SnakeRobot
 from configs.physics import (
     PhysicsConfig,
     SolverFramework,
+    FrictionModel,
+    FrictionConfig,
     DismechConfig,
     DismechRodsConfig,
+    ElasticaConfig,
     MujocoPhysicsConfig,
 )
 from configs.geometry import GeometryConfig
@@ -463,3 +466,292 @@ class TestDismechRodsSnakeRobot:
         # State should be valid after reset
         state = robot.get_state()
         assert np.all(np.isfinite(state["positions"]))
+
+
+# ---------------------------------------------------------------------------
+# Friction model tests
+# ---------------------------------------------------------------------------
+
+
+class TestFrictionConfig:
+    """Tests for FrictionConfig and backward compatibility."""
+
+    def test_default_friction_is_rft(self):
+        """RodConfig defaults to RFT friction."""
+        config = DismechConfig()
+        assert config.friction.model == FrictionModel.RFT
+        assert config.friction.rft_ct == 0.01
+        assert config.friction.rft_cn == 0.1
+
+    def test_dismech_rods_default_is_native(self):
+        """DismechRodsConfig defaults to NATIVE friction."""
+        config = DismechRodsConfig()
+        assert config.friction.model == FrictionModel.NATIVE
+
+    def test_mujoco_default_is_native(self):
+        """MujocoPhysicsConfig defaults to NATIVE friction."""
+        config = MujocoPhysicsConfig()
+        assert config.friction.model == FrictionModel.NATIVE
+
+    def test_backward_compat_use_rft_false(self):
+        """Setting use_rft=False migrates to FrictionModel.NONE."""
+        config = DismechConfig(use_rft=False)
+        assert config.friction.model == FrictionModel.NONE
+
+    def test_backward_compat_rft_params(self):
+        """Custom rft_ct/rft_cn migrate into FrictionConfig."""
+        config = DismechConfig(rft_ct=0.05, rft_cn=0.5)
+        assert config.friction.model == FrictionModel.RFT
+        assert config.friction.rft_ct == 0.05
+        assert config.friction.rft_cn == 0.5
+
+    def test_explicit_friction_overrides_deprecated(self):
+        """Explicit FrictionConfig takes precedence over deprecated fields."""
+        fc = FrictionConfig(model=FrictionModel.COULOMB, mu_kinetic=0.4)
+        config = DismechConfig(friction=fc, use_rft=False)
+        # Explicit friction wins — it's not the default so __post_init__ won't override
+        assert config.friction.model == FrictionModel.COULOMB
+        assert config.friction.mu_kinetic == 0.4
+
+
+class TestFrictionForceComputation:
+    """Tests for standalone friction force computation functions."""
+
+    def test_barrier_normal_force_above_ground(self):
+        """No normal force when well above ground."""
+        from physics.friction import compute_barrier_normal_force
+        z = np.array([1.0, 0.5, 0.1])
+        f = compute_barrier_normal_force(z, stiffness=50000.0, delta=0.01)
+        np.testing.assert_allclose(f, 0.0, atol=1e-6)
+
+    def test_barrier_normal_force_at_ground(self):
+        """Positive normal force when near/below ground."""
+        from physics.friction import compute_barrier_normal_force
+        z = np.array([0.0, -0.005, -0.01])
+        f = compute_barrier_normal_force(z, stiffness=50000.0, delta=0.01)
+        assert np.all(f > 0)
+        # Force should increase as z decreases
+        assert f[1] > f[0]
+        assert f[2] > f[1]
+
+    def test_coulomb_force_shape(self):
+        """Coulomb force returns correct shape."""
+        from physics.friction import compute_coulomb_force
+        config = FrictionConfig(model=FrictionModel.COULOMB)
+        positions = np.array([[0, 0, 0.0], [0.1, 0, 0.0], [0.2, 0, 0.0]])
+        velocities = np.array([[0.1, 0, 0], [0.1, 0, 0], [0.1, 0, 0]])
+        forces = compute_coulomb_force(positions, velocities, config)
+        assert forces.shape == (3, 3)
+        # Normal forces should be positive (upward) at z=0
+        assert np.all(forces[:, 2] > 0)
+
+    def test_stribeck_force_shape(self):
+        """Stribeck force returns correct shape."""
+        from physics.friction import compute_stribeck_force
+        config = FrictionConfig(model=FrictionModel.STRIBECK)
+        positions = np.array([[0, 0, 0.0], [0.1, 0, 0.0]])
+        velocities = np.array([[0.1, 0.05, 0], [-0.1, 0, 0]])
+        forces = compute_stribeck_force(positions, velocities, config)
+        assert forces.shape == (2, 3)
+
+    def test_stribeck_higher_friction_at_low_speed(self):
+        """Stribeck model has higher friction at low speed (mu_static > mu_kinetic)."""
+        from physics.friction import compute_stribeck_force
+        config = FrictionConfig(
+            model=FrictionModel.STRIBECK,
+            mu_kinetic=0.3,
+            mu_static=0.5,
+            stribeck_velocity=0.01,
+        )
+        pos = np.array([[0, 0, 0.0]])
+
+        # Low speed
+        vel_low = np.array([[0.001, 0, 0]])
+        f_low = compute_stribeck_force(pos, vel_low, config)
+
+        # High speed
+        vel_high = np.array([[1.0, 0, 0]])
+        f_high = compute_stribeck_force(pos, vel_high, config)
+
+        # Friction force per unit speed should be higher at low speed
+        # (due to mu_static > mu_kinetic)
+        friction_ratio_low = np.abs(f_low[0, 0]) / (np.abs(vel_low[0, 0]) + 1e-12)
+        friction_ratio_high = np.abs(f_high[0, 0]) / (np.abs(vel_high[0, 0]) + 1e-12)
+        assert friction_ratio_low > friction_ratio_high
+
+
+class TestDismechFrictionModels:
+    """Tests for DisMech backend with different friction models."""
+
+    @pytest.fixture
+    def base_geom(self):
+        return GeometryConfig(num_segments=10, snake_radius=0.001)
+
+    def test_rft_default(self, base_geom):
+        """Default RFT friction works (backward compat)."""
+        config = DismechConfig(geometry=base_geom, dt=5e-2)
+        robot = SnakeRobot(config)
+        for _ in range(5):
+            state = robot.step()
+        assert np.all(np.isfinite(state["positions"]))
+
+    def test_coulomb_friction(self, base_geom):
+        """Coulomb friction model runs without errors."""
+        config = DismechConfig(
+            geometry=base_geom,
+            dt=5e-2,
+            friction=FrictionConfig(model=FrictionModel.COULOMB),
+        )
+        robot = SnakeRobot(config)
+        for _ in range(5):
+            state = robot.step()
+        assert np.all(np.isfinite(state["positions"]))
+
+    def test_stribeck_friction(self, base_geom):
+        """Stribeck friction model runs without errors."""
+        config = DismechConfig(
+            geometry=base_geom,
+            dt=5e-2,
+            friction=FrictionConfig(model=FrictionModel.STRIBECK),
+        )
+        robot = SnakeRobot(config)
+        for _ in range(5):
+            state = robot.step()
+        assert np.all(np.isfinite(state["positions"]))
+
+    def test_none_friction(self, base_geom):
+        """NONE friction model runs without errors."""
+        config = DismechConfig(
+            geometry=base_geom,
+            dt=5e-2,
+            friction=FrictionConfig(model=FrictionModel.NONE),
+        )
+        robot = SnakeRobot(config)
+        for _ in range(5):
+            state = robot.step()
+        assert np.all(np.isfinite(state["positions"]))
+
+    def test_energy_finite_all_models(self, base_geom):
+        """Energy is finite for all supported DisMech friction models."""
+        for model in [FrictionModel.RFT, FrictionModel.COULOMB, FrictionModel.STRIBECK, FrictionModel.NONE]:
+            config = DismechConfig(
+                geometry=base_geom,
+                dt=5e-2,
+                friction=FrictionConfig(model=model),
+            )
+            robot = SnakeRobot(config)
+            for _ in range(3):
+                robot.step()
+            energy = robot.get_energy()
+            assert np.isfinite(energy["total"]), f"Non-finite energy for {model}"
+
+
+class TestMujocoFrictionModels:
+    """Tests for MuJoCo backend with different friction models."""
+
+    @pytest.fixture
+    def base_geom(self):
+        return GeometryConfig(num_segments=10, snake_radius=0.005, snake_length=1.0)
+
+    def test_native_default(self, base_geom):
+        """NATIVE friction works (default for MuJoCo)."""
+        from physics.mujoco_snake_robot import MujocoSnakeRobot
+        config = MujocoPhysicsConfig(geometry=base_geom, dt=5e-2)
+        robot = MujocoSnakeRobot(config)
+        for _ in range(5):
+            state = robot.step()
+        assert np.all(np.isfinite(state["positions"]))
+
+    def test_none_friction(self, base_geom):
+        """NONE friction sets zero friction in MuJoCo."""
+        from physics.mujoco_snake_robot import MujocoSnakeRobot
+        config = MujocoPhysicsConfig(
+            geometry=base_geom,
+            dt=5e-2,
+            friction=FrictionConfig(model=FrictionModel.NONE),
+        )
+        robot = MujocoSnakeRobot(config)
+        for _ in range(5):
+            state = robot.step()
+        assert np.all(np.isfinite(state["positions"]))
+
+    def test_coulomb_mapped(self, base_geom):
+        """Coulomb friction maps mu_kinetic to MuJoCo friction parameter."""
+        from physics.mujoco_snake_robot import MujocoSnakeRobot
+        config = MujocoPhysicsConfig(
+            geometry=base_geom,
+            dt=5e-2,
+            friction=FrictionConfig(model=FrictionModel.COULOMB, mu_kinetic=0.5),
+        )
+        robot = MujocoSnakeRobot(config)
+        for _ in range(5):
+            state = robot.step()
+        assert np.all(np.isfinite(state["positions"]))
+
+    def test_energy_finite_all_models(self, base_geom):
+        """Energy is finite for all supported MuJoCo friction models."""
+        from physics.mujoco_snake_robot import MujocoSnakeRobot
+        for model in [FrictionModel.NATIVE, FrictionModel.COULOMB, FrictionModel.STRIBECK, FrictionModel.NONE]:
+            config = MujocoPhysicsConfig(
+                geometry=base_geom,
+                dt=5e-2,
+                friction=FrictionConfig(model=model, mu_kinetic=0.3),
+            )
+            robot = MujocoSnakeRobot(config)
+            for _ in range(3):
+                robot.step()
+            energy = robot.get_energy()
+            assert np.isfinite(energy["total"]), f"Non-finite energy for {model}"
+
+
+@pytest.mark.skipif(not _has_py_dismech, reason="py_dismech not installed")
+class TestDismechRodsFrictionModels:
+    """Tests for dismech-rods backend friction model support."""
+
+    @pytest.fixture
+    def base_geom(self):
+        return GeometryConfig(num_segments=10, snake_radius=0.001)
+
+    def test_native_default(self, base_geom):
+        """NATIVE friction works (default for dismech-rods)."""
+        from physics.dismech_rods_snake_robot import DismechRodsSnakeRobot
+        config = DismechRodsConfig(geometry=base_geom, dt=5e-2)
+        robot = DismechRodsSnakeRobot(config)
+        for _ in range(5):
+            state = robot.step()
+        assert np.all(np.isfinite(state["positions"]))
+
+    def test_none_friction(self, base_geom):
+        """NONE friction runs without ground forces."""
+        from physics.dismech_rods_snake_robot import DismechRodsSnakeRobot
+        config = DismechRodsConfig(
+            geometry=base_geom,
+            dt=5e-2,
+            friction=FrictionConfig(model=FrictionModel.NONE),
+        )
+        robot = DismechRodsSnakeRobot(config)
+        for _ in range(5):
+            state = robot.step()
+        assert np.all(np.isfinite(state["positions"]))
+
+    def test_rft_raises_not_implemented(self, base_geom):
+        """RFT raises NotImplementedError for dismech-rods."""
+        from physics.dismech_rods_snake_robot import DismechRodsSnakeRobot
+        config = DismechRodsConfig(
+            geometry=base_geom,
+            dt=5e-2,
+            friction=FrictionConfig(model=FrictionModel.RFT),
+        )
+        with pytest.raises(NotImplementedError):
+            DismechRodsSnakeRobot(config)
+
+    def test_coulomb_raises_not_implemented(self, base_geom):
+        """Coulomb raises NotImplementedError for dismech-rods."""
+        from physics.dismech_rods_snake_robot import DismechRodsSnakeRobot
+        config = DismechRodsConfig(
+            geometry=base_geom,
+            dt=5e-2,
+            friction=FrictionConfig(model=FrictionModel.COULOMB),
+        )
+        with pytest.raises(NotImplementedError):
+            DismechRodsSnakeRobot(config)

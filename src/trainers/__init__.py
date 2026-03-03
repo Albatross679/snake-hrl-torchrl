@@ -1,17 +1,11 @@
-"""Training modules for PPO, SAC, hierarchical RL, and behavioral cloning."""
+"""Training modules for PPO, SAC, and DDPG."""
 
 from trainers.ppo import PPOTrainer
 from trainers.sac import SACTrainer
-from trainers.hrl import HRLTrainer
-from trainers.behavioral_cloning import (
-    BehavioralCloningPretrainer,
-    create_mlp_policy,
-)
+from trainers.ddpg import DDPGTrainer
 
 __all__ = [
     "PPOTrainer",
     "SACTrainer",
-    "HRLTrainer",
-    "BehavioralCloningPretrainer",
-    "create_mlp_policy",
+    "DDPGTrainer",
 ]

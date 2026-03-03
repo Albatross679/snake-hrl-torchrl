@@ -48,6 +48,16 @@ def create_snake_robot(
 
 # Keep existing exports for backwards compatibility
 from physics.snake_robot import SnakeRobot
+from physics.cpg import (
+    MatsuokaOscillator,
+    HopfOscillator,
+    CPGNetwork,
+    AdaptiveCPGNetwork,
+    CPGActionTransform,
+    CPGEnvWrapper,
+    DirectSerpenoidTransform,
+    DirectSerpenoidSteeringTransform,
+)
 
 __all__ = [
     "create_snake_robot",
@@ -58,4 +68,13 @@ __all__ = [
     "create_prey_geometry",
     "compute_contact_points",
     "compute_wrap_angle",
+    # CPG / Actuators
+    "MatsuokaOscillator",
+    "HopfOscillator",
+    "CPGNetwork",
+    "AdaptiveCPGNetwork",
+    "CPGActionTransform",
+    "CPGEnvWrapper",
+    "DirectSerpenoidTransform",
+    "DirectSerpenoidSteeringTransform",
 ]

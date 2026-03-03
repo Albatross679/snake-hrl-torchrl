@@ -1,17 +1,18 @@
-"""Training configuration dataclasses for PPO, SAC, and HRL.
+"""Training configuration dataclasses for PPO, SAC, DDPG, and HRL.
 
 Hierarchy:
     MLBaseConfig (name, seed, device, output_dir)
     └── RLConfig (total_frames, gamma, lr, num_envs, ...)
         ├── PPOConfig (clip_epsilon, gae_lambda, entropy/value coefs)
         ├── SACConfig (tau, alpha, replay buffer, ...)
+        ├── DDPGConfig (tau, noise, replay buffer, ...)
         └── HRLConfig (skill configs, curriculum, ...)
 """
 
 from dataclasses import dataclass, field
 from typing import Optional, List
 
-from configs.base import MLBaseConfig
+from configs.base import MLBaseConfig, TensorBoard, Output, Console
 
 
 @dataclass
@@ -22,11 +23,12 @@ class RLConfig(MLBaseConfig):
     Adds all RL-specific training parameters.
     """
 
-    # Override MLBaseConfig defaults
-    device: str = "cpu"
+    # Override MLBaseConfig defaults — "auto" → GPU when available, else CPU
+    device: str = "auto"
 
     # Training duration
     total_frames: int = 1_000_000
+    max_wall_time: Optional[float] = None  # Wall-clock limit in seconds (None = no limit)
     frames_per_batch: int = 4096
 
     # Optimization
@@ -53,6 +55,16 @@ class RLConfig(MLBaseConfig):
 
     # Parallelism
     num_workers: int = 1
+    num_envs: int = 1  # Number of parallel environments (vectorized)
+
+    # TensorBoard
+    tensorboard: TensorBoard = field(default_factory=TensorBoard)
+
+    # Output directory
+    output: Output = field(default_factory=Output)
+
+    # Console logging
+    console: Console = field(default_factory=Console)
 
     @property
     def total_timesteps(self) -> int:
@@ -122,6 +134,35 @@ class SACConfig(RLConfig):
     # Actor
     actor_lr: float = 3e-4
     actor_update_frequency: int = 2  # Update actor every N critic updates
+
+
+@dataclass
+class DDPGConfig(RLConfig):
+    """DDPG-specific training configuration.
+
+    Deterministic policy gradient with exploration noise and soft target updates.
+    """
+
+    # Soft target update rate
+    tau: float = 0.001
+
+    # Replay buffer
+    buffer_size: int = 1_000_000
+    batch_size: int = 256
+
+    # Training
+    warmup_steps: int = 10000
+    update_frequency: int = 1
+    num_updates: int = 1
+
+    # Exploration noise
+    noise_type: str = "ou"  # "ou" or "gaussian"
+    noise_sigma: float = 0.2
+    noise_theta: float = 0.15  # OU mean-reversion rate
+
+    # Learning rates
+    critic_lr: float = 1e-3
+    actor_lr: float = 1e-4
 
 
 @dataclass

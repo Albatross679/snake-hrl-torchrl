@@ -1,5 +1,6 @@
 """PPO (Proximal Policy Optimization) trainer using TorchRL."""
 
+import time
 from typing import Optional, Dict, Any, Callable
 from pathlib import Path
 import os
@@ -12,6 +13,8 @@ from torch.optim import Adam
 from torch.optim.lr_scheduler import LambdaLR
 import numpy as np
 
+from trainers.logging_utils import log_system_metrics
+
 from torchrl.envs import EnvBase
 from torchrl.objectives import ClipPPOLoss
 from torchrl.objectives.value import GAE
@@ -22,6 +25,8 @@ from tqdm import tqdm
 
 from configs.training import PPOConfig
 from configs.network import NetworkConfig
+from configs.base import resolve_device
+from configs.run_dir import setup_run_dir
 from networks.actor import create_actor
 from networks.critic import create_critic
 
@@ -35,6 +40,7 @@ class PPOTrainer:
         config: Optional[PPOConfig] = None,
         network_config: Optional[NetworkConfig] = None,
         device: str = "cpu",
+        run_dir: Optional[Path] = None,
     ):
         """Initialize PPO trainer.
 
@@ -47,7 +53,7 @@ class PPOTrainer:
         self.env = env
         self.config = config or PPOConfig()
         self.network_config = network_config or NetworkConfig()
-        self.device = device
+        self.device = resolve_device(device)
 
         # Get dimensions from environment
         obs_dim = env.observation_spec["observation"].shape[-1]
@@ -58,13 +64,13 @@ class PPOTrainer:
             obs_dim=obs_dim,
             action_spec=action_spec,
             config=self.network_config.actor,
-            device=device,
+            device=self.device,
         )
 
         self.critic = create_critic(
             obs_dim=obs_dim,
             config=self.network_config.critic,
-            device=device,
+            device=self.device,
         )
 
         # Create PPO loss module
@@ -110,7 +116,7 @@ class PPOTrainer:
             policy=self.actor,
             frames_per_batch=self.config.frames_per_batch,
             total_frames=self.config.total_frames,
-            device=device,
+            device=self.device,
         )
 
         # Training state
@@ -118,16 +124,34 @@ class PPOTrainer:
         self.total_episodes = 0
         self.best_reward = float("-inf")
 
+        # Metric tracking
+        self._train_start_time = 0.0
+        self._batch_start_time = 0.0
+        self._system_log_counter = [0]
+
         # Graceful shutdown handling
         self._shutdown_requested = False
         self._original_sigint_handler = signal.signal(signal.SIGINT, self._signal_handler)
         self._original_sigterm_handler = signal.signal(signal.SIGTERM, self._signal_handler)
 
-        # Logging
-        self.log_dir = Path(self.config.log_dir) / self.config.experiment_name
-        self.log_dir.mkdir(parents=True, exist_ok=True)
-        self.save_dir = Path(self.config.save_dir) / self.config.experiment_name
+        # Logging / output directories (auto-create consolidated run dir if not provided)
+        if run_dir is None:
+            run_dir = setup_run_dir(self.config)
+        self.run_dir = Path(run_dir)
+        self.log_dir = self.run_dir
+        self.save_dir = self.run_dir / "checkpoints"
         self.save_dir.mkdir(parents=True, exist_ok=True)
+        tb_dir = self.run_dir / "tensorboard"
+
+        # TensorBoard
+        self.writer = None
+        if self.config.tensorboard.enabled:
+            from torch.utils.tensorboard import SummaryWriter
+
+            self.writer = SummaryWriter(
+                log_dir=str(tb_dir),
+                flush_secs=self.config.tensorboard.flush_secs,
+            )
 
     def _signal_handler(self, signum: int, frame) -> None:
         """Handle shutdown signals gracefully."""
@@ -154,6 +178,11 @@ class PPOTrainer:
         """
         pbar = tqdm(total=self.config.total_frames, desc="Training")
         all_metrics = []
+        metrics_cfg = self.config.tensorboard.metrics
+
+        self._train_start_time = time.monotonic()
+        self._batch_start_time = time.monotonic()
+        max_wall_time = self.config.max_wall_time
 
         for batch_idx, batch in enumerate(self.collector):
             # Check for graceful shutdown
@@ -163,6 +192,16 @@ class PPOTrainer:
                 print("Checkpoint saved to 'interrupted.pt'. Exiting.")
                 self._restore_signal_handlers()
                 break
+
+            # Check wall-clock limit
+            if max_wall_time is not None:
+                elapsed = time.monotonic() - self._train_start_time
+                if elapsed >= max_wall_time:
+                    tqdm.write(
+                        f"Wall-clock limit reached ({elapsed:.0f}s / {max_wall_time:.0f}s). "
+                        f"Stopping at {self.total_frames} frames."
+                    )
+                    break
 
             # Compute advantages
             with torch.no_grad():
@@ -190,6 +229,13 @@ class PPOTrainer:
                         self.best_reward = metrics["mean_episode_reward"]
                         self.save_checkpoint("best")
 
+            if metrics_cfg.episode:
+                metrics["total_episodes"] = self.total_episodes
+
+            if metrics_cfg.timing:
+                metrics["batch_time_secs"] = time.monotonic() - self._batch_start_time
+            self._batch_start_time = time.monotonic()
+
             all_metrics.append(metrics)
 
             # Logging
@@ -213,6 +259,10 @@ class PPOTrainer:
         # Final save
         self.save_checkpoint("final")
 
+        # Close TensorBoard writer
+        if self.writer is not None:
+            self.writer.close()
+
         return {
             "total_frames": self.total_frames,
             "total_episodes": self.total_episodes,
@@ -234,6 +284,7 @@ class PPOTrainer:
             "loss_critic": 0.0,
             "loss_entropy": 0.0,
             "kl_divergence": 0.0,
+            "grad_norm": 0.0,
         }
 
         # Multiple epochs over the batch
@@ -265,10 +316,12 @@ class PPOTrainer:
 
                 # Gradient clipping
                 if self.config.max_grad_norm > 0:
-                    nn.utils.clip_grad_norm_(
+                    grad_norm = nn.utils.clip_grad_norm_(
                         self.loss_module.parameters(),
                         self.config.max_grad_norm,
                     )
+                else:
+                    grad_norm = None
 
                 self.optimizer.step()
 
@@ -279,6 +332,8 @@ class PPOTrainer:
                     metrics["loss_entropy"] += loss_dict["loss_entropy"].item()
                 if "kl_approx" in loss_dict:
                     metrics["kl_divergence"] += loss_dict["kl_approx"].item()
+                if grad_norm is not None:
+                    metrics["grad_norm"] += float(grad_norm)
 
             # Early stopping on KL divergence
             if self.config.target_kl and metrics["kl_divergence"] > self.config.target_kl:
@@ -305,6 +360,38 @@ class PPOTrainer:
             log_str += f", reward={metrics['mean_episode_reward']:.2f}"
 
         tqdm.write(log_str)
+
+        # TensorBoard
+        if self.writer is not None:
+            metrics_cfg = self.config.tensorboard.metrics
+            if metrics_cfg.train:
+                self.writer.add_scalar("train/loss_actor", metrics["loss_actor"], self.total_frames)
+                self.writer.add_scalar("train/loss_critic", metrics["loss_critic"], self.total_frames)
+                self.writer.add_scalar("train/loss_entropy", metrics["loss_entropy"], self.total_frames)
+                self.writer.add_scalar("train/kl_divergence", metrics["kl_divergence"], self.total_frames)
+                if self.scheduler:
+                    self.writer.add_scalar("train/learning_rate", self.scheduler.get_last_lr()[0], self.total_frames)
+            if metrics_cfg.episode:
+                if "mean_episode_reward" in metrics:
+                    self.writer.add_scalar("episode/mean_reward", metrics["mean_episode_reward"], self.total_frames)
+                    self.writer.add_scalar("episode/max_reward", metrics["max_episode_reward"], self.total_frames)
+                if "total_episodes" in metrics:
+                    self.writer.add_scalar("episode/count", metrics["total_episodes"], self.total_frames)
+            if metrics_cfg.gradients and "grad_norm" in metrics:
+                self.writer.add_scalar("gradients/grad_norm", metrics["grad_norm"], self.total_frames)
+            if metrics_cfg.timing:
+                wall = time.monotonic() - self._train_start_time
+                self.writer.add_scalar("timing/wall_clock_secs", wall, self.total_frames)
+                if "batch_time_secs" in metrics:
+                    self.writer.add_scalar("timing/batch_time_secs", metrics["batch_time_secs"], self.total_frames)
+            if metrics_cfg.system:
+                log_system_metrics(
+                    self.writer,
+                    self.total_frames,
+                    self.device,
+                    self._system_log_counter,
+                    metrics_cfg.system_interval,
+                )
 
     def save_checkpoint(self, name: str) -> None:
         """Save training checkpoint atomically.

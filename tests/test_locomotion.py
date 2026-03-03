@@ -15,9 +15,9 @@ import pytest
 import torch
 
 try:
-    from locomotion.configs import LocomotionEnvConfig, LocomotionPhysicsConfig
-    from locomotion import PlanarSnakeEnv, TracksGenerator
-    from locomotion.rewards import (
+    from bing2019.configs_bing2019 import LocomotionEnvConfig, LocomotionPhysicsConfig
+    from bing2019 import PlanarSnakeEnv, TracksGenerator
+    from bing2019.rewards_bing2019 import (
         compute_energy_normalized,
         compute_power_velocity_reward,
         compute_target_tracking_reward,
@@ -103,7 +103,7 @@ class TestPlanarSnakeEnvPowerVelocity:
 
     def test_episode_truncation(self, env):
         td = env.reset()
-        for i in range(env.config.physics.max_episode_steps):
+        for i in range(env.config.max_episode_steps):
             action = torch.zeros(8, dtype=torch.float32)
             td["action"] = action
             td = env.step(td)

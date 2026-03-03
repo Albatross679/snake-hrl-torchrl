@@ -1,5 +1,6 @@
 """SAC (Soft Actor-Critic) trainer using TorchRL."""
 
+import time
 from typing import Optional, Dict, Any, Callable
 from pathlib import Path
 import torch
@@ -14,8 +15,11 @@ from tqdm import tqdm
 
 from configs.training import SACConfig
 from configs.network import NetworkConfig
+from configs.base import resolve_device
+from configs.run_dir import setup_run_dir
 from networks.actor import create_actor
 from networks.critic import TwinQNetwork
+from trainers.logging_utils import log_system_metrics, compute_grad_norm
 
 
 class SACTrainer:
@@ -27,6 +31,7 @@ class SACTrainer:
         config: Optional[SACConfig] = None,
         network_config: Optional[NetworkConfig] = None,
         device: str = "cpu",
+        run_dir: Optional[Path] = None,
     ):
         """Initialize SAC trainer.
 
@@ -39,7 +44,7 @@ class SACTrainer:
         self.env = env
         self.config = config or SACConfig()
         self.network_config = network_config or NetworkConfig()
-        self.device = device
+        self.device = resolve_device(device)
 
         # Get dimensions from environment
         obs_dim = env.observation_spec["observation"].shape[-1]
@@ -51,7 +56,7 @@ class SACTrainer:
             obs_dim=obs_dim,
             action_spec=action_spec,
             config=self.network_config.actor,
-            device=device,
+            device=self.device,
         )
 
         # Create twin Q-networks
@@ -60,7 +65,7 @@ class SACTrainer:
             action_dim=action_dim,
             hidden_dims=self.network_config.critic.hidden_dims,
             activation=self.network_config.critic.activation,
-        ).to(device)
+        ).to(self.device)
 
         # Create target Q-networks
         self.critic_target = TwinQNetwork(
@@ -68,14 +73,14 @@ class SACTrainer:
             action_dim=action_dim,
             hidden_dims=self.network_config.critic.hidden_dims,
             activation=self.network_config.critic.activation,
-        ).to(device)
+        ).to(self.device)
         self.critic_target.load_state_dict(self.critic.state_dict())
 
         # Entropy coefficient
         if self.config.auto_alpha:
             # Learnable log_alpha
             self.log_alpha = torch.tensor(
-                np.log(self.config.alpha), requires_grad=True, device=device
+                np.log(self.config.alpha), requires_grad=True, device=self.device
             )
             self.target_entropy = (
                 self.config.target_entropy
@@ -84,7 +89,7 @@ class SACTrainer:
             )
             self.alpha_optimizer = Adam([self.log_alpha], lr=self.config.alpha_lr)
         else:
-            self.log_alpha = torch.tensor(np.log(self.config.alpha), device=device)
+            self.log_alpha = torch.tensor(np.log(self.config.alpha), device=self.device)
 
         # Create optimizers
         self.actor_optimizer = Adam(
@@ -96,7 +101,7 @@ class SACTrainer:
 
         # Create replay buffer
         self.replay_buffer = ReplayBuffer(
-            storage=LazyTensorStorage(max_size=self.config.buffer_size, device=device),
+            storage=LazyTensorStorage(max_size=self.config.buffer_size, device=self.device),
             batch_size=self.config.batch_size,
         )
 
@@ -106,11 +111,28 @@ class SACTrainer:
         self.best_reward = float("-inf")
         self._update_count = 0
 
-        # Logging
-        self.log_dir = Path(self.config.log_dir) / self.config.experiment_name
-        self.log_dir.mkdir(parents=True, exist_ok=True)
-        self.save_dir = Path(self.config.save_dir) / self.config.experiment_name
+        # Metric tracking
+        self._train_start_time = 0.0
+        self._system_log_counter = [0]
+
+        # Logging / output directories (auto-create consolidated run dir if not provided)
+        if run_dir is None:
+            run_dir = setup_run_dir(self.config)
+        self.run_dir = Path(run_dir)
+        self.log_dir = self.run_dir
+        self.save_dir = self.run_dir / "checkpoints"
         self.save_dir.mkdir(parents=True, exist_ok=True)
+        tb_dir = self.run_dir / "tensorboard"
+
+        # TensorBoard
+        self.writer = None
+        if self.config.tensorboard.enabled:
+            from torch.utils.tensorboard import SummaryWriter
+
+            self.writer = SummaryWriter(
+                log_dir=str(tb_dir),
+                flush_secs=self.config.tensorboard.flush_secs,
+            )
 
     @property
     def alpha(self) -> torch.Tensor:
@@ -123,20 +145,44 @@ class SACTrainer:
     ) -> Dict[str, Any]:
         """Run SAC training loop.
 
+        Supports both single-env and vectorized (batched) environments.
+        When the environment has a non-empty batch_size, transitions are
+        stored with ``extend`` and per-env episode stats are tracked.
+
         Args:
             callback: Optional callback function called after each episode
 
         Returns:
             Dictionary with training statistics
         """
+        # Detect vectorized env
+        is_vec = len(self.env.batch_size) > 0
+        num_envs = self.env.batch_size[0] if is_vec else 1
+
         pbar = tqdm(total=self.config.total_frames, desc="Training")
         all_metrics = []
 
-        episode_reward = 0.0
-        episode_length = 0
+        # Wall-clock limit
+        start_time = time.monotonic()
+        self._train_start_time = start_time
+        max_wall_time = self.config.max_wall_time
+
+        # Per-env episode accumulators
+        episode_rewards = np.zeros(num_envs)
+        episode_lengths = np.zeros(num_envs, dtype=int)
+
         td = self.env.reset()
 
         while self.total_frames < self.config.total_frames:
+            # Check wall-clock limit
+            if max_wall_time is not None:
+                elapsed = time.monotonic() - start_time
+                if elapsed >= max_wall_time:
+                    tqdm.write(
+                        f"Wall-clock limit reached ({elapsed:.0f}s / {max_wall_time:.0f}s). "
+                        f"Stopping at {self.total_frames} frames."
+                    )
+                    break
             # Select action
             if self.total_frames < self.config.warmup_steps:
                 # Random action during warmup
@@ -149,55 +195,108 @@ class SACTrainer:
             # Environment step
             next_td = self.env.step(td)
 
-            # Store transition
-            self.replay_buffer.add(next_td)
+            # Store transition(s)
+            if is_vec:
+                self.replay_buffer.extend(next_td)
+            else:
+                self.replay_buffer.add(next_td)
 
             # Update counters
-            episode_reward += next_td["reward"].item()
-            episode_length += 1
-            self.total_frames += 1
-            pbar.update(1)
+            frames_this_step = num_envs
+            self.total_frames += frames_this_step
+            pbar.update(frames_this_step)
 
-            # Check episode end
-            if next_td["done"].item():
-                self.total_episodes += 1
-                metrics = {
-                    "episode_reward": episode_reward,
-                    "episode_length": episode_length,
-                    "total_frames": self.total_frames,
-                }
-                all_metrics.append(metrics)
+            # TorchRL nests step results under "next"
+            step_result = next_td["next"] if "next" in next_td.keys() else next_td
 
-                # Track best reward
-                if episode_reward > self.best_reward:
-                    self.best_reward = episode_reward
-                    self.save_checkpoint("best")
+            if is_vec:
+                # Vectorized: per-env episode tracking
+                rewards = step_result["reward"].cpu().numpy().reshape(num_envs)
+                dones = step_result["done"].cpu().numpy().reshape(num_envs)
+                episode_rewards += rewards
+                episode_lengths += 1
 
-                # Log
-                if self.total_episodes % self.config.log_interval == 0:
-                    tqdm.write(
-                        f"Episode {self.total_episodes}: "
-                        f"reward={episode_reward:.2f}, "
-                        f"length={episode_length}"
-                    )
+                # Handle completed episodes
+                done_mask = dones.astype(bool)
+                if done_mask.any():
+                    for i in np.where(done_mask)[0]:
+                        self.total_episodes += 1
+                        metrics = {
+                            "episode_reward": float(episode_rewards[i]),
+                            "episode_length": int(episode_lengths[i]),
+                            "total_frames": self.total_frames,
+                        }
+                        all_metrics.append(metrics)
 
-                # Reset
-                td = self.env.reset()
-                episode_reward = 0.0
-                episode_length = 0
+                        if episode_rewards[i] > self.best_reward:
+                            self.best_reward = float(episode_rewards[i])
+                            self.save_checkpoint("best")
 
-                if callback:
-                    callback(metrics)
-            else:
+                        if self.total_episodes % self.config.log_interval == 0:
+                            tqdm.write(
+                                f"Episode {self.total_episodes}: "
+                                f"reward={episode_rewards[i]:.2f}, "
+                                f"length={episode_lengths[i]}"
+                            )
+
+                        self._log_episode_metrics(episode_rewards[i], episode_lengths[i])
+
+                        if callback:
+                            callback(metrics)
+
+                    # Reset accumulators for done envs
+                    episode_rewards[done_mask] = 0.0
+                    episode_lengths[done_mask] = 0
+
+                # TorchRL SerialEnv auto-resets; use next_td for next step
                 td = next_td
+            else:
+                # Single env path (original logic)
+                episode_rewards[0] += step_result["reward"].item()
+                episode_lengths[0] += 1
+
+                if step_result["done"].item():
+                    self.total_episodes += 1
+                    metrics = {
+                        "episode_reward": float(episode_rewards[0]),
+                        "episode_length": int(episode_lengths[0]),
+                        "total_frames": self.total_frames,
+                    }
+                    all_metrics.append(metrics)
+
+                    if episode_rewards[0] > self.best_reward:
+                        self.best_reward = float(episode_rewards[0])
+                        self.save_checkpoint("best")
+
+                    if self.total_episodes % self.config.log_interval == 0:
+                        tqdm.write(
+                            f"Episode {self.total_episodes}: "
+                            f"reward={episode_rewards[0]:.2f}, "
+                            f"length={episode_lengths[0]}"
+                        )
+
+                    self._log_episode_metrics(episode_rewards[0], episode_lengths[0])
+
+                    td = self.env.reset()
+                    episode_rewards[0] = 0.0
+                    episode_lengths[0] = 0
+
+                    if callback:
+                        callback(metrics)
+                else:
+                    td = step_result
 
             # Training updates
             if (
                 self.total_frames >= self.config.warmup_steps
                 and self.total_frames % self.config.update_frequency == 0
             ):
+                update_metrics = {}
                 for _ in range(self.config.num_updates):
-                    self._update()
+                    update_metrics = self._update()
+
+                # TensorBoard — update metrics
+                self._log_train_metrics(update_metrics)
 
             # Save checkpoint
             if self.total_frames % (self.config.save_interval * 1000) == 0:
@@ -205,6 +304,10 @@ class SACTrainer:
 
         pbar.close()
         self.save_checkpoint("final")
+
+        # Close TensorBoard writer
+        if self.writer is not None:
+            self.writer.close()
 
         return {
             "total_frames": self.total_frames,
@@ -233,7 +336,7 @@ class SACTrainer:
             next_td = TensorDict({"observation": next_obs}, batch_size=obs.shape[0])
             next_td = self.actor(next_td)
             next_action = next_td["action"]
-            next_log_prob = next_td["sample_log_prob"]
+            next_log_prob = next_td["action_log_prob"]
 
             # Target Q-values
             q1_target, q2_target = self.critic_target(next_obs, next_action)
@@ -250,16 +353,20 @@ class SACTrainer:
 
         self.critic_optimizer.zero_grad()
         critic_loss.backward()
+        critic_grad_norm = compute_grad_norm(self.critic)
         self.critic_optimizer.step()
 
         # Update actor (less frequently)
+        actor_loss = None
+        alpha_loss = None
+        actor_grad_norm = None
         self._update_count += 1
         if self._update_count % self.config.actor_update_frequency == 0:
             # Get current actions and log probs
             td = TensorDict({"observation": obs}, batch_size=obs.shape[0])
             td = self.actor(td)
             new_action = td["action"]
-            log_prob = td["sample_log_prob"]
+            log_prob = td["action_log_prob"]
 
             # Q-values for new actions
             q1_new, q2_new = self.critic(obs, new_action)
@@ -270,6 +377,7 @@ class SACTrainer:
 
             self.actor_optimizer.zero_grad()
             actor_loss.backward()
+            actor_grad_norm = compute_grad_norm(self.actor)
             self.actor_optimizer.step()
 
             # Update alpha
@@ -285,10 +393,19 @@ class SACTrainer:
         # Update target networks
         self._soft_update()
 
-        return {
+        metrics = {
             "critic_loss": critic_loss.item(),
             "alpha": self.alpha.item(),
+            "critic_grad_norm": critic_grad_norm,
+            "q1_mean": q1.mean().item(),
+            "q2_mean": q2.mean().item(),
         }
+        if actor_loss is not None:
+            metrics["actor_loss"] = actor_loss.item()
+            metrics["actor_grad_norm"] = actor_grad_norm
+        if alpha_loss is not None:
+            metrics["alpha_loss"] = alpha_loss.item()
+        return metrics
 
     def _soft_update(self) -> None:
         """Soft update of target networks."""
@@ -297,6 +414,42 @@ class SACTrainer:
         ):
             target_param.data.copy_(
                 self.config.tau * param.data + (1 - self.config.tau) * target_param.data
+            )
+
+    def _log_episode_metrics(self, episode_reward: float, episode_length: int) -> None:
+        """Log episode metrics to TensorBoard (gated by MetricGroups)."""
+        if self.writer is None:
+            return
+        metrics_cfg = self.config.tensorboard.metrics
+        if metrics_cfg.episode:
+            self.writer.add_scalar("episode/reward", episode_reward, self.total_frames)
+            self.writer.add_scalar("episode/length", episode_length, self.total_frames)
+            self.writer.add_scalar("episode/count", self.total_episodes, self.total_frames)
+
+    def _log_train_metrics(self, metrics: Dict[str, float]) -> None:
+        """Log training update metrics to TensorBoard (gated by MetricGroups)."""
+        if self.writer is None:
+            return
+        metrics_cfg = self.config.tensorboard.metrics
+        if metrics_cfg.train:
+            for key in ("critic_loss", "actor_loss", "alpha", "alpha_loss"):
+                if key in metrics:
+                    self.writer.add_scalar(f"train/{key}", metrics[key], self.total_frames)
+        if metrics_cfg.q_values:
+            for key in ("q1_mean", "q2_mean"):
+                if key in metrics:
+                    self.writer.add_scalar(f"q_values/{key}", metrics[key], self.total_frames)
+        if metrics_cfg.gradients:
+            for key in ("critic_grad_norm", "actor_grad_norm"):
+                if key in metrics:
+                    self.writer.add_scalar(f"gradients/{key}", metrics[key], self.total_frames)
+        if metrics_cfg.timing:
+            wall = time.monotonic() - self._train_start_time
+            self.writer.add_scalar("timing/wall_clock_secs", wall, self.total_frames)
+        if metrics_cfg.system:
+            log_system_metrics(
+                self.writer, self.total_frames, self.device,
+                self._system_log_counter, metrics_cfg.system_interval,
             )
 
     def save_checkpoint(self, name: str) -> None:
@@ -322,7 +475,7 @@ class SACTrainer:
 
     def load_checkpoint(self, path: str) -> None:
         """Load training checkpoint."""
-        checkpoint = torch.load(path, map_location=self.device)
+        checkpoint = torch.load(path, map_location=self.device, weights_only=False)
 
         self.actor.load_state_dict(checkpoint["actor_state_dict"])
         self.critic.load_state_dict(checkpoint["critic_state_dict"])
@@ -359,9 +512,11 @@ class SACTrainer:
                         td = self.actor(td)
 
                 td = self.env.step(td)
-                episode_reward += td["reward"].item()
+                step_result = td["next"] if "next" in td.keys() else td
+                episode_reward += step_result["reward"].item()
                 episode_length += 1
-                done = td["done"].item()
+                done = step_result["done"].item()
+                td = step_result
 
             rewards.append(episode_reward)
             lengths.append(episode_length)

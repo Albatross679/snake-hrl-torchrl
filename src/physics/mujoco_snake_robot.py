@@ -10,7 +10,7 @@ import numpy as np
 
 import mujoco
 
-from configs.physics import PhysicsConfig
+from configs.physics import PhysicsConfig, FrictionModel
 from configs.env import StateRepresentation
 
 from physics.geometry import (
@@ -38,9 +38,23 @@ def _build_mjcf_xml(
     """
     seg_len = config.snake_length / config.num_segments
     radius = config.snake_radius
-    friction = f"{config.mujoco_friction[0]} {config.mujoco_friction[1]} {config.mujoco_friction[2]}"
     damping = config.mujoco_joint_damping
     kp = config.mujoco_joint_stiffness
+
+    # Determine friction tuple from friction config
+    fc = config.friction
+    if fc.model == FrictionModel.NONE:
+        friction = "0 0 0"
+    elif fc.model == FrictionModel.NATIVE:
+        friction = f"{config.mujoco_friction[0]} {config.mujoco_friction[1]} {config.mujoco_friction[2]}"
+    elif fc.model in (FrictionModel.COULOMB, FrictionModel.STRIBECK):
+        # Map mu_kinetic to MuJoCo's slide friction (1st element)
+        # Keep torsional and rolling at small defaults
+        friction = f"{fc.mu_kinetic} 0.005 0.0001"
+    elif fc.model == FrictionModel.RFT:
+        # RFT doesn't map naturally to MuJoCo rigid-body contact;
+        # use a low friction as approximation for viscous drag regime
+        friction = f"{fc.rft_cn} 0.005 0.0001"
 
     # Initial z so snake sits on ground
     init_z = snake_pos[2] if snake_pos[2] > radius else radius

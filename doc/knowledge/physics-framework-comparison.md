@@ -2,9 +2,11 @@
 name: physics-framework-comparison
 description: Structured comparison of all physics frameworks used or considered for snake robot simulation
 type: knowledge
+date_created: 2026-02-09
+date_modified: 2026-02-17
 created: 2026-02-09T23:00:00
-updated: 2026-02-10T00:00:00
-tags: [knowledge, physics, comparison, dismech, mujoco, pybullet, elastica]
+updated: 2026-02-17T00:00:00
+tags: [knowledge, physics, comparison, dismech, mujoco, pybullet, elastica, flex, der, cosserat, fem, fidelity, efficiency]
 aliases: []
 ---
 
@@ -243,9 +245,97 @@ Self-contact prevents the snake body from passing through itself. Important for 
 | Self-contact with elastic rod physics | dismech-python or dismech-rods |
 | Non-planar terrain | MuJoCo or PyBullet |
 
+## MuJoCo Flex vs. Elastic Rod Frameworks (Fidelity and Efficiency)
+
+MuJoCo 3.0+ introduced **Flex** — a deformable body primitive based on finite elements rather than rigid-body chains. This section evaluates whether Flex (particularly with the `mujoco.elasticity.cable` plugin) could replace the elastic rod backends (DisMech, PyElastica) for the snake robot.
+
+See `doc/knowledge/mujoco-body-representations-and-physics.md` for full details on Flex body representations and the elasticity plugin timeline.
+
+### Underlying Models
+
+| Framework | Theory | Constitutive Law | Deformation Model |
+|-----------|--------|-----------------|-------------------|
+| DisMech (DER) | Kirchhoff rod | Geometrically exact bending/twisting | 1D centerline, inextensible, unshearable |
+| PyElastica | Cosserat rod | Geometrically exact, full strain | 1D centerline + extension + shear |
+| MuJoCo Flex | Saint Venant-Kirchhoff FEM | Linear torque (cable plugin) | 3D volumetric elements, or 1D via cable plugin |
+
+**DisMech** and **MuJoCo's cable plugin** both target Kirchhoff rod behavior, but with a critical difference: DisMech uses a geometrically exact discrete formulation from DDG (Discrete Differential Geometry) that correctly handles large rotations and bending-twisting coupling. MuJoCo's cable plugin uses a **linear torque-deformation relationship** that is physically inconsistent with Kirchhoff theory at large deformations.
+
+**PyElastica** uses the most general model — Cosserat rod theory additionally captures shear and extension, though these effects are small for slender rods.
+
+**MuJoCo Flex** at its core is a **volumetric FEM solver** using piecewise-linear finite elements with Green-Lagrange strain. The continuum model (StVK hyperelasticity) is suited for volumetric soft bodies (gripper pads, tissue, rubber), cloth, and membranes — not for slender rods. The cable plugin provides 1D rod-like behavior on top of Flex, but with a simplified constitutive law.
+
+### Fidelity: Quantified Accuracy Gap
+
+Pankert et al. (IROS 2025, "Accurate Simulation and Parameter Identification of Deformable Linear Objects using Discrete Elastic Rods in Generalized Coordinates") benchmarked MuJoCo's native cable against a proper DER implementation adapted into MuJoCo:
+
+| Benchmark | DER | MuJoCo Cable |
+|-----------|-----|-------------|
+| Michell's Buckling Test (avg error) | 0.048 | 0.773 |
+| Accuracy ratio | baseline | **~16× worse** |
+
+The cable plugin also produces **unnatural twist wave oscillations** due to its dynamic (rather than quasistatic) treatment of the material frame twist. Suppressing these artifacts requires very small timesteps, negating any speed advantage.
+
+The fundamental issue is **geometric exactness**: DisMech and PyElastica handle arbitrarily large rotations through discrete differential geometry and Lie group integration respectively. MuJoCo's cable plugin linearizes the torque-deformation relationship, which is only accurate for small deformations. At the large curvatures a snake robot undergoes during locomotion and coiling, this linearization breaks down.
+
+#### Fidelity Ranking for Slender Elastic Rods
+
+1. **PyElastica** — most complete physics (Cosserat: bending + twisting + shear + extension), geometrically exact
+2. **DisMech** — geometrically exact Kirchhoff rod, neglects shear (valid for thin rods), excellent for large deformations
+3. **MuJoCo Flex + cable** — linear approximation, breaks down at large curvatures, ~16× less accurate than DER at buckling
+
+### Efficiency Comparison
+
+| Property | DisMech (Python) | dismech-rods (C++) | PyElastica | MuJoCo Flex |
+|----------|-----------------|-------------------|------------|-------------|
+| Language | Python | C++ (PARDISO) | Python (NumPy) | C |
+| Integration | Fully implicit | Fully implicit | Explicit (symplectic) | Implicit (MuJoCo solver) |
+| Typical dt | 0.05 s | 0.05 s | 0.001 s (50 substeps) | 0.002 s (25 substeps) |
+| DOFs (20-seg rod) | ~60 | ~60 | ~60 | 1000s (tet mesh) or 24 (trilinear) |
+| Contact solver | Analytical / RFT | Penalty + FCL | RFT | Native MuJoCo (fast) |
+| GPU / MJX | No | No | No | **No** (Flex unsupported) |
+| Install | Trivial (submodule) | High (C++ deps) | `pip install` | `pip install` |
+
+Key observations:
+
+- **Implicit integration wins for rods.** DisMech allows 25–50× larger timesteps than PyElastica. Fewer total steps compensates for Newton solver cost.
+- **dismech-rods (C++) is the fastest rod solver** — large timesteps + compiled PARDISO sparse solves.
+- **MuJoCo Flex has no GPU path.** Flex is explicitly unsupported in MJX. This eliminates the primary reason to use MuJoCo for RL workloads requiring thousands of parallel environments. MJX achieves 650K–2.7M steps/sec for rigid humanoids; Flex is limited to single-threaded CPU.
+- **Cable plugin overhead is negligible.** Pankert et al. measured only −3% to +2% computational difference between MuJoCo's native cable and a proper DER plugin. The accuracy penalty is not compensated by a speed advantage.
+- **Modeling a rod as 3D tet mesh is wasteful.** A 20-segment snake needs ~60 DOFs as a rod but thousands of DOFs as a tetrahedral Flex mesh. The trilinear mode (24 DOFs) is efficient but severely restricts the deformation space.
+
+### Where MuJoCo Flex Shines (Not Rods)
+
+Flex is well-suited for use cases fundamentally different from slender rods:
+
+- **Volumetric soft bodies** (gripper pads, tissue, rubber) where StVK FEM is the correct model
+- **Cloth and membranes** where triangle elements with Poisson ratio coupling are appropriate
+- **Simple ropes/cables** where high physical accuracy is not required
+- Scenarios needing MuJoCo's contact solver for complex multi-body interactions with deformables
+
+### Summary: Flex vs. Rod Frameworks for This Project
+
+| | Fidelity | Efficiency | RL Suitability |
+|---|---------|-----------|----------------|
+| DisMech (DER) | High (exact Kirchhoff) | Moderate (Python) / High (C++) | Good (implicit, stable, large dt) |
+| PyElastica (Cosserat) | Highest (full Cosserat) | Low (many substeps) | Poor (tiny dt, explicit) |
+| MuJoCo Flex (FEM) | Low for rods (linear cable) | Moderate (no MJX) | Moderate (wrong physics, fast contact) |
+
+**DisMech remains the best balance** of fidelity and efficiency for the snake robot. MuJoCo Flex + cable is a fidelity downgrade without a meaningful speed advantage. PyElastica has the most complete physics but pays a steep efficiency penalty from explicit integration.
+
+The current rigid-body-chain MuJoCo backend is a better pragmatic choice than switching to Flex + cable — the PD-controller approximation is transparent about being an approximation, benefits from MuJoCo's optimized rigid-body pipeline, and retains full MJX GPU support for batched RL training.
+
+### References
+
+- Pankert et al. (2025). "Accurate Simulation and Parameter Identification of Deformable Linear Objects using Discrete Elastic Rods in Generalized Coordinates." IROS 2025. arXiv:2310.00911v2
+- Bergou et al. (2008). "Discrete Elastic Rods." ACM SIGGRAPH
+- Gazzola et al. (2018). "Forward and Inverse Problems in the Mechanics of Soft Filaments." Royal Society Open Science
+- MuJoCo Documentation: Flex Bodies, Elasticity Plugins, MJX Limitations
+
 ## Related
 
-- `src/snake_hrl/physics/__init__.py` — Factory function routing by `SolverFramework`
-- `src/snake_hrl/configs/env.py` — `SolverFramework` enum and backend-specific config fields
-- `doc/knowledge/dismech-api-comparison.md` — Detailed API comparison between the two dismech backends
+- `src/physics/__init__.py` — Factory function routing by `SolverFramework`
+- `src/configs/physics.py` — `SolverFramework` enum and backend-specific config fields
+- `doc/knowledge/mujoco-body-representations-and-physics.md` — MuJoCo body representations and elasticity plugin timeline
+- `doc/knowledge/friction-contact-models.md` — Contact and friction models in simulation
 - `snakebot-gym/` — Legacy PyBullet environment (not part of current factory pattern)

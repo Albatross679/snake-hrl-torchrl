@@ -7,7 +7,7 @@ PyElastica (Cosserat rod theory) with symplectic time integration.
 from typing import Optional, Dict, Any
 import numpy as np
 
-from configs.physics import PhysicsConfig, ElasticaGroundContact
+from configs.physics import PhysicsConfig, ElasticaGroundContact, FrictionModel
 from configs.env import StateRepresentation
 
 # PyElastica imports
@@ -278,30 +278,25 @@ class ElasticaSnakeRobot:
                 acc_gravity=np.array(self.config.gravity),
             )
 
-        # Add ground contact / RFT forcing
-        if self.config.use_rft:
-            if self.config.elastica_ground_contact == ElasticaGroundContact.RFT:
-                # Custom RFT forcing (applied manually in step())
-                self._rft_forcing = RFTForcing(
-                    ct=self.config.rft_ct,
-                    cn=self.config.rft_cn,
-                )
-            elif self.config.elastica_ground_contact == ElasticaGroundContact.DAMPING:
-                # Use built-in damping instead
-                dt_substep = self.config.dt / self.config.elastica_substeps
-                self._simulator.dampen(self._rod).using(
-                    AnalyticalLinearDamper,
-                    damping_constant=self.config.elastica_damping,
-                    time_step=dt_substep,
-                )
-                self._rft_forcing = None
-            else:
-                self._rft_forcing = None
-        else:
-            self._rft_forcing = None
+        # Add ground interaction forcing based on friction config
+        friction = self.config.friction
+        self._custom_forcing = None  # Manual per-substep forcing (RFT, Coulomb, Stribeck)
 
-        # Add numerical damping (if not already added via DAMPING ground contact)
-        if self.config.elastica_damping > 0 and self.config.elastica_ground_contact != ElasticaGroundContact.DAMPING:
+        if friction.model == FrictionModel.RFT:
+            self._custom_forcing = RFTForcing(
+                ct=friction.rft_ct,
+                cn=friction.rft_cn,
+            )
+        elif friction.model == FrictionModel.COULOMB:
+            from physics.friction import CoulombForcing
+            self._custom_forcing = CoulombForcing(friction)
+        elif friction.model == FrictionModel.STRIBECK:
+            from physics.friction import StribeckForcing
+            self._custom_forcing = StribeckForcing(friction)
+        # FrictionModel.NONE / NATIVE: no ground forcing
+
+        # Add numerical damping
+        if self.config.elastica_damping > 0:
             dt_substep = self.config.dt / self.config.elastica_substeps
             self._simulator.dampen(self._rod).using(
                 AnalyticalLinearDamper,
@@ -422,9 +417,9 @@ class ElasticaSnakeRobot:
 
         # Integrate with substeps using manual stepping
         for _ in range(total_steps):
-            # Apply custom RFT forcing if enabled
-            if self._rft_forcing is not None:
-                self._rft_forcing.apply_forces(self._rod, self.time)
+            # Apply custom forcing if enabled (RFT, Coulomb, or Stribeck)
+            if self._custom_forcing is not None:
+                self._custom_forcing.apply_forces(self._rod, self.time)
 
             # Integrate one substep using do_step
             self.time = self._do_step(

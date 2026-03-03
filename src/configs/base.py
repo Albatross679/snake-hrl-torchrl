@@ -9,9 +9,11 @@ Provides:
 """
 
 import json
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Dict, Type, TypeVar
+
+import torch
 
 T = TypeVar("T")
 
@@ -34,6 +36,19 @@ class Checkpointing:
 
 
 @dataclass
+class MetricGroups:
+    """Which metric groups to log to TensorBoard."""
+
+    episode: bool = True  # episode metrics (reward, length, count)
+    train: bool = True  # training losses
+    q_values: bool = True  # Q-value stats (DDPG/SAC only; no-op for PPO)
+    gradients: bool = True  # gradient norms
+    system: bool = True  # CPU, RAM, GPU usage
+    timing: bool = True  # wall-clock time, episode duration
+    system_interval: int = 10  # log system metrics every N logging events
+
+
+@dataclass
 class TensorBoard:
     """TensorBoard logging configuration."""
 
@@ -41,6 +56,26 @@ class TensorBoard:
     log_dir: str = "tensorboard"
     flush_secs: int = 120
     log_interval: int = 100  # steps between log writes
+    metrics: MetricGroups = field(default_factory=MetricGroups)
+
+
+@dataclass
+class Output:
+    """Run output directory configuration."""
+
+    base_dir: str = "output"
+    save_config: bool = True
+
+
+@dataclass
+class Console:
+    """Console logging configuration (tee stdout/stderr to file)."""
+
+    enabled: bool = True
+    filename: str = "console.log"
+    tee_to_console: bool = True
+    line_timestamps: bool = False
+    timestamp_format: str = "%H:%M:%S"
 
 
 # ---------------------------------------------------------------------------
@@ -56,6 +91,26 @@ class MLBaseConfig:
     seed: int = 42
     device: str = "auto"  # "auto", "cpu", "cuda", "cuda:0"
     output_dir: str = "output"
+
+
+# ---------------------------------------------------------------------------
+# Device resolution
+# ---------------------------------------------------------------------------
+
+
+def resolve_device(device: str = "auto") -> str:
+    """Resolve a device string to an actual torch device name.
+
+    Args:
+        device: One of "auto", "cpu", "cuda", "cuda:0", etc.
+            "auto" selects CUDA when available, otherwise CPU.
+
+    Returns:
+        Resolved device string (e.g. "cuda" or "cpu").
+    """
+    if device == "auto":
+        return "cuda" if torch.cuda.is_available() else "cpu"
+    return device
 
 
 # ---------------------------------------------------------------------------

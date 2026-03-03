@@ -46,12 +46,29 @@ dev = [
     "black>=23.0.0",
     "ruff>=0.1.0",
 ]
+monitoring = ["psutil>=5.9.0"]
 
 # [project.scripts]
 # Entry points removed — scripts are now run directly from script/
 
 [tool.setuptools.packages.find]
-where = ["src"]
+where = ["src", "."]
+include = [
+    "configs*", "envs*", "observations*", "networks*",
+    "physics*", "rewards*", "trainers*", "behavioral_cloning*",
+    "bing2019*",
+    "choi2025*",
+    "locomotion*",
+    "jiang2024*",
+    "licher2025*",
+    "liu2021*",
+    "liu2022*",
+    "liu2023*",
+    "naughton2021*",
+    "schaffer2024*",
+    "shi2020*",
+    "zheng2022*",
+]
 
 [tool.black]
 line-length = 100

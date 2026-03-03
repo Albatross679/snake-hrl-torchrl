@@ -17,6 +17,7 @@ from tqdm import tqdm
 
 from configs.training import HRLConfig
 from configs.network import HRLNetworkConfig
+from configs.base import resolve_device
 from trainers.ppo import PPOTrainer
 from envs.approach_env import ApproachEnv
 from envs.coil_env import CoilEnv
@@ -39,6 +40,7 @@ class HRLTrainer:
         config: Optional[HRLConfig] = None,
         network_config: Optional[HRLNetworkConfig] = None,
         device: str = "cpu",
+        run_dir: Optional[Path] = None,
     ):
         """Initialize HRL trainer.
 
@@ -49,12 +51,12 @@ class HRLTrainer:
         """
         self.config = config or HRLConfig()
         self.network_config = network_config or HRLNetworkConfig()
-        self.device = device
+        self.device = resolve_device(device)
 
         # Create skill environments
-        self.approach_env = ApproachEnv(device=device)
-        self.coil_env = CoilEnv(device=device)
-        self.hrl_env = HRLEnv(device=device)
+        self.approach_env = ApproachEnv(device=self.device)
+        self.coil_env = CoilEnv(device=self.device)
+        self.hrl_env = HRLEnv(device=self.device)
 
         # Skill trainers (will be created during training)
         self.approach_trainer: Optional[PPOTrainer] = None
@@ -73,16 +75,36 @@ class HRLTrainer:
             "coil": [],
         }
 
+        # Run directory
+        self._run_dir = Path(run_dir) if run_dir is not None else None
+
         # Graceful shutdown handling
         self._shutdown_requested = False
         self._original_sigint_handler = signal.signal(signal.SIGINT, self._signal_handler)
         self._original_sigterm_handler = signal.signal(signal.SIGTERM, self._signal_handler)
 
-        # Logging
-        self.log_dir = Path(self.config.log_dir) / self.config.experiment_name
-        self.log_dir.mkdir(parents=True, exist_ok=True)
-        self.save_dir = Path(self.config.save_dir) / self.config.experiment_name
-        self.save_dir.mkdir(parents=True, exist_ok=True)
+        # Logging / output directories
+        if self._run_dir is not None:
+            self.log_dir = self._run_dir
+            self.save_dir = self._run_dir / "checkpoints"
+            self.save_dir.mkdir(parents=True, exist_ok=True)
+            tb_dir = self._run_dir / "tensorboard"
+        else:
+            self.log_dir = Path(self.config.log_dir) / self.config.experiment_name
+            self.log_dir.mkdir(parents=True, exist_ok=True)
+            self.save_dir = Path(self.config.save_dir) / self.config.experiment_name
+            self.save_dir.mkdir(parents=True, exist_ok=True)
+            tb_dir = Path(self.config.tensorboard.log_dir) / self.config.experiment_name
+
+        # TensorBoard
+        self.writer = None
+        if self.config.tensorboard.enabled:
+            from torch.utils.tensorboard import SummaryWriter
+
+            self.writer = SummaryWriter(
+                log_dir=str(tb_dir),
+                flush_secs=self.config.tensorboard.flush_secs,
+            )
 
     def _signal_handler(self, signum: int, frame) -> None:
         """Handle shutdown signals gracefully."""
@@ -138,6 +160,7 @@ class HRLTrainer:
             config=self.config.approach_config,
             network_config=self.network_config.worker_approach,
             device=self.device,
+            run_dir=self._run_dir,
         )
 
         approach_config = self.config.approach_config
@@ -155,6 +178,7 @@ class HRLTrainer:
             config=self.config.coil_config,
             network_config=self.network_config.worker_coil,
             device=self.device,
+            run_dir=self._run_dir,
         )
 
         coil_config = self.config.coil_config
@@ -179,6 +203,10 @@ class HRLTrainer:
 
         # Save final checkpoint
         self.save_checkpoint("final")
+
+        # Close TensorBoard writer
+        if self.writer is not None:
+            self.writer.close()
 
         return results
 
@@ -223,6 +251,13 @@ class HRLTrainer:
             results["metrics"].append(metrics)
             pbar.update(batch.numel())
 
+            # TensorBoard — joint training metrics
+            if self.writer is not None:
+                for key, value in metrics.items():
+                    if isinstance(value, (int, float)):
+                        self.writer.add_scalar(f"joint/{key}", value, self.total_frames)
+                self.writer.add_scalar("joint/curriculum_stage", self.curriculum_stage, self.total_frames)
+
             # Curriculum advancement
             if self.config.use_curriculum:
                 self._check_curriculum_advancement()
@@ -232,6 +267,10 @@ class HRLTrainer:
 
         pbar.close()
         self.save_checkpoint("final")
+
+        # Close TensorBoard writer
+        if self.writer is not None:
+            self.writer.close()
 
         return results
 
@@ -303,6 +342,12 @@ class HRLTrainer:
             # Update manager
             metrics = self._update_manager(batch)
             metrics_history.append(metrics)
+
+            # TensorBoard — manager training metrics
+            if self.writer is not None:
+                for key, value in metrics.items():
+                    if isinstance(value, (int, float)):
+                        self.writer.add_scalar(f"manager/{key}", value, frames)
 
             if len(metrics_history) % 10 == 0:
                 avg_reward = np.mean([m.get("episode_reward", 0) for m in metrics_history[-10:]])
@@ -458,6 +503,7 @@ class HRLTrainer:
             config=self.config.approach_config,
             network_config=self.network_config.worker_approach,
             device=self.device,
+            run_dir=self._run_dir,
         )
 
         self.coil_trainer = PPOTrainer(
@@ -465,6 +511,7 @@ class HRLTrainer:
             config=self.config.coil_config,
             network_config=self.network_config.worker_coil,
             device=self.device,
+            run_dir=self._run_dir,
         )
 
         # Initialize manager
