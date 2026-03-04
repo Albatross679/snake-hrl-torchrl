@@ -1,19 +1,19 @@
 """Training script for soft manipulator SAC (Choi & Tong, 2025).
 
 Usage:
-    python -m choi2025.train_choi2025 --task follow_target --total-frames 1000000
-    python -m choi2025.train_choi2025 --task inverse_kinematics --seed 0
-    python -m choi2025.train_choi2025 --task tight_obstacles --max-wall-time 30m
+    python -m choi2025.train --task follow_target --total-frames 1000000
+    python -m choi2025.train --task inverse_kinematics --seed 0
+    python -m choi2025.train --task tight_obstacles --max-wall-time 30m
 """
 
 import argparse
 import re
 
-from choi2025.configs_choi2025 import Choi2025Config, Choi2025EnvConfig, TaskType
-from choi2025.env_choi2025 import SoftManipulatorEnv
-from configs import setup_run_dir, ConsoleLogger
-from configs.base import resolve_device
-from trainers.sac import SACTrainer
+from choi2025.config import Choi2025Config, Choi2025EnvConfig, TaskType
+from choi2025.env import SoftManipulatorEnv
+from src.configs import setup_run_dir, ConsoleLogger
+from src.configs.base import resolve_device
+from src.trainers.sac import SACTrainer
 
 
 def parse_wall_time(s: str) -> float:

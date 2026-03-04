@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Optional
 import numpy as np
 from scipy.spatial import KDTree
 
-from observations.extractors import FeatureExtractor
+from src.observations.extractors import FeatureExtractor
 
 
 class DemonstrationBuffer:

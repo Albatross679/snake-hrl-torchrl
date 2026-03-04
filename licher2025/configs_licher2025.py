@@ -21,8 +21,8 @@ Composable pieces:
 from dataclasses import dataclass, field
 from typing import List, Tuple
 
-from configs.base import Checkpointing, MLBaseConfig, TensorBoard
-from configs.physics import CosseratConfig, FrictionConfig, FrictionModel, GeometryConfig
+from src.configs.base import Checkpointing, MLBaseConfig, TensorBoard
+from src.configs.physics import CosseratConfig, FrictionConfig, FrictionModel, GeometryConfig
 
 
 # ---------------------------------------------------------------------------

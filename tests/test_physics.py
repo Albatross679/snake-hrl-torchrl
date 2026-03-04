@@ -4,7 +4,7 @@ import pytest
 import numpy as np
 import warnings
 
-from physics.geometry import (
+from src.physics.geometry import (
     SnakeGeometry,
     PreyGeometry,
     create_snake_geometry,
@@ -12,8 +12,8 @@ from physics.geometry import (
     compute_contact_points,
     compute_wrap_angle,
 )
-from physics.snake_robot import SnakeRobot
-from configs.physics import (
+from src.physics.snake_robot import SnakeRobot
+from src.configs.physics import (
     PhysicsConfig,
     SolverFramework,
     FrictionModel,
@@ -23,7 +23,7 @@ from configs.physics import (
     ElasticaConfig,
     MujocoPhysicsConfig,
 )
-from configs.geometry import GeometryConfig
+from src.configs.geometry import GeometryConfig
 
 
 class TestGeometry:
@@ -266,7 +266,7 @@ class TestMujocoSnakeRobot:
     @pytest.fixture
     def robot(self, config):
         """Create a MuJoCo snake robot for testing."""
-        from physics.mujoco_snake_robot import MujocoSnakeRobot
+        from src.physics.mujoco_snake_robot import MujocoSnakeRobot
         return MujocoSnakeRobot(config)
 
     def test_robot_initialization(self, robot, config):
@@ -361,8 +361,8 @@ class TestMujocoSnakeRobot:
 
     def test_factory_creates_mujoco_robot(self, config):
         """Test factory dispatch creates MujocoSnakeRobot."""
-        from physics import create_snake_robot
-        from physics.mujoco_snake_robot import MujocoSnakeRobot
+        from src.physics import create_snake_robot
+        from src.physics.mujoco_snake_robot import MujocoSnakeRobot
 
         robot = create_snake_robot(config)
         assert isinstance(robot, MujocoSnakeRobot)
@@ -394,7 +394,7 @@ class TestDismechRodsSnakeRobot:
     @pytest.fixture
     def robot(self, config):
         """Create a dismech-rods snake robot for testing."""
-        from physics.dismech_rods_snake_robot import DismechRodsSnakeRobot
+        from src.physics.dismech_rods_snake_robot import DismechRodsSnakeRobot
         return DismechRodsSnakeRobot(config)
 
     def test_robot_initialization(self, robot, config):
@@ -519,14 +519,14 @@ class TestFrictionForceComputation:
 
     def test_barrier_normal_force_above_ground(self):
         """No normal force when well above ground."""
-        from physics.friction import compute_barrier_normal_force
+        from src.physics.friction import compute_barrier_normal_force
         z = np.array([1.0, 0.5, 0.1])
         f = compute_barrier_normal_force(z, stiffness=50000.0, delta=0.01)
         np.testing.assert_allclose(f, 0.0, atol=1e-6)
 
     def test_barrier_normal_force_at_ground(self):
         """Positive normal force when near/below ground."""
-        from physics.friction import compute_barrier_normal_force
+        from src.physics.friction import compute_barrier_normal_force
         z = np.array([0.0, -0.005, -0.01])
         f = compute_barrier_normal_force(z, stiffness=50000.0, delta=0.01)
         assert np.all(f > 0)
@@ -536,7 +536,7 @@ class TestFrictionForceComputation:
 
     def test_coulomb_force_shape(self):
         """Coulomb force returns correct shape."""
-        from physics.friction import compute_coulomb_force
+        from src.physics.friction import compute_coulomb_force
         config = FrictionConfig(model=FrictionModel.COULOMB)
         positions = np.array([[0, 0, 0.0], [0.1, 0, 0.0], [0.2, 0, 0.0]])
         velocities = np.array([[0.1, 0, 0], [0.1, 0, 0], [0.1, 0, 0]])
@@ -547,7 +547,7 @@ class TestFrictionForceComputation:
 
     def test_stribeck_force_shape(self):
         """Stribeck force returns correct shape."""
-        from physics.friction import compute_stribeck_force
+        from src.physics.friction import compute_stribeck_force
         config = FrictionConfig(model=FrictionModel.STRIBECK)
         positions = np.array([[0, 0, 0.0], [0.1, 0, 0.0]])
         velocities = np.array([[0.1, 0.05, 0], [-0.1, 0, 0]])
@@ -556,7 +556,7 @@ class TestFrictionForceComputation:
 
     def test_stribeck_higher_friction_at_low_speed(self):
         """Stribeck model has higher friction at low speed (mu_static > mu_kinetic)."""
-        from physics.friction import compute_stribeck_force
+        from src.physics.friction import compute_stribeck_force
         config = FrictionConfig(
             model=FrictionModel.STRIBECK,
             mu_kinetic=0.3,
@@ -655,7 +655,7 @@ class TestMujocoFrictionModels:
 
     def test_native_default(self, base_geom):
         """NATIVE friction works (default for MuJoCo)."""
-        from physics.mujoco_snake_robot import MujocoSnakeRobot
+        from src.physics.mujoco_snake_robot import MujocoSnakeRobot
         config = MujocoPhysicsConfig(geometry=base_geom, dt=5e-2)
         robot = MujocoSnakeRobot(config)
         for _ in range(5):
@@ -664,7 +664,7 @@ class TestMujocoFrictionModels:
 
     def test_none_friction(self, base_geom):
         """NONE friction sets zero friction in MuJoCo."""
-        from physics.mujoco_snake_robot import MujocoSnakeRobot
+        from src.physics.mujoco_snake_robot import MujocoSnakeRobot
         config = MujocoPhysicsConfig(
             geometry=base_geom,
             dt=5e-2,
@@ -677,7 +677,7 @@ class TestMujocoFrictionModels:
 
     def test_coulomb_mapped(self, base_geom):
         """Coulomb friction maps mu_kinetic to MuJoCo friction parameter."""
-        from physics.mujoco_snake_robot import MujocoSnakeRobot
+        from src.physics.mujoco_snake_robot import MujocoSnakeRobot
         config = MujocoPhysicsConfig(
             geometry=base_geom,
             dt=5e-2,
@@ -690,7 +690,7 @@ class TestMujocoFrictionModels:
 
     def test_energy_finite_all_models(self, base_geom):
         """Energy is finite for all supported MuJoCo friction models."""
-        from physics.mujoco_snake_robot import MujocoSnakeRobot
+        from src.physics.mujoco_snake_robot import MujocoSnakeRobot
         for model in [FrictionModel.NATIVE, FrictionModel.COULOMB, FrictionModel.STRIBECK, FrictionModel.NONE]:
             config = MujocoPhysicsConfig(
                 geometry=base_geom,
@@ -714,7 +714,7 @@ class TestDismechRodsFrictionModels:
 
     def test_native_default(self, base_geom):
         """NATIVE friction works (default for dismech-rods)."""
-        from physics.dismech_rods_snake_robot import DismechRodsSnakeRobot
+        from src.physics.dismech_rods_snake_robot import DismechRodsSnakeRobot
         config = DismechRodsConfig(geometry=base_geom, dt=5e-2)
         robot = DismechRodsSnakeRobot(config)
         for _ in range(5):
@@ -723,7 +723,7 @@ class TestDismechRodsFrictionModels:
 
     def test_none_friction(self, base_geom):
         """NONE friction runs without ground forces."""
-        from physics.dismech_rods_snake_robot import DismechRodsSnakeRobot
+        from src.physics.dismech_rods_snake_robot import DismechRodsSnakeRobot
         config = DismechRodsConfig(
             geometry=base_geom,
             dt=5e-2,
@@ -736,7 +736,7 @@ class TestDismechRodsFrictionModels:
 
     def test_rft_raises_not_implemented(self, base_geom):
         """RFT raises NotImplementedError for dismech-rods."""
-        from physics.dismech_rods_snake_robot import DismechRodsSnakeRobot
+        from src.physics.dismech_rods_snake_robot import DismechRodsSnakeRobot
         config = DismechRodsConfig(
             geometry=base_geom,
             dt=5e-2,
@@ -747,7 +747,7 @@ class TestDismechRodsFrictionModels:
 
     def test_coulomb_raises_not_implemented(self, base_geom):
         """Coulomb raises NotImplementedError for dismech-rods."""
-        from physics.dismech_rods_snake_robot import DismechRodsSnakeRobot
+        from src.physics.dismech_rods_snake_robot import DismechRodsSnakeRobot
         config = DismechRodsConfig(
             geometry=base_geom,
             dt=5e-2,

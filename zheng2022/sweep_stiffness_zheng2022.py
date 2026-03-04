@@ -14,7 +14,7 @@ import torch
 import numpy as np
 import matplotlib.pyplot as plt
 
-from configs.base import resolve_device
+from src.configs.base import resolve_device
 from zheng2022.configs_zheng2022 import WATER, PROPYLENE_GLYCOL, ETHYLENE_GLYCOL
 
 

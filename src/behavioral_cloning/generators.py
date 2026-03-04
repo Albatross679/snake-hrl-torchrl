@@ -9,8 +9,8 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 
-from configs.env import PhysicsConfig
-from physics.snake_robot import SnakeRobot
+from src.configs.env import PhysicsConfig
+from src.physics.snake_robot import SnakeRobot
 
 
 class SerpenoidGenerator:

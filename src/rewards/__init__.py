@@ -18,7 +18,7 @@ Factory functions:
     - create_curriculum_gait_shaper: Create PBRS with curriculum gait potential
 """
 
-from rewards.shaping import (
+from .shaping import (
     PotentialFunction,
     PotentialBasedRewardShaping,
     CompositeRewardShaping,
@@ -30,7 +30,7 @@ from rewards.shaping import (
     create_gait_shaper,
     create_curriculum_gait_shaper,
 )
-from rewards.gait_potential import (
+from .gait_potential import (
     GaitPotential,
     CurriculumGaitPotential,
     AdaptiveGaitPotential,

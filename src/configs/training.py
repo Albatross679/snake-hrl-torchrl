@@ -12,7 +12,7 @@ Hierarchy:
 from dataclasses import dataclass, field
 from typing import Optional, List
 
-from configs.base import MLBaseConfig, TensorBoard, Output, Console
+from .base import MLBaseConfig, TensorBoard, Output, Console
 
 
 @dataclass

@@ -1,14 +1,14 @@
 """Evaluation script for snake locomotion.
 
 Usage:
-    python -m locomotion.evaluate_locomotion --gait forward --checkpoint model/best.pt
+    python -m locomotion.evaluate --gait forward --checkpoint model/best.pt
 """
 
 import argparse
 
-from locomotion.configs_locomotion import GaitType, LocomotionConfig
-from locomotion.env_locomotion import LocomotionEnv
-from trainers.ppo import PPOTrainer
+from locomotion.config import GaitType, LocomotionConfig
+from locomotion.env import LocomotionEnv
+from src.trainers.ppo import PPOTrainer
 
 
 def parse_args() -> argparse.Namespace:

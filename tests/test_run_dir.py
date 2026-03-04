@@ -7,9 +7,9 @@ from pathlib import Path
 
 import pytest
 
-from configs.base import Output, Console
-from configs.run_dir import setup_run_dir
-from configs.console import ConsoleLogger
+from src.configs.base import Output, Console
+from src.configs.run_dir import setup_run_dir
+from src.configs.console import ConsoleLogger
 
 
 # ---------------------------------------------------------------------------

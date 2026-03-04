@@ -4,12 +4,12 @@ import pytest
 import torch
 import numpy as np
 
-from envs import BaseSnakeEnv
-from configs.env import EnvConfig
+from src.envs import BaseSnakeEnv
+from src.configs.env import EnvConfig
 
 try:
-    from envs import ApproachEnv, CoilEnv, HRLEnv
-    from configs.env import ApproachEnvConfig, CoilEnvConfig, HRLEnvConfig
+    from src.envs import ApproachEnv, CoilEnv, HRLEnv
+    from src.configs.env import ApproachEnvConfig, CoilEnvConfig, HRLEnvConfig
     has_predation_envs = True
 except ImportError:
     has_predation_envs = False

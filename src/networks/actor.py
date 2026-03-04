@@ -12,7 +12,7 @@ from torchrl.modules import (
 from torchrl.data import BoundedTensorSpec, CompositeSpec
 from tensordict.nn import TensorDictModule, TensorDictSequential
 
-from configs.network import ActorConfig, NetworkConfig
+from src.configs.network import ActorConfig, NetworkConfig
 
 
 def get_activation(name: str) -> nn.Module:

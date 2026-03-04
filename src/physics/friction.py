@@ -18,7 +18,7 @@ Physics:
 
 import numpy as np
 
-from configs.physics import FrictionConfig
+from src.configs.physics import FrictionConfig
 
 
 # ---------------------------------------------------------------------------

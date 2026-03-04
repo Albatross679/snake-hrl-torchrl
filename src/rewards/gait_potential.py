@@ -13,8 +13,8 @@ from typing import Any, Dict, Optional
 
 import numpy as np
 
-from rewards.shaping import PotentialFunction
-from behavioral_cloning.buffer import DemonstrationBuffer
+from .shaping import PotentialFunction
+from src.behavioral_cloning.buffer import DemonstrationBuffer
 
 
 class GaitPotential(PotentialFunction):

@@ -24,8 +24,8 @@ from pathlib import Path
 
 import numpy as np
 
-from configs.env import PhysicsConfig, SolverFramework
-from physics import create_snake_robot
+from src.configs.env import PhysicsConfig, SolverFramework
+from src.physics import create_snake_robot
 
 # ── Framework availability checks ──────────────────────────────────────
 

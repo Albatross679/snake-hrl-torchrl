@@ -9,7 +9,7 @@ Provides target generation and obstacle management for the four tasks:
 
 import numpy as np
 
-from choi2025.configs_choi2025 import (
+from choi2025.config import (
     ObstacleConfig,
     TargetConfig,
     TaskType,

@@ -20,9 +20,9 @@ from zheng2022.configs_zheng2022 import (
 )
 from zheng2022 import UnderwaterSnakeEnv
 from zheng2022.rewards_zheng2022 import CurriculumReward
-from configs import setup_run_dir, ConsoleLogger
-from configs.base import resolve_device
-from trainers.ppo import PPOTrainer
+from src.configs import setup_run_dir, ConsoleLogger
+from src.configs.base import resolve_device
+from src.trainers.ppo import PPOTrainer
 
 
 def rewrite_rewards(batch, curriculum: CurriculumReward) -> None:

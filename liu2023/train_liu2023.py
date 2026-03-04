@@ -18,9 +18,9 @@ from liu2023.configs_liu2023 import (
     Liu2023PhysicsConfig,
 )
 from liu2023 import SoftSnakeEnv
-from configs import setup_run_dir, ConsoleLogger
-from configs.base import resolve_device
-from trainers.ppo import PPOTrainer
+from src.configs import setup_run_dir, ConsoleLogger
+from src.configs.base import resolve_device
+from src.trainers.ppo import PPOTrainer
 
 
 def parse_args():

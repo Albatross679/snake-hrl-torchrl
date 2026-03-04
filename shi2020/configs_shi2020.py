@@ -26,7 +26,7 @@ from typing import Optional
 
 import math
 
-from configs.base import MLBaseConfig, TensorBoard
+from src.configs.base import MLBaseConfig, TensorBoard
 
 
 class RobotType(str, Enum):

@@ -372,7 +372,7 @@ def create_gait_shaper(
         >>> gait_shaper = create_gait_shaper(buffer, sigma=1.0, weight=0.5)
         >>> reward = gait_shaper.compute_shaping_reward(prev_state, curr_state)
     """
-    from rewards.gait_potential import GaitPotential
+    from .gait_potential import GaitPotential
 
     potential = GaitPotential(demo_buffer, sigma=sigma, scale=1.0)
     return PotentialBasedRewardShaping(potential, gamma, scale=weight)
@@ -407,7 +407,7 @@ def create_curriculum_gait_shaper(
         Call shaper.potential_fn.set_progress(progress) to update sigma
         during training, where progress is in [0, 1].
     """
-    from rewards.gait_potential import CurriculumGaitPotential
+    from .gait_potential import CurriculumGaitPotential
 
     potential = CurriculumGaitPotential(
         demo_buffer,

@@ -8,10 +8,10 @@ import numpy as np
 import pytest
 import torch
 
-from configs.base import MetricGroups, TensorBoard, save_config, load_config
-from configs.training import DDPGConfig, PPOConfig
-from trainers.ddpg import DDPGTrainer, DeterministicActor, OUNoise
-from trainers.logging_utils import compute_grad_norm
+from src.configs.base import MetricGroups, TensorBoard, save_config, load_config
+from src.configs.training import DDPGConfig, PPOConfig
+from src.trainers.ddpg import DDPGTrainer, DeterministicActor, OUNoise
+from src.trainers.logging_utils import compute_grad_norm
 
 try:
     from jiang2024.configs_jiang2024 import CobraEnvConfig

@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from typing import Tuple, Optional, Protocol
 import numpy as np
 
-from configs.physics import PhysicsConfig
+from src.configs.physics import PhysicsConfig
 
 
 class SnakeGeometryProtocol(Protocol):

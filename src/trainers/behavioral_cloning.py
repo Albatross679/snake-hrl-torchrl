@@ -40,7 +40,7 @@ import torch.nn as nn
 from torch.utils.data import DataLoader, TensorDataset, random_split
 from tqdm import tqdm
 
-from behavioral_cloning.approach_experiences import ApproachExperienceBuffer
+from src.behavioral_cloning.approach_experiences import ApproachExperienceBuffer
 
 
 class BehavioralCloningPretrainer:

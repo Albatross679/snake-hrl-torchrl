@@ -8,16 +8,16 @@ time integration.
 from typing import Optional, Tuple, Dict, Any
 import numpy as np
 
-from configs.physics import PhysicsConfig, FrictionModel
-from configs.env import StateRepresentation
-from observations import (
+from src.configs.physics import PhysicsConfig, FrictionModel
+from src.configs.env import StateRepresentation
+from src.observations import (
     CompositeFeatureExtractor,
     CurvatureModeExtractor,
     VirtualChassisExtractor,
     GoalRelativeExtractor,
     ContactFeatureExtractor,
 )
-from physics.geometry import (
+from .geometry import (
     PreyGeometry,
     create_prey_geometry,
     compute_contact_points,

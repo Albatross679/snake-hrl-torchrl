@@ -30,8 +30,8 @@ import torch
 
 from bing2019.configs_bing2019 import LocomotionEnvConfig, LocomotionNetworkConfig
 from bing2019 import PlanarSnakeEnv
-from configs.base import resolve_device
-from networks.actor import create_actor
+from src.configs.base import resolve_device
+from src.networks.actor import create_actor
 
 
 def parse_args():

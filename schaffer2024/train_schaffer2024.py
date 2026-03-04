@@ -9,9 +9,9 @@ import argparse
 
 from schaffer2024.configs_schaffer2024 import Schaffer2024Config, Schaffer2024EnvConfig
 from schaffer2024.env_schaffer2024 import LatticeWormEnv
-from configs import setup_run_dir, ConsoleLogger
-from configs.base import resolve_device
-from trainers.ppo import PPOTrainer
+from src.configs import setup_run_dir, ConsoleLogger
+from src.configs.base import resolve_device
+from src.trainers.ppo import PPOTrainer
 
 
 def parse_args() -> argparse.Namespace:

@@ -10,10 +10,10 @@ import numpy as np
 
 import mujoco
 
-from configs.physics import PhysicsConfig, FrictionModel
-from configs.env import StateRepresentation
+from src.configs.physics import PhysicsConfig, FrictionModel
+from src.configs.env import StateRepresentation
 
-from physics.geometry import (
+from .geometry import (
     PreyGeometry,
     create_prey_geometry,
     compute_contact_points,
@@ -544,7 +544,7 @@ class MujocoSnakeRobot:
 
     def _get_reduced_observation(self, state: Dict[str, Any]) -> np.ndarray:
         """Get compact feature-based observation (16-dim)."""
-        from observations import (
+        from src.observations import (
             CompositeFeatureExtractor,
             CurvatureModeExtractor,
             VirtualChassisExtractor,
@@ -562,7 +562,7 @@ class MujocoSnakeRobot:
 
     def _get_reduced_approach_observation(self, state: Dict[str, Any]) -> np.ndarray:
         """Get minimal observation for approach task (13-dim)."""
-        from observations import (
+        from src.observations import (
             CompositeFeatureExtractor,
             CurvatureModeExtractor,
             VirtualChassisExtractor,
@@ -589,7 +589,7 @@ class MujocoSnakeRobot:
 
     def _get_reduced_coil_observation(self, state: Dict[str, Any]) -> np.ndarray:
         """Get observation with contact features for coiling (22-dim)."""
-        from observations import (
+        from src.observations import (
             CompositeFeatureExtractor,
             CurvatureModeExtractor,
             VirtualChassisExtractor,

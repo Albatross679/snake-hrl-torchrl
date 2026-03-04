@@ -26,10 +26,10 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import List, Tuple
 
-from configs.base import TensorBoard
-from configs.network import ActorConfig, CriticConfig, NetworkConfig
-from configs.physics import MujocoPhysicsConfig
-from configs.training import PPOConfig
+from src.configs.base import TensorBoard
+from src.configs.network import ActorConfig, CriticConfig, NetworkConfig
+from src.configs.physics import MujocoPhysicsConfig
+from src.configs.training import PPOConfig
 
 
 class PathType(str, Enum):

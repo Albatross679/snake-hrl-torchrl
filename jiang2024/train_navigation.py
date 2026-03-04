@@ -14,9 +14,9 @@ from jiang2024.configs_jiang2024 import (
     CobraMazeEnvConfig,
 )
 from jiang2024.env_jiang2024 import CobraNavigationEnv, CobraMazeEnv
-from configs import setup_run_dir, ConsoleLogger
-from configs.base import resolve_device
-from trainers.ddpg import DDPGTrainer
+from src.configs import setup_run_dir, ConsoleLogger
+from src.configs.base import resolve_device
+from src.trainers.ddpg import DDPGTrainer
 
 
 def main():

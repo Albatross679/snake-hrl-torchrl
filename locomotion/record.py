@@ -6,17 +6,17 @@ Supports MP4 and GIF output.
 
 Usage:
     # Passive dynamics (zero action)
-    python -m locomotion.record_locomotion --steps 200 \
+    python -m locomotion.record --steps 200 \
         --output media/locomotion_passive.mp4
 
     # With trained policy
-    python -m locomotion.record_locomotion \
+    python -m locomotion.record \
         --checkpoint model/locomotion/best.pt \
         --gait forward \
         --output media/locomotion_forward.mp4
 
     # GIF output
-    python -m locomotion.record_locomotion \
+    python -m locomotion.record \
         --checkpoint model/locomotion/best.pt \
         --gait turn_left \
         --output media/locomotion_turn.gif
@@ -30,13 +30,13 @@ import numpy as np
 import torch
 from matplotlib.animation import FuncAnimation
 
-from locomotion.configs_locomotion import (
+from locomotion.config import (
     GaitType,
     LocomotionConfig,
     LocomotionNetworkConfig,
 )
-from locomotion.env_locomotion import LocomotionEnv
-from networks.actor import create_actor
+from locomotion.env import LocomotionEnv
+from src.networks.actor import create_actor
 
 
 def parse_args() -> argparse.Namespace:

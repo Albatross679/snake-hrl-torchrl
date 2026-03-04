@@ -6,13 +6,13 @@ from typing import Tuple, Optional, List
 
 # Import physics configs — canonical location is configs.physics
 # Re-exported here for backward compatibility
-from configs.physics import (
+from .physics import (
     PhysicsConfig,
     SolverFramework,
     ElasticaGroundContact,
     DismechConfig,
 )
-from configs.geometry import GeometryConfig
+from .geometry import GeometryConfig
 
 
 class ControlMethod(str, Enum):

@@ -8,19 +8,19 @@ import torch.nn as nn
 from torch.optim import Adam
 import numpy as np
 
-from trainers.logging_utils import compute_grad_norm, log_system_metrics
+from .logging_utils import compute_grad_norm, log_system_metrics
 
 from torchrl.envs import EnvBase
 from torchrl.data import ReplayBuffer, LazyTensorStorage
 from tensordict import TensorDict
 from tqdm import tqdm
 
-from configs.training import DDPGConfig
-from configs.network import NetworkConfig
-from configs.base import resolve_device
-from configs.run_dir import setup_run_dir
-from networks.actor import ActorNetwork, get_activation
-from networks.critic import QNetwork
+from src.configs.training import DDPGConfig
+from src.configs.network import NetworkConfig
+from src.configs.base import resolve_device
+from src.configs.run_dir import setup_run_dir
+from src.networks.actor import ActorNetwork, get_activation
+from src.networks.critic import QNetwork
 
 
 class DeterministicActor(nn.Module):

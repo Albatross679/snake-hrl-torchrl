@@ -1,19 +1,19 @@
 """Training script for free-body snake locomotion via PPO.
 
 Usage:
-    python -m locomotion.train_locomotion --gait forward --total-frames 2000000
-    python -m locomotion.train_locomotion --gait turn_left --seed 0
-    python -m locomotion.train_locomotion --gait u_turn --max-wall-time 30m
+    python -m locomotion.train --gait forward --total-frames 2000000
+    python -m locomotion.train --gait turn_left --seed 0
+    python -m locomotion.train --gait u_turn --max-wall-time 30m
 """
 
 import argparse
 import re
 
-from configs import setup_run_dir, ConsoleLogger
-from configs.base import resolve_device
-from locomotion.configs_locomotion import GaitType, LocomotionConfig, LocomotionEnvConfig
-from locomotion.env_locomotion import LocomotionEnv
-from trainers.ppo import PPOTrainer
+from src.configs import setup_run_dir, ConsoleLogger
+from src.configs.base import resolve_device
+from locomotion.config import GaitType, LocomotionConfig, LocomotionEnvConfig
+from locomotion.env import LocomotionEnv
+from src.trainers.ppo import PPOTrainer
 
 
 def parse_wall_time(s: str) -> float:

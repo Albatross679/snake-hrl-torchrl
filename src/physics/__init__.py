@@ -6,8 +6,8 @@ Supports multiple physics frameworks:
 - dismech-rods: C++ discrete elastic rod via py_dismech (SimulationManager API)
 """
 
-from configs.physics import SolverFramework, PhysicsConfig
-from physics.geometry import (
+from src.configs.physics import SolverFramework, PhysicsConfig
+from .geometry import (
     SnakeGeometry,
     PreyGeometry,
     create_snake_geometry,
@@ -33,22 +33,22 @@ def create_snake_robot(
         SnakeRobot, ElasticaSnakeRobot, or DismechRodsSnakeRobot based on config.solver_framework
     """
     if config.solver_framework == SolverFramework.ELASTICA:
-        from physics.elastica_snake_robot import ElasticaSnakeRobot
+        from .elastica_snake_robot import ElasticaSnakeRobot
         return ElasticaSnakeRobot(config, initial_snake_position, initial_prey_position)
     elif config.solver_framework == SolverFramework.DISMECH_RODS:
-        from physics.dismech_rods_snake_robot import DismechRodsSnakeRobot
+        from .dismech_rods_snake_robot import DismechRodsSnakeRobot
         return DismechRodsSnakeRobot(config, initial_snake_position, initial_prey_position)
     elif config.solver_framework == SolverFramework.MUJOCO:
-        from physics.mujoco_snake_robot import MujocoSnakeRobot
+        from .mujoco_snake_robot import MujocoSnakeRobot
         return MujocoSnakeRobot(config, initial_snake_position, initial_prey_position)
     else:
-        from physics.snake_robot import SnakeRobot
+        from .snake_robot import SnakeRobot
         return SnakeRobot(config, initial_snake_position, initial_prey_position)
 
 
 # Keep existing exports for backwards compatibility
-from physics.snake_robot import SnakeRobot
-from physics.cpg import (
+from .snake_robot import SnakeRobot
+from .cpg import (
     MatsuokaOscillator,
     HopfOscillator,
     CPGNetwork,

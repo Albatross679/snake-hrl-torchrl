@@ -8,8 +8,8 @@ import time
 
 import torch
 
-from networks.actor import create_actor
-from configs.network import ActorConfig
+from src.networks.actor import create_actor
+from src.configs.network import ActorConfig
 
 from zheng2022.configs_zheng2022 import Zheng2022EnvConfig
 from zheng2022 import UnderwaterSnakeEnv

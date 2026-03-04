@@ -1,11 +1,11 @@
 """TorchRL Environment implementations for snake predation."""
 
-from envs.base_env import BaseSnakeEnv
+from .base_env import BaseSnakeEnv
 
 try:
-    from envs.approach_env import ApproachEnv
-    from envs.coil_env import CoilEnv
-    from envs.hrl_env import HRLEnv
+    from .approach_env import ApproachEnv
+    from .coil_env import CoilEnv
+    from .hrl_env import HRLEnv
 except ImportError:
     pass
 

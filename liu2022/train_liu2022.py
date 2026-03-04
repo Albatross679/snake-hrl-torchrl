@@ -15,9 +15,9 @@ import argparse
 
 from liu2022.configs_liu2022 import Liu2022Config, PathType
 from liu2022.env_liu2022 import PathFollowingSnakeEnv
-from configs import setup_run_dir, ConsoleLogger
-from configs.base import resolve_device
-from trainers.ppo import PPOTrainer
+from src.configs import setup_run_dir, ConsoleLogger
+from src.configs.base import resolve_device
+from src.trainers.ppo import PPOTrainer
 
 
 def parse_args() -> argparse.Namespace:

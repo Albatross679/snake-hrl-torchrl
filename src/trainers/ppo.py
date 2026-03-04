@@ -13,7 +13,7 @@ from torch.optim import Adam
 from torch.optim.lr_scheduler import LambdaLR
 import numpy as np
 
-from trainers.logging_utils import log_system_metrics
+from .logging_utils import log_system_metrics
 
 from torchrl.envs import EnvBase
 from torchrl.objectives import ClipPPOLoss
@@ -23,12 +23,12 @@ from torchrl.data import ReplayBuffer, LazyTensorStorage
 from tensordict import TensorDict
 from tqdm import tqdm
 
-from configs.training import PPOConfig
-from configs.network import NetworkConfig
-from configs.base import resolve_device
-from configs.run_dir import setup_run_dir
-from networks.actor import create_actor
-from networks.critic import create_critic
+from src.configs.training import PPOConfig
+from src.configs.network import NetworkConfig
+from src.configs.base import resolve_device
+from src.configs.run_dir import setup_run_dir
+from src.networks.actor import create_actor
+from src.networks.critic import create_critic
 
 
 class PPOTrainer:

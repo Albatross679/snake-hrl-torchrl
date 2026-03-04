@@ -13,8 +13,8 @@ from torchrl.data import (
 )
 from tensordict import TensorDict, TensorDictBase
 
-from configs.env import EnvConfig, PhysicsConfig, StateRepresentation
-from physics import create_snake_robot
+from src.configs.env import EnvConfig, PhysicsConfig, StateRepresentation
+from src.physics import create_snake_robot
 
 
 class BaseSnakeEnv(EnvBase):

@@ -16,10 +16,10 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import List, Optional, Tuple
 
-from configs.base import TensorBoard
-from configs.network import ActorConfig, CriticConfig, NetworkConfig
-from configs.physics import DismechConfig, FrictionConfig, FrictionModel, GeometryConfig
-from configs.training import SACConfig
+from src.configs.base import TensorBoard
+from src.configs.network import ActorConfig, CriticConfig, NetworkConfig
+from src.configs.physics import DismechConfig, FrictionConfig, FrictionModel, GeometryConfig
+from src.configs.training import SACConfig
 
 
 # ---------------------------------------------------------------------------

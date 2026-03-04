@@ -22,7 +22,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Tuple
 
-from configs.geometry import GeometryConfig
+from .geometry import GeometryConfig
 
 
 class SolverFramework(str, Enum):

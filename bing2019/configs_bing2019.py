@@ -15,10 +15,10 @@ Composable pieces:
 from dataclasses import dataclass, field
 from typing import List, Optional
 
-from configs.base import Checkpointing, TensorBoard
-from configs.network import ActorConfig, CriticConfig, NetworkConfig
-from configs.physics import MujocoPhysicsConfig
-from configs.training import PPOConfig
+from src.configs.base import Checkpointing, TensorBoard
+from src.configs.network import ActorConfig, CriticConfig, NetworkConfig
+from src.configs.physics import MujocoPhysicsConfig
+from src.configs.training import PPOConfig
 
 
 # ---------------------------------------------------------------------------

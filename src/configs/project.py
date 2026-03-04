@@ -2,10 +2,10 @@
 
 from dataclasses import dataclass, field
 
-from configs.base import MLBaseConfig, Checkpointing
-from configs.training import PPOConfig
-from configs.env import ApproachEnvConfig, CoilEnvConfig
-from configs.network import NetworkConfig, HRLNetworkConfig
+from .base import MLBaseConfig, Checkpointing
+from .training import PPOConfig
+from .env import ApproachEnvConfig, CoilEnvConfig
+from .network import NetworkConfig, HRLNetworkConfig
 
 
 @dataclass

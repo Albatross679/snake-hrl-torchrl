@@ -15,9 +15,9 @@ import argparse
 
 from liu2021.configs_liu2021 import Liu2021Config
 from liu2021.env_liu2021 import ContactAwareSoftSnakeEnv
-from configs import setup_run_dir, ConsoleLogger
-from configs.base import resolve_device
-from trainers.ppo import PPOTrainer
+from src.configs import setup_run_dir, ConsoleLogger
+from src.configs.base import resolve_device
+from src.trainers.ppo import PPOTrainer
 
 
 def parse_args() -> argparse.Namespace:

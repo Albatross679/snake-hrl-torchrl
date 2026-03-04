@@ -11,8 +11,8 @@ from typing import Any, Dict, List, Optional, Union
 
 import numpy as np
 
-from observations.extractors import FeatureExtractor
-from behavioral_cloning.buffer import DemonstrationBuffer
+from src.observations.extractors import FeatureExtractor
+from .buffer import DemonstrationBuffer
 
 
 def save_demonstrations(

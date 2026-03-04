@@ -49,12 +49,12 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 
-from configs.env import PhysicsConfig
-from physics.cpg.action_wrapper import DirectSerpenoidSteeringTransform
-from behavioral_cloning.fitness import compute_displacement_vector
-from observations.curvature_modes import CurvatureModeExtractor
-from observations.virtual_chassis import VirtualChassisExtractor
-from physics.snake_robot import SnakeRobot
+from src.configs.env import PhysicsConfig
+from src.physics.cpg.action_wrapper import DirectSerpenoidSteeringTransform
+from .fitness import compute_displacement_vector
+from src.observations.curvature_modes import CurvatureModeExtractor
+from src.observations.virtual_chassis import VirtualChassisExtractor
+from src.physics.snake_robot import SnakeRobot
 
 
 def _create_snake_robot_with_direction(
@@ -84,8 +84,8 @@ def _create_snake_robot_with_direction(
         Environment,
         ImplicitEulerTimeStepper,
     )
-    from physics.snake_robot import SnakeGeometryAdapter
-    from physics.geometry import create_prey_geometry
+    from src.physics.snake_robot import SnakeGeometryAdapter
+    from src.physics.geometry import create_prey_geometry
 
     if initial_position is None:
         initial_position = np.array([0.0, 0.0, 0.0])

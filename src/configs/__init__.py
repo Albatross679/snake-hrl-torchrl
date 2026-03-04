@@ -1,7 +1,7 @@
 """Configuration dataclasses for environments, networks, and training."""
 
 # Base ML config and utilities
-from configs.base import (
+from .base import (
     MLBaseConfig,
     Checkpointing,
     MetricGroups,
@@ -14,14 +14,14 @@ from configs.base import (
 )
 
 # Run directory and console logging
-from configs.run_dir import setup_run_dir
-from configs.console import ConsoleLogger
+from .run_dir import setup_run_dir
+from .console import ConsoleLogger
 
 # Geometry config
-from configs.geometry import GeometryConfig
+from .geometry import GeometryConfig
 
 # Physics config hierarchy
-from configs.physics import (
+from .physics import (
     SolverFramework,
     ElasticaGroundContact,
     FrictionModel,
@@ -37,7 +37,7 @@ from configs.physics import (
 )
 
 # Environment configs
-from configs.env import (
+from .env import (
     ControlMethod,
     StateRepresentation,
     EnvConfig,
@@ -49,10 +49,10 @@ from configs.env import (
 )
 
 # Network configs
-from configs.network import NetworkConfig, ActorConfig, CriticConfig, HRLNetworkConfig
+from .network import NetworkConfig, ActorConfig, CriticConfig, HRLNetworkConfig
 
 # Training configs
-from configs.training import (
+from .training import (
     RLConfig,
     TrainingConfig,
     PPOConfig,
@@ -63,7 +63,7 @@ from configs.training import (
 )
 
 # Project-level configs
-from configs.project import (
+from .project import (
     SnakeApproachConfig,
     SnakeCoilConfig,
     SnakeHRLConfig,

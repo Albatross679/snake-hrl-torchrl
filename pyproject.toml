@@ -52,10 +52,9 @@ monitoring = ["psutil>=5.9.0"]
 # Entry points removed — scripts are now run directly from script/
 
 [tool.setuptools.packages.find]
-where = ["src", "."]
+where = ["."]
 include = [
-    "configs*", "envs*", "observations*", "networks*",
-    "physics*", "rewards*", "trainers*", "behavioral_cloning*",
+    "src", "src.*",
     "bing2019*",
     "choi2025*",
     "locomotion*",

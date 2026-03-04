@@ -24,7 +24,7 @@ from bing2019.configs_bing2019 import (
 )
 from bing2019 import PlanarSnakeEnv
 from bing2019.rewards_bing2019 import compute_energy_normalized
-from configs.base import resolve_device
+from src.configs.base import resolve_device
 
 
 def parse_args():

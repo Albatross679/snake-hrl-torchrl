@@ -52,15 +52,15 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 
-from configs.env import PhysicsConfig
-from behavioral_cloning.generators import SerpenoidGenerator
-from behavioral_cloning.fitness import (
+from src.configs.env import PhysicsConfig
+from .generators import SerpenoidGenerator
+from .fitness import (
     compute_displacement_vector,
     filter_successful_trajectories,
     compute_direction_coverage,
 )
-from observations.curvature_modes import CurvatureModeExtractor
-from observations.virtual_chassis import VirtualChassisExtractor
+from src.observations.curvature_modes import CurvatureModeExtractor
+from src.observations.virtual_chassis import VirtualChassisExtractor
 
 
 class ApproachExperienceBuffer:

@@ -1,15 +1,15 @@
 """Evaluation script for soft manipulator (Choi & Tong, 2025).
 
 Usage:
-    python -m choi2025.evaluate_choi2025 --task follow_target --checkpoint model/best.pt
+    python -m choi2025.evaluate --task follow_target --checkpoint model/best.pt
 """
 
 import argparse
 
-from choi2025.configs_choi2025 import Choi2025Config, TaskType
-from choi2025.env_choi2025 import SoftManipulatorEnv
-from configs.base import resolve_device
-from trainers.sac import SACTrainer
+from choi2025.config import Choi2025Config, TaskType
+from choi2025.env import SoftManipulatorEnv
+from src.configs.base import resolve_device
+from src.trainers.sac import SACTrainer
 
 
 def parse_args() -> argparse.Namespace:

@@ -16,8 +16,8 @@ from naughton2021.configs_naughton2021 import (
     Naughton2021EnvConfig,
 )
 from naughton2021.env_naughton2021 import ElasticaControlEnv
-from configs import setup_run_dir, ConsoleLogger
-from configs.base import resolve_device
+from src.configs import setup_run_dir, ConsoleLogger
+from src.configs.base import resolve_device
 
 
 def parse_args() -> argparse.Namespace:
@@ -68,7 +68,7 @@ def main():
     with ConsoleLogger(run_dir, config.console):
         # Select trainer
         if args.algo == "sac":
-            from trainers.sac import SACTrainer
+            from src.trainers.sac import SACTrainer
 
             trainer = SACTrainer(
                 env=env,
@@ -78,8 +78,8 @@ def main():
                 run_dir=run_dir,
             )
         elif args.algo == "ppo":
-            from configs.training import PPOConfig
-            from trainers.ppo import PPOTrainer
+            from src.configs.training import PPOConfig
+            from src.trainers.ppo import PPOTrainer
 
             ppo_config = PPOConfig(
                 name="naughton2021",
@@ -96,8 +96,8 @@ def main():
                 run_dir=run_dir,
             )
         elif args.algo == "ddpg":
-            from trainers.ddpg import DDPGTrainer
-            from configs.training import DDPGConfig
+            from src.trainers.ddpg import DDPGTrainer
+            from src.configs.training import DDPGConfig
 
             ddpg_config = DDPGConfig(
                 name="naughton2021",

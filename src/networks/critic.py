@@ -7,8 +7,8 @@ import torch.nn as nn
 from torchrl.modules import ValueOperator
 from tensordict.nn import TensorDictModule
 
-from configs.network import CriticConfig
-from networks.actor import get_activation
+from src.configs.network import CriticConfig
+from .actor import get_activation
 
 
 class CriticNetwork(nn.Module):

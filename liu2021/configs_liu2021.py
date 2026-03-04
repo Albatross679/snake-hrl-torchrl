@@ -26,9 +26,9 @@ Composable pieces:
 from dataclasses import dataclass, field
 from typing import List, Tuple
 
-from configs.base import TensorBoard
-from configs.network import ActorConfig, CriticConfig, NetworkConfig
-from configs.training import PPOConfig
+from src.configs.base import TensorBoard
+from src.configs.network import ActorConfig, CriticConfig, NetworkConfig
+from src.configs.training import PPOConfig
 
 
 # ---------------------------------------------------------------------------

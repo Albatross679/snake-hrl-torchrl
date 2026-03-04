@@ -10,8 +10,8 @@ from typing import Any, Dict, Optional, Tuple
 import numpy as np
 import torch
 
-from physics.cpg.oscillators import CPGNetwork, HopfOscillator
-from configs.env import CPGConfig
+from .oscillators import CPGNetwork, HopfOscillator
+from src.configs.env import CPGConfig
 
 
 class CPGActionTransform:

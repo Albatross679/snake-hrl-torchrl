@@ -9,8 +9,8 @@ from typing import Optional, Dict, Any
 import os
 import numpy as np
 
-from configs.physics import PhysicsConfig, FrictionModel
-from configs.env import StateRepresentation
+from src.configs.physics import PhysicsConfig, FrictionModel
+from src.configs.env import StateRepresentation
 
 # PARDISO solver in dismech-rods requires single-threaded MKL to avoid
 # symbolic factorization errors when other libraries (e.g. torch) have
@@ -19,7 +19,7 @@ os.environ.setdefault("MKL_NUM_THREADS", "1")
 
 import py_dismech
 
-from physics.geometry import (
+from .geometry import (
     PreyGeometry,
     create_prey_geometry,
     compute_contact_points,
@@ -420,7 +420,7 @@ class DismechRodsSnakeRobot:
 
     def _get_reduced_observation(self, state: Dict[str, Any]) -> np.ndarray:
         """Get compact feature-based observation (16-dim)."""
-        from observations import (
+        from src.observations import (
             CompositeFeatureExtractor,
             CurvatureModeExtractor,
             VirtualChassisExtractor,
@@ -438,7 +438,7 @@ class DismechRodsSnakeRobot:
 
     def _get_reduced_approach_observation(self, state: Dict[str, Any]) -> np.ndarray:
         """Get minimal observation for approach task (13-dim)."""
-        from observations import (
+        from src.observations import (
             CompositeFeatureExtractor,
             CurvatureModeExtractor,
             VirtualChassisExtractor,
@@ -465,7 +465,7 @@ class DismechRodsSnakeRobot:
 
     def _get_reduced_coil_observation(self, state: Dict[str, Any]) -> np.ndarray:
         """Get observation with contact features for coiling (22-dim)."""
-        from observations import (
+        from src.observations import (
             CompositeFeatureExtractor,
             CurvatureModeExtractor,
             VirtualChassisExtractor,

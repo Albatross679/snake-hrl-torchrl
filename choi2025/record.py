@@ -7,23 +7,23 @@ GIF via matplotlib animation.
 
 Usage:
     # Passive dynamics (zero action)
-    python -m choi2025.record_choi2025 --steps 200 \
+    python -m choi2025.record --steps 200 \
         --output media/manipulator_passive.mp4
 
     # With trained policy
-    python -m choi2025.record_choi2025 \
+    python -m choi2025.record \
         --checkpoint model/choi2025/best.pt \
         --task follow_target \
         --output media/manipulator_trained.mp4
 
     # GIF output, custom view angle
-    python -m choi2025.record_choi2025 \
+    python -m choi2025.record \
         --checkpoint model/choi2025/best.pt \
         --output media/manipulator.gif \
         --elevation 30 --azimuth 45
 
     # Multiple episodes stitched together
-    python -m choi2025.record_choi2025 \
+    python -m choi2025.record \
         --checkpoint model/choi2025/best.pt \
         --num-episodes 3 --output media/manipulator_3ep.mp4
 """
@@ -37,10 +37,10 @@ import numpy as np
 import torch
 from matplotlib.animation import FuncAnimation
 
-from choi2025.configs_choi2025 import Choi2025Config, Choi2025NetworkConfig, TaskType
-from choi2025.env_choi2025 import SoftManipulatorEnv
-from configs.base import resolve_device
-from networks.actor import create_actor
+from choi2025.config import Choi2025Config, Choi2025NetworkConfig, TaskType
+from choi2025.env import SoftManipulatorEnv
+from src.configs.base import resolve_device
+from src.networks.actor import create_actor
 
 
 def parse_args() -> argparse.Namespace:

@@ -20,9 +20,9 @@ from licher2025.configs_licher2025 import Licher2025Config
 from licher2025.pinn_licher2025 import DomainDecoupledPINN
 from licher2025.mpc_licher2025 import NonlinearEvolutionaryMPC
 from licher2025.env_licher2025 import SoftPneumaticEnv
-from configs.base import resolve_device
-from configs.run_dir import setup_run_dir
-from configs.console import ConsoleLogger
+from src.configs.base import resolve_device
+from src.configs.run_dir import setup_run_dir
+from src.configs.console import ConsoleLogger
 
 
 def parse_args() -> argparse.Namespace:

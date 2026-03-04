@@ -17,14 +17,14 @@ from torchrl.data import (
 )
 from torchrl.envs import EnvBase
 
-from choi2025.configs_choi2025 import Choi2025EnvConfig, TaskType
-from choi2025.control_choi2025 import DeltaCurvatureController
-from choi2025.rewards_choi2025 import (
+from choi2025.config import Choi2025EnvConfig, TaskType
+from choi2025.control import DeltaCurvatureController
+from choi2025.rewards import (
     compute_follow_target_reward,
     compute_ik_reward,
     compute_obstacle_reward,
 )
-from choi2025.tasks_choi2025 import ObstacleManager, TargetGenerator
+from choi2025.tasks import ObstacleManager, TargetGenerator
 
 # DisMech imports
 import dismech

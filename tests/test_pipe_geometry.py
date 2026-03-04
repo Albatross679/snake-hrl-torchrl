@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from physics.pipe_geometry import PipeGeometry, PipeRing, _make_ring, _perpendicular_vector
+from src.physics.pipe_geometry import PipeGeometry, PipeRing, _make_ring, _perpendicular_vector
 
 
 class TestPerpendicularVector:

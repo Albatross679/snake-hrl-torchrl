@@ -9,10 +9,10 @@ Usage:
 import argparse
 import numpy as np
 
-from configs.base import resolve_device
+from src.configs.base import resolve_device
 from jiang2024.configs_jiang2024 import CobraEnvConfig, CobraMazeEnvConfig
 from jiang2024.env_jiang2024 import CobraNavigationEnv, CobraMazeEnv
-from trainers.ddpg import DDPGTrainer
+from src.trainers.ddpg import DDPGTrainer
 
 
 def main():

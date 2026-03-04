@@ -10,7 +10,7 @@ where:
 
 import math
 
-from locomotion.configs_locomotion import LocomotionRewardConfig
+from locomotion.config import LocomotionRewardConfig
 
 
 def compute_goal_reward(

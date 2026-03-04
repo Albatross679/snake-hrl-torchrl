@@ -7,8 +7,8 @@ PyElastica (Cosserat rod theory) with symplectic time integration.
 from typing import Optional, Dict, Any
 import numpy as np
 
-from configs.physics import PhysicsConfig, ElasticaGroundContact, FrictionModel
-from configs.env import StateRepresentation
+from src.configs.physics import PhysicsConfig, ElasticaGroundContact, FrictionModel
+from src.configs.env import StateRepresentation
 
 # PyElastica imports
 from elastica import (
@@ -24,7 +24,7 @@ from elastica import (
     extend_stepper_interface,
 )
 
-from physics.geometry import (
+from .geometry import (
     PreyGeometry,
     create_prey_geometry,
     compute_contact_points,
@@ -288,10 +288,10 @@ class ElasticaSnakeRobot:
                 cn=friction.rft_cn,
             )
         elif friction.model == FrictionModel.COULOMB:
-            from physics.friction import CoulombForcing
+            from .friction import CoulombForcing
             self._custom_forcing = CoulombForcing(friction)
         elif friction.model == FrictionModel.STRIBECK:
-            from physics.friction import StribeckForcing
+            from .friction import StribeckForcing
             self._custom_forcing = StribeckForcing(friction)
         # FrictionModel.NONE / NATIVE: no ground forcing
 
@@ -531,7 +531,7 @@ class ElasticaSnakeRobot:
     def _get_reduced_observation(self, state: Dict[str, Any]) -> np.ndarray:
         """Get compact feature-based observation (16-dim)."""
         # Import here to avoid circular imports
-        from observations import (
+        from src.observations import (
             CompositeFeatureExtractor,
             CurvatureModeExtractor,
             VirtualChassisExtractor,
@@ -549,7 +549,7 @@ class ElasticaSnakeRobot:
 
     def _get_reduced_approach_observation(self, state: Dict[str, Any]) -> np.ndarray:
         """Get minimal observation for approach task (13-dim)."""
-        from observations import (
+        from src.observations import (
             CompositeFeatureExtractor,
             CurvatureModeExtractor,
             VirtualChassisExtractor,
@@ -576,7 +576,7 @@ class ElasticaSnakeRobot:
 
     def _get_reduced_coil_observation(self, state: Dict[str, Any]) -> np.ndarray:
         """Get observation with contact features for coiling (22-dim)."""
-        from observations import (
+        from src.observations import (
             CompositeFeatureExtractor,
             CurvatureModeExtractor,
             VirtualChassisExtractor,

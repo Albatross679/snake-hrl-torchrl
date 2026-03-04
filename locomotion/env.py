@@ -22,9 +22,9 @@ from torchrl.data import (
 )
 from torchrl.envs import EnvBase
 
-from locomotion.configs_locomotion import LocomotionEnvConfig
-from locomotion.rewards_locomotion import compute_goal_reward
-from physics.cpg.action_wrapper import DirectSerpenoidSteeringTransform
+from locomotion.config import LocomotionEnvConfig
+from locomotion.rewards import compute_goal_reward
+from src.physics.cpg.action_wrapper import DirectSerpenoidSteeringTransform
 
 # DisMech imports
 import dismech
@@ -180,7 +180,7 @@ class LocomotionEnv(EnvBase):
 
         # Add friction forces
         friction = physics.friction
-        from configs.physics import FrictionModel
+        from src.configs.physics import FrictionModel
         if friction.model == FrictionModel.RFT:
             env.add_force("rft", ct=friction.rft_ct, cn=friction.rft_cn)
         elif friction.model in (FrictionModel.COULOMB, FrictionModel.STRIBECK):

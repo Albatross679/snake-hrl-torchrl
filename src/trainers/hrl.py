@@ -15,15 +15,15 @@ from torchrl.envs import EnvBase
 from tensordict import TensorDict
 from tqdm import tqdm
 
-from configs.training import HRLConfig
-from configs.network import HRLNetworkConfig
-from configs.base import resolve_device
-from trainers.ppo import PPOTrainer
-from envs.approach_env import ApproachEnv
-from envs.coil_env import CoilEnv
-from envs.hrl_env import HRLEnv
-from networks.actor import CategoricalActorNetwork, create_actor
-from networks.critic import create_critic
+from src.configs.training import HRLConfig
+from src.configs.network import HRLNetworkConfig
+from src.configs.base import resolve_device
+from .ppo import PPOTrainer
+from src.envs.approach_env import ApproachEnv
+from src.envs.coil_env import CoilEnv
+from src.envs.hrl_env import HRLEnv
+from src.networks.actor import CategoricalActorNetwork, create_actor
+from src.networks.critic import create_critic
 
 
 class HRLTrainer:

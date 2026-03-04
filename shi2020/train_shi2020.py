@@ -27,9 +27,9 @@ from shi2020.configs_shi2020 import (
     Shi2020EnvConfig,
 )
 from shi2020.env_shi2020 import WheeledSnakeEnv, SwimmingSnakeEnv
-from configs.base import resolve_device
-from configs.run_dir import setup_run_dir
-from configs.console import ConsoleLogger
+from src.configs.base import resolve_device
+from src.configs.run_dir import setup_run_dir
+from src.configs.console import ConsoleLogger
 
 
 class QNetwork(nn.Module):
