@@ -73,8 +73,8 @@ snake-hrl/
 
 ## Credentials
 
-- HuggingFace access token: `set HF_TOKEN env var`
-- WandB API key: `set WANDB_API_KEY env var`
+- HuggingFace access token: set `HF_TOKEN` env var
+- WandB API key: set `WANDB_API_KEY` env var
 
 ## Todoist
 
