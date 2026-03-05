@@ -60,33 +60,6 @@ snake-hrl/
 - `data/` — data files
 - `doc/` — documentation files
 
-## Commands
-
-### Setup
-```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -e ".[dev]"
-```
-
-### Training
-```bash
-train-approach    # Train approach policy
-train-coil        # Train coil policy
-train-hrl         # Train full HRL system
-```
-
-### Evaluation
-```bash
-evaluate          # Run evaluation
-```
-
-### Testing
-```bash
-pytest            # Run all tests
-pytest tests/test_envs.py    # Run specific test file
-```
-
 ## Architecture
 
 - **Configs** (`src/configs/`): Dataclass-based hierarchical config for env, network, and training parameters
@@ -98,6 +71,11 @@ pytest tests/test_envs.py    # Run specific test file
 - **Trainers** (`src/trainers/`): TorchRL-based training loops for PPO and HRL
 - **Behavioral Cloning** (`src/behavioral_cloning/`): Demo generation, experience buffers, fitness evaluation, and BC pretraining data
 
+## Credentials
+
+- HuggingFace access token: `set HF_TOKEN env var`
+- WandB API key: `set WANDB_API_KEY env var`
+
 ## Todoist
 
 - Project ID: `6fxH85hJ3hvWq8hh`
@@ -108,9 +86,11 @@ IMPORTANT: You MUST document all work in `doc/` after completing any task. Each 
 
 Follow the skill at `.claude/skills/markdown-for-project` for formatting, frontmatter, naming conventions, and templates.
 
-| What | Where | Naming | When |
-|---|---|---|---|
-| Logs | `doc/logs/` | `<topic>.md` | After ANY code change or task |
-| Experiments | `doc/experiments/` | `<topic>.md` | When running simulations/tests |
-| Issues | `doc/issues/` | `<topic>.md` | When encountering bugs/errors |
-| Knowledge | `doc/knowledge/` | `<topic>.md` | When capturing domain knowledge or reference material |
+There are four file classes (one per doc type): `log`, `experiment`, `issue`, `knowledge`.
+
+| What | Where | Naming | When | File Class |
+|---|---|---|---|---|
+| Logs | `doc/logs/` | `<topic>.md` | After ANY code change or task | `log` |
+| Experiments | `doc/experiments/` | `<topic>.md` | When running simulations/tests | `experiment` |
+| Issues | `doc/issues/` | `<topic>.md` | When encountering bugs/errors | `issue` |
+| Knowledge | `doc/knowledge/` | `<topic>.md` | When capturing domain knowledge or reference material | `knowledge` |

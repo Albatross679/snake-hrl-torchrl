@@ -13,7 +13,7 @@ from torch.optim import Adam
 from torch.optim.lr_scheduler import LambdaLR
 import numpy as np
 
-from .logging_utils import log_system_metrics
+from .logging_utils import collect_system_metrics
 
 from torchrl.envs import EnvBase
 from torchrl.objectives import ClipPPOLoss
@@ -78,8 +78,8 @@ class PPOTrainer:
             actor_network=self.actor,
             critic_network=self.critic,
             clip_epsilon=self.config.clip_epsilon,
-            entropy_coef=self.config.entropy_coef,
-            critic_coef=self.config.value_coef,
+            entropy_coeff=self.config.entropy_coef,
+            critic_coeff=self.config.value_coef,
             normalize_advantage=self.config.normalize_advantage,
         )
 
@@ -141,16 +141,22 @@ class PPOTrainer:
         self.log_dir = self.run_dir
         self.save_dir = self.run_dir / "checkpoints"
         self.save_dir.mkdir(parents=True, exist_ok=True)
-        tb_dir = self.run_dir / "tensorboard"
 
-        # TensorBoard
-        self.writer = None
-        if self.config.tensorboard.enabled:
-            from torch.utils.tensorboard import SummaryWriter
+        # Weights & Biases
+        self.wandb_run = None
+        if self.config.wandb.enabled:
+            import wandb
+            from dataclasses import asdict
 
-            self.writer = SummaryWriter(
-                log_dir=str(tb_dir),
-                flush_secs=self.config.tensorboard.flush_secs,
+            wandb_cfg = self.config.wandb
+            self.wandb_run = wandb.init(
+                project=wandb_cfg.project,
+                entity=wandb_cfg.entity or None,
+                group=wandb_cfg.group or None,
+                tags=wandb_cfg.tags or None,
+                name=self.config.name,
+                config=asdict(self.config),
+                dir=str(self.run_dir),
             )
 
     def _signal_handler(self, signum: int, frame) -> None:
@@ -178,7 +184,7 @@ class PPOTrainer:
         """
         pbar = tqdm(total=self.config.total_frames, desc="Training")
         all_metrics = []
-        metrics_cfg = self.config.tensorboard.metrics
+        metrics_cfg = self.config.wandb.metrics if hasattr(self.config.wandb, 'metrics') else None
 
         self._train_start_time = time.monotonic()
         self._batch_start_time = time.monotonic()
@@ -217,11 +223,16 @@ class PPOTrainer:
             pbar.update(batch.numel())
 
             # Episode statistics from batch
-            if "episode_reward" in batch.keys():
-                episode_rewards = batch["episode_reward"][batch["done"].squeeze(-1)]
+            # TorchRL stores episode metrics under batch["next"]
+            next_td = batch.get("next", batch)
+            done_mask = next_td["done"].squeeze(-1)
+
+            if "episode_reward" in next_td.keys():
+                episode_rewards = next_td["episode_reward"][done_mask]
                 if len(episode_rewards) > 0:
                     metrics["mean_episode_reward"] = episode_rewards.mean().item()
                     metrics["max_episode_reward"] = episode_rewards.max().item()
+                    metrics["min_episode_reward"] = episode_rewards.min().item()
                     self.total_episodes += len(episode_rewards)
 
                     # Track best reward
@@ -229,11 +240,42 @@ class PPOTrainer:
                         self.best_reward = metrics["mean_episode_reward"]
                         self.save_checkpoint("best")
 
-            if metrics_cfg.episode:
-                metrics["total_episodes"] = self.total_episodes
+            # Episode lengths
+            if "step_count" in next_td.keys():
+                episode_lengths = next_td["step_count"][done_mask]
+                if len(episode_lengths) > 0:
+                    metrics["mean_episode_length"] = episode_lengths.float().mean().item()
 
-            if metrics_cfg.timing:
-                metrics["batch_time_secs"] = time.monotonic() - self._batch_start_time
+            # Episode wall-clock time
+            if "episode_wall_time_s" in next_td.keys():
+                ep_wall_times = next_td["episode_wall_time_s"][done_mask]
+                if len(ep_wall_times) > 0:
+                    metrics["mean_episode_wall_time_s"] = ep_wall_times.mean().item()
+
+            # Goal metrics (termination reason + final distance)
+            n_done = done_mask.sum().item()
+            if n_done > 0:
+                if "goal_reached" in next_td.keys():
+                    n_goal = next_td["goal_reached"][done_mask].sum().item()
+                    metrics["goal_reach_rate"] = n_goal / n_done
+                if "starvation" in next_td.keys():
+                    n_starve = next_td["starvation"][done_mask].sum().item()
+                    metrics["starvation_rate"] = n_starve / n_done
+                    metrics["truncation_rate"] = (n_done - n_goal - n_starve) / n_done
+                if "final_dist_to_goal" in next_td.keys():
+                    finals = next_td["final_dist_to_goal"][done_mask]
+                    metrics["mean_final_dist_to_goal"] = finals.mean().item()
+
+            # Reward diagnostics (batch means)
+            for key in ("v_g", "dist_to_goal", "theta_g", "reward_velocity", "reward_potential"):
+                if key in next_td.keys():
+                    metrics[f"mean_{key}"] = next_td[key].mean().item()
+
+            metrics["total_episodes"] = self.total_episodes
+            batch_time_s = time.monotonic() - self._batch_start_time
+            metrics["batch_time_mins"] = batch_time_s / 60.0
+            metrics["fps"] = batch.numel() / batch_time_s if batch_time_s > 0 else 0.0
+            metrics["step_time_ms"] = (batch_time_s / batch.numel()) * 1000 if batch.numel() > 0 else 0.0
             self._batch_start_time = time.monotonic()
 
             all_metrics.append(metrics)
@@ -259,9 +301,9 @@ class PPOTrainer:
         # Final save
         self.save_checkpoint("final")
 
-        # Close TensorBoard writer
-        if self.writer is not None:
-            self.writer.close()
+        # Close W&B run
+        if self.wandb_run is not None:
+            self.wandb_run.finish()
 
         return {
             "total_frames": self.total_frames,
@@ -361,37 +403,63 @@ class PPOTrainer:
 
         tqdm.write(log_str)
 
-        # TensorBoard
-        if self.writer is not None:
-            metrics_cfg = self.config.tensorboard.metrics
-            if metrics_cfg.train:
-                self.writer.add_scalar("train/loss_actor", metrics["loss_actor"], self.total_frames)
-                self.writer.add_scalar("train/loss_critic", metrics["loss_critic"], self.total_frames)
-                self.writer.add_scalar("train/loss_entropy", metrics["loss_entropy"], self.total_frames)
-                self.writer.add_scalar("train/kl_divergence", metrics["kl_divergence"], self.total_frames)
-                if self.scheduler:
-                    self.writer.add_scalar("train/learning_rate", self.scheduler.get_last_lr()[0], self.total_frames)
-            if metrics_cfg.episode:
-                if "mean_episode_reward" in metrics:
-                    self.writer.add_scalar("episode/mean_reward", metrics["mean_episode_reward"], self.total_frames)
-                    self.writer.add_scalar("episode/max_reward", metrics["max_episode_reward"], self.total_frames)
-                if "total_episodes" in metrics:
-                    self.writer.add_scalar("episode/count", metrics["total_episodes"], self.total_frames)
-            if metrics_cfg.gradients and "grad_norm" in metrics:
-                self.writer.add_scalar("gradients/grad_norm", metrics["grad_norm"], self.total_frames)
-            if metrics_cfg.timing:
-                wall = time.monotonic() - self._train_start_time
-                self.writer.add_scalar("timing/wall_clock_secs", wall, self.total_frames)
-                if "batch_time_secs" in metrics:
-                    self.writer.add_scalar("timing/batch_time_secs", metrics["batch_time_secs"], self.total_frames)
-            if metrics_cfg.system:
-                log_system_metrics(
-                    self.writer,
-                    self.total_frames,
-                    self.device,
-                    self._system_log_counter,
-                    metrics_cfg.system_interval,
-                )
+        # Weights & Biases
+        if self.wandb_run is not None:
+            wandb_log = {
+                "train/loss_actor": metrics["loss_actor"],
+                "train/loss_critic": metrics["loss_critic"],
+                "train/loss_entropy": metrics["loss_entropy"],
+                "train/kl_divergence": metrics["kl_divergence"],
+                "gradients/grad_norm": metrics.get("grad_norm", 0.0),
+            }
+            if "mean_episode_reward" in metrics:
+                wandb_log["episode/mean_reward"] = metrics["mean_episode_reward"]
+                wandb_log["episode/max_reward"] = metrics["max_episode_reward"]
+                wandb_log["episode/min_reward"] = metrics["min_episode_reward"]
+            if "mean_episode_length" in metrics:
+                wandb_log["episode/mean_length"] = metrics["mean_episode_length"]
+            if "mean_episode_wall_time_s" in metrics:
+                wandb_log["episode/mean_wall_time_s"] = metrics["mean_episode_wall_time_s"]
+            # Goal metrics
+            for key, wandb_key in (
+                ("goal_reach_rate", "episode/goal_reach_rate"),
+                ("starvation_rate", "episode/starvation_rate"),
+                ("truncation_rate", "episode/truncation_rate"),
+                ("mean_final_dist_to_goal", "episode/final_dist_to_goal"),
+            ):
+                if key in metrics:
+                    wandb_log[wandb_key] = metrics[key]
+            # Reward diagnostics
+            for key, wandb_key in (
+                ("mean_v_g", "reward/v_g"),
+                ("mean_dist_to_goal", "reward/dist_to_goal"),
+                ("mean_theta_g", "reward/theta_g"),
+                ("mean_reward_velocity", "reward/component_velocity"),
+                ("mean_reward_potential", "reward/component_potential"),
+            ):
+                if key in metrics:
+                    wandb_log[wandb_key] = metrics[key]
+            if "total_episodes" in metrics:
+                wandb_log["episode/count"] = metrics["total_episodes"]
+            if self.scheduler:
+                wandb_log["train/learning_rate"] = self.scheduler.get_last_lr()[0]
+            if "batch_time_mins" in metrics:
+                wandb_log["timing/batch_time_mins"] = metrics["batch_time_mins"]
+            if "fps" in metrics:
+                wandb_log["timing/fps"] = metrics["fps"]
+            if "step_time_ms" in metrics:
+                wandb_log["timing/step_time_ms"] = metrics["step_time_ms"]
+            wandb_log["timing/wall_clock_mins"] = (time.monotonic() - self._train_start_time) / 60.0
+
+            # System metrics
+            sys_metrics = collect_system_metrics(
+                self.device,
+                self._system_log_counter,
+                10,
+            )
+            wandb_log.update(sys_metrics)
+
+            self.wandb_run.log(wandb_log, step=self.total_frames)
 
     def save_checkpoint(self, name: str) -> None:
         """Save training checkpoint atomically.

@@ -15,10 +15,10 @@ numba>=0.58.0
 # Install from local directory: pip install -e ./dismech-python
 dismech-python @ file:./dismech-python
 
-# Visualization
+# Visualization & Logging
 matplotlib>=3.8.0
 plotly>=5.18.0
-tensorboard>=2.15.0
+wandb>=0.16.0
 
 # Utilities
 tqdm>=4.66.0

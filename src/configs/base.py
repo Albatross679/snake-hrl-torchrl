@@ -68,6 +68,17 @@ class Output:
 
 
 @dataclass
+class WandB:
+    """Weights & Biases logging configuration."""
+
+    enabled: bool = True
+    project: str = "snake-hrl"
+    entity: str = ""  # Empty string = default entity
+    group: str = ""
+    tags: list = field(default_factory=list)
+
+
+@dataclass
 class Console:
     """Console logging configuration (tee stdout/stderr to file)."""
 

@@ -19,7 +19,7 @@ from src.configs.base import resolve_device
 from src.configs.run_dir import setup_run_dir
 from src.networks.actor import create_actor
 from src.networks.critic import TwinQNetwork
-from .logging_utils import log_system_metrics, compute_grad_norm
+from .logging_utils import collect_system_metrics, compute_grad_norm
 
 
 class SACTrainer:
@@ -122,16 +122,22 @@ class SACTrainer:
         self.log_dir = self.run_dir
         self.save_dir = self.run_dir / "checkpoints"
         self.save_dir.mkdir(parents=True, exist_ok=True)
-        tb_dir = self.run_dir / "tensorboard"
 
-        # TensorBoard
-        self.writer = None
-        if self.config.tensorboard.enabled:
-            from torch.utils.tensorboard import SummaryWriter
+        # Weights & Biases
+        self.wandb_run = None
+        if self.config.wandb.enabled:
+            import wandb
+            from dataclasses import asdict
 
-            self.writer = SummaryWriter(
-                log_dir=str(tb_dir),
-                flush_secs=self.config.tensorboard.flush_secs,
+            wandb_cfg = self.config.wandb
+            self.wandb_run = wandb.init(
+                project=wandb_cfg.project,
+                entity=wandb_cfg.entity or None,
+                group=wandb_cfg.group or None,
+                tags=wandb_cfg.tags or None,
+                name=self.config.name,
+                config=asdict(self.config),
+                dir=str(self.run_dir),
             )
 
     @property
@@ -295,7 +301,6 @@ class SACTrainer:
                 for _ in range(self.config.num_updates):
                     update_metrics = self._update()
 
-                # TensorBoard — update metrics
                 self._log_train_metrics(update_metrics)
 
             # Save checkpoint
@@ -305,9 +310,9 @@ class SACTrainer:
         pbar.close()
         self.save_checkpoint("final")
 
-        # Close TensorBoard writer
-        if self.writer is not None:
-            self.writer.close()
+        # Close W&B run
+        if self.wandb_run is not None:
+            self.wandb_run.finish()
 
         return {
             "total_frames": self.total_frames,
@@ -417,40 +422,38 @@ class SACTrainer:
             )
 
     def _log_episode_metrics(self, episode_reward: float, episode_length: int) -> None:
-        """Log episode metrics to TensorBoard (gated by MetricGroups)."""
-        if self.writer is None:
+        """Log episode metrics to W&B."""
+        if self.wandb_run is None:
             return
-        metrics_cfg = self.config.tensorboard.metrics
-        if metrics_cfg.episode:
-            self.writer.add_scalar("episode/reward", episode_reward, self.total_frames)
-            self.writer.add_scalar("episode/length", episode_length, self.total_frames)
-            self.writer.add_scalar("episode/count", self.total_episodes, self.total_frames)
+        self.wandb_run.log({
+            "episode/reward": episode_reward,
+            "episode/length": episode_length,
+            "episode/count": self.total_episodes,
+        }, step=self.total_frames)
 
     def _log_train_metrics(self, metrics: Dict[str, float]) -> None:
-        """Log training update metrics to TensorBoard (gated by MetricGroups)."""
-        if self.writer is None:
+        """Log training update metrics to W&B."""
+        if self.wandb_run is None:
             return
-        metrics_cfg = self.config.tensorboard.metrics
-        if metrics_cfg.train:
-            for key in ("critic_loss", "actor_loss", "alpha", "alpha_loss"):
-                if key in metrics:
-                    self.writer.add_scalar(f"train/{key}", metrics[key], self.total_frames)
-        if metrics_cfg.q_values:
-            for key in ("q1_mean", "q2_mean"):
-                if key in metrics:
-                    self.writer.add_scalar(f"q_values/{key}", metrics[key], self.total_frames)
-        if metrics_cfg.gradients:
-            for key in ("critic_grad_norm", "actor_grad_norm"):
-                if key in metrics:
-                    self.writer.add_scalar(f"gradients/{key}", metrics[key], self.total_frames)
-        if metrics_cfg.timing:
-            wall = time.monotonic() - self._train_start_time
-            self.writer.add_scalar("timing/wall_clock_secs", wall, self.total_frames)
-        if metrics_cfg.system:
-            log_system_metrics(
-                self.writer, self.total_frames, self.device,
-                self._system_log_counter, metrics_cfg.system_interval,
-            )
+        wandb_log = {}
+        for key in ("critic_loss", "actor_loss", "alpha", "alpha_loss"):
+            if key in metrics:
+                wandb_log[f"train/{key}"] = metrics[key]
+        for key in ("q1_mean", "q2_mean"):
+            if key in metrics:
+                wandb_log[f"q_values/{key}"] = metrics[key]
+        for key in ("critic_grad_norm", "actor_grad_norm"):
+            if key in metrics:
+                wandb_log[f"gradients/{key}"] = metrics[key]
+        wall = time.monotonic() - self._train_start_time
+        wandb_log["timing/wall_clock_mins"] = wall / 60.0
+
+        sys_metrics = collect_system_metrics(
+            self.device, self._system_log_counter, 10,
+        )
+        wandb_log.update(sys_metrics)
+
+        self.wandb_run.log(wandb_log, step=self.total_frames)
 
     def save_checkpoint(self, name: str) -> None:
         """Save training checkpoint."""

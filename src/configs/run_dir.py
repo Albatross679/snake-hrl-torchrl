@@ -5,8 +5,7 @@ Creates a consolidated output directory per run:
     output/<name>_<YYYYMMDD_HHMMSS>/
     ├── config.json
     ├── console.log
-    ├── checkpoints/
-    └── tensorboard/
+    └── checkpoints/
 """
 
 import json
@@ -52,7 +51,6 @@ def setup_run_dir(
     run_dir = Path(base_dir) / f"{name}_{timestamp}"
     run_dir.mkdir(parents=True, exist_ok=True)
     (run_dir / "checkpoints").mkdir(exist_ok=True)
-    (run_dir / "tensorboard").mkdir(exist_ok=True)
 
     # Save config snapshot
     save_config = True

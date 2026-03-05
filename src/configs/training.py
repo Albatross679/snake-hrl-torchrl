@@ -12,7 +12,7 @@ Hierarchy:
 from dataclasses import dataclass, field
 from typing import Optional, List
 
-from .base import MLBaseConfig, TensorBoard, Output, Console
+from .base import MLBaseConfig, WandB, Output, Console
 
 
 @dataclass
@@ -57,8 +57,8 @@ class RLConfig(MLBaseConfig):
     num_workers: int = 1
     num_envs: int = 1  # Number of parallel environments (vectorized)
 
-    # TensorBoard
-    tensorboard: TensorBoard = field(default_factory=TensorBoard)
+    # Weights & Biases
+    wandb: WandB = field(default_factory=WandB)
 
     # Output directory
     output: Output = field(default_factory=Output)

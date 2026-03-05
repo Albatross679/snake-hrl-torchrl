@@ -39,7 +39,6 @@ class TestSetupRunDir:
         assert run_dir == tmp_path / "test_run_20260101_120000"
         assert run_dir.is_dir()
         assert (run_dir / "checkpoints").is_dir()
-        assert (run_dir / "tensorboard").is_dir()
 
     def test_saves_config_json(self, tmp_path):
         cfg = _DummyConfig(output=Output(base_dir=str(tmp_path)))

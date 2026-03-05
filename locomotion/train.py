@@ -60,6 +60,15 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Wall-clock time limit, e.g. '30m', '2h', '1h30m', or '3600' (seconds)",
     )
+    parser.add_argument(
+        "--wandb", action="store_true", default=False, help="Enable Weights & Biases logging"
+    )
+    parser.add_argument(
+        "--wandb-project", type=str, default="snake-hrl", help="W&B project name"
+    )
+    parser.add_argument(
+        "--wandb-entity", type=str, default="", help="W&B entity (team/user)"
+    )
     return parser.parse_args()
 
 
@@ -78,6 +87,11 @@ def main():
         config.max_wall_time = parse_wall_time(args.max_wall_time)
     if args.num_envs > 1:
         config.num_envs = args.num_envs
+    if args.wandb:
+        config.wandb.enabled = True
+        config.wandb.project = args.wandb_project
+        if args.wandb_entity:
+            config.wandb.entity = args.wandb_entity
 
     # Setup consolidated run directory
     run_dir = setup_run_dir(config)

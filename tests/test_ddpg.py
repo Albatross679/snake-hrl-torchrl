@@ -8,7 +8,7 @@ import numpy as np
 import pytest
 import torch
 
-from src.configs.base import MetricGroups, TensorBoard, save_config, load_config
+from src.configs.base import MetricGroups, TensorBoard, WandB, save_config, load_config
 from src.configs.training import DDPGConfig, PPOConfig
 from src.trainers.ddpg import DDPGTrainer, DeterministicActor, OUNoise
 from src.trainers.logging_utils import compute_grad_norm
@@ -106,7 +106,7 @@ class TestDDPGTrainer:
             batch_size=8,
             buffer_size=100,
         )
-        config.tensorboard.enabled = False
+        config.wandb.enabled = False
         env = CobraNavigationEnv(config=CobraEnvConfig())
         t = DDPGTrainer(env=env, config=config)
         yield t
@@ -145,7 +145,7 @@ class TestDDPGTrainer:
 
 
 class TestMetricGroups:
-    """Test MetricGroups config and integration."""
+    """Test MetricGroups config (standalone, used by reference configs)."""
 
     def test_defaults(self):
         mg = MetricGroups()
@@ -157,38 +157,45 @@ class TestMetricGroups:
         assert mg.timing is True
         assert mg.system_interval == 10
 
-    def test_ddpg_config_has_metric_groups(self):
-        cfg = DDPGConfig()
-        assert hasattr(cfg.tensorboard, "metrics")
-        assert cfg.tensorboard.metrics.q_values is True
-
-    def test_ppo_config_has_metric_groups(self):
-        cfg = PPOConfig()
-        assert cfg.tensorboard.metrics.gradients is True
-
     def test_custom_metric_groups(self):
         mg = MetricGroups(system=False, q_values=False, system_interval=5)
-        tb = TensorBoard(metrics=mg)
-        cfg = DDPGConfig(tensorboard=tb)
-        assert cfg.tensorboard.metrics.system is False
-        assert cfg.tensorboard.metrics.q_values is False
-        assert cfg.tensorboard.metrics.system_interval == 5
-        # Other defaults preserved
-        assert cfg.tensorboard.metrics.train is True
+        assert mg.system is False
+        assert mg.q_values is False
+        assert mg.system_interval == 5
+        assert mg.train is True
+
+
+class TestWandBConfig:
+    """Test W&B config on RLConfig subclasses."""
+
+    def test_ddpg_has_wandb(self):
+        cfg = DDPGConfig()
+        assert hasattr(cfg, "wandb")
+        assert cfg.wandb.enabled is False
+        assert cfg.wandb.project == "snake-hrl"
+
+    def test_ppo_has_wandb(self):
+        cfg = PPOConfig()
+        assert hasattr(cfg, "wandb")
+        assert cfg.wandb.enabled is False
+
+    def test_custom_wandb(self):
+        wb = WandB(enabled=True, project="test-project", entity="my-team")
+        cfg = DDPGConfig(wandb=wb)
+        assert cfg.wandb.enabled is True
+        assert cfg.wandb.project == "test-project"
+        assert cfg.wandb.entity == "my-team"
 
     def test_json_round_trip(self, tmp_path):
-        mg = MetricGroups(system=False, gradients=False, system_interval=20)
-        tb = TensorBoard(metrics=mg)
-        cfg = DDPGConfig(tensorboard=tb)
+        wb = WandB(enabled=True, project="round-trip", tags=["test"])
+        cfg = DDPGConfig(wandb=wb)
 
         path = tmp_path / "cfg.json"
         save_config(cfg, path)
         loaded = load_config(DDPGConfig, path)
 
-        assert loaded.tensorboard.metrics.system is False
-        assert loaded.tensorboard.metrics.gradients is False
-        assert loaded.tensorboard.metrics.system_interval == 20
-        assert loaded.tensorboard.metrics.train is True
+        assert loaded.wandb.enabled is True
+        assert loaded.wandb.project == "round-trip"
 
 
 class TestComputeGradNorm:

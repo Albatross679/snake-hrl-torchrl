@@ -17,7 +17,6 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Tuple
 
-from src.configs.base import TensorBoard
 from src.configs.network import ActorConfig, CriticConfig, NetworkConfig
 from src.configs.physics import DismechConfig, FrictionConfig, FrictionModel, GeometryConfig
 from src.configs.training import PPOConfig
@@ -54,7 +53,7 @@ class LocomotionPhysicsConfig(DismechConfig):
 
     # Free body (not clamped)
     clamp_first_node: bool = False
-    two_d_sim: bool = True
+    two_d_sim: bool = False
 
     # Override geometry for locomotion snake
     # Thin rod (radius=0.001) gives low bending stiffness EI ∝ r^4,
@@ -75,7 +74,7 @@ class LocomotionPhysicsConfig(DismechConfig):
     poisson_ratio: float = 0.5
     density: float = 1200.0
 
-    # No gravity in 2D mode (snake moves in XY plane)
+    # No gravity — snake moves in XY ground plane
     enable_gravity: bool = False
 
     # RFT friction (anisotropic drag: ct < cn for anisotropic locomotion)
@@ -182,11 +181,11 @@ class LocomotionEnvConfig:
 
 @dataclass
 class LocomotionNetworkConfig(NetworkConfig):
-    """Network config for locomotion: 2x128 tanh MLP."""
+    """Network config for locomotion: 3x256 tanh MLP (scaled for 16GB GPU)."""
 
     actor: ActorConfig = field(
         default_factory=lambda: ActorConfig(
-            hidden_dims=[128, 128],
+            hidden_dims=[256, 256, 256],
             activation="tanh",
             ortho_init=True,
             init_gain=0.01,
@@ -197,7 +196,7 @@ class LocomotionNetworkConfig(NetworkConfig):
     )
     critic: CriticConfig = field(
         default_factory=lambda: CriticConfig(
-            hidden_dims=[128, 128],
+            hidden_dims=[256, 256, 256],
             activation="tanh",
             ortho_init=True,
             init_gain=1.0,
@@ -214,7 +213,8 @@ class LocomotionNetworkConfig(NetworkConfig):
 class LocomotionConfig(PPOConfig):
     """Top-level config for locomotion PPO training.
 
-    Defaults: 2M frames, lr=3e-4, batch=2048, clip=0.2.
+    Scaled for 16GB GPU: 3x256 network, larger batches.
+    Defaults: 2M frames, lr=3e-4, batch=8192, minibatch=512, clip=0.2.
     """
 
     name: str = "locomotion"
@@ -223,10 +223,10 @@ class LocomotionConfig(PPOConfig):
     # PPO hyperparameters
     total_frames: int = 2_000_000
     learning_rate: float = 3e-4
-    frames_per_batch: int = 2048
+    frames_per_batch: int = 8192   # 4x larger — keeps GPU busy during PPO update
     clip_epsilon: float = 0.2
     num_epochs: int = 10
-    mini_batch_size: int = 256
+    mini_batch_size: int = 512     # 2x larger — better GPU utilization per minibatch
     gamma: float = 0.99
     gae_lambda: float = 0.95
     entropy_coef: float = 0.01
@@ -234,7 +234,6 @@ class LocomotionConfig(PPOConfig):
     # Compose env + network + logging
     env: LocomotionEnvConfig = field(default_factory=LocomotionEnvConfig)
     network: LocomotionNetworkConfig = field(default_factory=LocomotionNetworkConfig)
-    tensorboard: TensorBoard = field(default_factory=TensorBoard)
 
     # Parallelism
     num_envs: int = 1

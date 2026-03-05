@@ -9,7 +9,10 @@ from torchrl.modules import (
     TanhNormal,
     NormalParamExtractor,
 )
-from torchrl.data import BoundedTensorSpec, CompositeSpec
+try:
+    from torchrl.data import BoundedTensorSpec, CompositeSpec
+except ImportError:
+    from torchrl.data import Bounded as BoundedTensorSpec, Composite as CompositeSpec
 from tensordict.nn import TensorDictModule, TensorDictSequential
 
 from src.configs.network import ActorConfig, NetworkConfig

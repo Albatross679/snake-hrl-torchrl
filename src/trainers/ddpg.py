@@ -8,7 +8,7 @@ import torch.nn as nn
 from torch.optim import Adam
 import numpy as np
 
-from .logging_utils import compute_grad_norm, log_system_metrics
+from .logging_utils import compute_grad_norm, collect_system_metrics
 
 from torchrl.envs import EnvBase
 from torchrl.data import ReplayBuffer, LazyTensorStorage
@@ -199,16 +199,22 @@ class DDPGTrainer:
         self.log_dir = self.run_dir
         self.save_dir = self.run_dir / "checkpoints"
         self.save_dir.mkdir(parents=True, exist_ok=True)
-        tb_dir = self.run_dir / "tensorboard"
 
-        # TensorBoard
-        self.writer = None
-        if self.config.tensorboard.enabled:
-            from torch.utils.tensorboard import SummaryWriter
+        # Weights & Biases
+        self.wandb_run = None
+        if self.config.wandb.enabled:
+            import wandb
+            from dataclasses import asdict
 
-            self.writer = SummaryWriter(
-                log_dir=str(tb_dir),
-                flush_secs=self.config.tensorboard.flush_secs,
+            wandb_cfg = self.config.wandb
+            self.wandb_run = wandb.init(
+                project=wandb_cfg.project,
+                entity=wandb_cfg.entity or None,
+                group=wandb_cfg.group or None,
+                tags=wandb_cfg.tags or None,
+                name=self.config.name,
+                config=asdict(self.config),
+                dir=str(self.run_dir),
             )
 
     def _select_action(self, obs: torch.Tensor, add_noise: bool = True) -> torch.Tensor:
@@ -235,7 +241,6 @@ class DDPGTrainer:
         """Run DDPG training loop."""
         pbar = tqdm(total=self.config.total_frames, desc="Training")
         all_metrics = []
-        metrics_cfg = self.config.tensorboard.metrics
 
         self._train_start_time = time.monotonic()
         self._episode_start_time = time.monotonic()
@@ -303,24 +308,22 @@ class DDPGTrainer:
                         f"length={episode_length}"
                     )
 
-                if self.writer is not None:
-                    if metrics_cfg.episode:
-                        self.writer.add_scalar("episode/reward", episode_reward, self.total_frames)
-                        self.writer.add_scalar("episode/length", episode_length, self.total_frames)
-                        self.writer.add_scalar("episode/count", self.total_episodes, self.total_frames)
-                    if metrics_cfg.timing:
-                        wall = time.monotonic() - self._train_start_time
-                        ep_time = time.monotonic() - self._episode_start_time
-                        self.writer.add_scalar("timing/wall_clock_secs", wall, self.total_frames)
-                        self.writer.add_scalar("timing/episode_time_secs", ep_time, self.total_frames)
-                    if metrics_cfg.system:
-                        log_system_metrics(
-                            self.writer,
-                            self.total_frames,
-                            self.device,
-                            self._system_log_counter,
-                            metrics_cfg.system_interval,
-                        )
+                if self.wandb_run is not None:
+                    wandb_log = {
+                        "episode/reward": episode_reward,
+                        "episode/length": episode_length,
+                        "episode/count": self.total_episodes,
+                    }
+                    wall = time.monotonic() - self._train_start_time
+                    ep_time = time.monotonic() - self._episode_start_time
+                    wandb_log["timing/wall_clock_mins"] = wall / 60.0
+                    wandb_log["timing/episode_time_mins"] = ep_time / 60.0
+
+                    sys_metrics = collect_system_metrics(
+                        self.device, self._system_log_counter, 10,
+                    )
+                    wandb_log.update(sys_metrics)
+                    self.wandb_run.log(wandb_log, step=self.total_frames)
 
                 self._episode_start_time = time.monotonic()
                 td = self.env.reset()
@@ -343,19 +346,19 @@ class DDPGTrainer:
                 for _ in range(self.config.num_updates):
                     update_metrics = self._update()
 
-                if self.writer is not None:
-                    if metrics_cfg.train:
-                        for k in ("critic_loss", "actor_loss"):
-                            if k in update_metrics:
-                                self.writer.add_scalar(f"train/{k}", update_metrics[k], self.total_frames)
-                    if metrics_cfg.gradients:
-                        for k in ("actor_grad_norm", "critic_grad_norm"):
-                            if k in update_metrics:
-                                self.writer.add_scalar(f"gradients/{k}", update_metrics[k], self.total_frames)
-                    if metrics_cfg.q_values:
-                        for k in ("q_mean", "q_max", "q_min"):
-                            if k in update_metrics:
-                                self.writer.add_scalar(f"q_values/{k}", update_metrics[k], self.total_frames)
+                if self.wandb_run is not None:
+                    wandb_log = {}
+                    for k in ("critic_loss", "actor_loss"):
+                        if k in update_metrics:
+                            wandb_log[f"train/{k}"] = update_metrics[k]
+                    for k in ("actor_grad_norm", "critic_grad_norm"):
+                        if k in update_metrics:
+                            wandb_log[f"gradients/{k}"] = update_metrics[k]
+                    for k in ("q_mean", "q_max", "q_min"):
+                        if k in update_metrics:
+                            wandb_log[f"q_values/{k}"] = update_metrics[k]
+                    if wandb_log:
+                        self.wandb_run.log(wandb_log, step=self.total_frames)
 
             # Save checkpoint
             if self.total_frames % (self.config.save_interval * 1000) == 0:
@@ -364,8 +367,8 @@ class DDPGTrainer:
         pbar.close()
         self.save_checkpoint("final")
 
-        if self.writer is not None:
-            self.writer.close()
+        if self.wandb_run is not None:
+            self.wandb_run.finish()
 
         return {
             "total_frames": self.total_frames,
@@ -395,10 +398,7 @@ class DDPGTrainer:
         self.critic_optimizer.zero_grad()
         critic_loss.backward()
 
-        metrics_cfg = self.config.tensorboard.metrics
-        critic_grad_norm = (
-            compute_grad_norm(self.critic) if metrics_cfg.gradients else None
-        )
+        critic_grad_norm = compute_grad_norm(self.critic)
 
         self.critic_optimizer.step()
 
@@ -409,9 +409,7 @@ class DDPGTrainer:
         self.actor_optimizer.zero_grad()
         actor_loss.backward()
 
-        actor_grad_norm = (
-            compute_grad_norm(self.actor) if metrics_cfg.gradients else None
-        )
+        actor_grad_norm = compute_grad_norm(self.actor)
 
         self.actor_optimizer.step()
 
@@ -422,16 +420,12 @@ class DDPGTrainer:
         result = {
             "critic_loss": critic_loss.item(),
             "actor_loss": actor_loss.item(),
+            "critic_grad_norm": critic_grad_norm,
+            "actor_grad_norm": actor_grad_norm,
+            "q_mean": current_q.mean().item(),
+            "q_max": current_q.max().item(),
+            "q_min": current_q.min().item(),
         }
-
-        if metrics_cfg.gradients:
-            result["critic_grad_norm"] = critic_grad_norm
-            result["actor_grad_norm"] = actor_grad_norm
-
-        if metrics_cfg.q_values:
-            result["q_mean"] = current_q.mean().item()
-            result["q_max"] = current_q.max().item()
-            result["q_min"] = current_q.min().item()
 
         return result
 

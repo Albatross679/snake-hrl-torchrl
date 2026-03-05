@@ -88,22 +88,27 @@ class HRLTrainer:
             self.log_dir = self._run_dir
             self.save_dir = self._run_dir / "checkpoints"
             self.save_dir.mkdir(parents=True, exist_ok=True)
-            tb_dir = self._run_dir / "tensorboard"
         else:
             self.log_dir = Path(self.config.log_dir) / self.config.experiment_name
             self.log_dir.mkdir(parents=True, exist_ok=True)
             self.save_dir = Path(self.config.save_dir) / self.config.experiment_name
             self.save_dir.mkdir(parents=True, exist_ok=True)
-            tb_dir = Path(self.config.tensorboard.log_dir) / self.config.experiment_name
 
-        # TensorBoard
-        self.writer = None
-        if self.config.tensorboard.enabled:
-            from torch.utils.tensorboard import SummaryWriter
+        # Weights & Biases
+        self.wandb_run = None
+        if self.config.wandb.enabled:
+            import wandb
+            from dataclasses import asdict
 
-            self.writer = SummaryWriter(
-                log_dir=str(tb_dir),
-                flush_secs=self.config.tensorboard.flush_secs,
+            wandb_cfg = self.config.wandb
+            self.wandb_run = wandb.init(
+                project=wandb_cfg.project,
+                entity=wandb_cfg.entity or None,
+                group=wandb_cfg.group or None,
+                tags=wandb_cfg.tags or None,
+                name=self.config.name,
+                config=asdict(self.config),
+                dir=str(self._run_dir or self.log_dir),
             )
 
     def _signal_handler(self, signum: int, frame) -> None:
@@ -204,9 +209,9 @@ class HRLTrainer:
         # Save final checkpoint
         self.save_checkpoint("final")
 
-        # Close TensorBoard writer
-        if self.writer is not None:
-            self.writer.close()
+        # Close W&B run
+        if self.wandb_run is not None:
+            self.wandb_run.finish()
 
         return results
 
@@ -251,12 +256,14 @@ class HRLTrainer:
             results["metrics"].append(metrics)
             pbar.update(batch.numel())
 
-            # TensorBoard — joint training metrics
-            if self.writer is not None:
+            # W&B — joint training metrics
+            if self.wandb_run is not None:
+                wandb_log = {}
                 for key, value in metrics.items():
                     if isinstance(value, (int, float)):
-                        self.writer.add_scalar(f"joint/{key}", value, self.total_frames)
-                self.writer.add_scalar("joint/curriculum_stage", self.curriculum_stage, self.total_frames)
+                        wandb_log[f"joint/{key}"] = value
+                wandb_log["joint/curriculum_stage"] = self.curriculum_stage
+                self.wandb_run.log(wandb_log, step=self.total_frames)
 
             # Curriculum advancement
             if self.config.use_curriculum:
@@ -268,9 +275,9 @@ class HRLTrainer:
         pbar.close()
         self.save_checkpoint("final")
 
-        # Close TensorBoard writer
-        if self.writer is not None:
-            self.writer.close()
+        # Close W&B run
+        if self.wandb_run is not None:
+            self.wandb_run.finish()
 
         return results
 
@@ -343,11 +350,13 @@ class HRLTrainer:
             metrics = self._update_manager(batch)
             metrics_history.append(metrics)
 
-            # TensorBoard — manager training metrics
-            if self.writer is not None:
+            # W&B — manager training metrics
+            if self.wandb_run is not None:
+                wandb_log = {}
                 for key, value in metrics.items():
                     if isinstance(value, (int, float)):
-                        self.writer.add_scalar(f"manager/{key}", value, frames)
+                        wandb_log[f"manager/{key}"] = value
+                self.wandb_run.log(wandb_log, step=frames)
 
             if len(metrics_history) % 10 == 0:
                 avg_reward = np.mean([m.get("episode_reward", 0) for m in metrics_history[-10:]])

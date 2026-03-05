@@ -15,11 +15,18 @@ from typing import Optional
 import numpy as np
 import torch
 from tensordict import TensorDict, TensorDictBase
-from torchrl.data import (
-    BoundedTensorSpec,
-    CompositeSpec,
-    UnboundedContinuousTensorSpec,
-)
+try:
+    from torchrl.data import (
+        BoundedTensorSpec,
+        CompositeSpec,
+        UnboundedContinuousTensorSpec,
+    )
+except ImportError:
+    from torchrl.data import (
+        Bounded as BoundedTensorSpec,
+        Composite as CompositeSpec,
+        Unbounded as UnboundedContinuousTensorSpec,
+    )
 from torchrl.envs import EnvBase
 
 from locomotion.config import LocomotionEnvConfig
@@ -392,8 +399,8 @@ class LocomotionEnv(EnvBase):
         if bend_springs.N > 0 and hasattr(bend_springs, "nat_strain"):
             n = min(len(curvatures), bend_springs.N)
             for i in range(n):
-                bend_springs.nat_strain[i, 0] = curvatures[i]
-                bend_springs.nat_strain[i, 1] = 0.0
+                bend_springs.nat_strain[i, 0] = 0.0
+                bend_springs.nat_strain[i, 1] = curvatures[i]
 
     # === EnvBase interface ===
 
