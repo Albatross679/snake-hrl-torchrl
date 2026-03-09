@@ -23,17 +23,16 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Depends on**: Nothing (first phase)
 **Requirements**: HLTH-01, HLTH-02, HLTH-03, HLTH-04, HLTH-05, OBSV-01, OBSV-04
 **Success Criteria** (what must be TRUE):
-  1. Running `python -m aprx_model_elastica.monitor` alongside the collector shows per-worker alive/dead/stalled status every poll interval
+  1. Running `python -m aprx_model_elastica monitor` alongside the collector shows per-worker alive/dead/stalled status every poll interval
   2. When a worker process is manually killed, the monitor detects it and the worker is respawned within 60 seconds with collection resuming
   3. Episodes containing NaN or Inf values are silently discarded (never written to batch files), and the discard count appears in W&B logs
   4. Sending SIGINT or SIGTERM to the collection process results in a clean shutdown with no truncated or corrupt batch files
   5. W&B alerts fire for worker death, worker stall, and high NaN rate events, and all monitoring events are recorded in a structured JSON event log
-**Plans**: TBD
+**Plans:** 2 plans
 
 Plans:
-- [ ] 01-01: TBD
-- [ ] 01-02: TBD
-- [ ] 01-03: TBD
+- [ ] 01-01-PLAN.md — Health infrastructure: per-worker counters, NaN filtering, atomic saves, graceful shutdown, event logging
+- [ ] 01-02-PLAN.md — Worker lifecycle: crash/stall detection, respawning, W&B alerts, external monitor process
 
 ### Phase 2: Coverage Tracking and Smart Stop
 **Goal**: The collection system tracks how well the dataset covers the state-action space and stops only when quantity, quality, and time criteria are all met
@@ -71,6 +70,6 @@ Phases execute in numeric order: 1 -> 2 -> 3
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Health Monitoring and Data Integrity | 0/3 | Not started | - |
+| 1. Health Monitoring and Data Integrity | 0/2 | Planning complete | - |
 | 2. Coverage Tracking and Smart Stop | 0/2 | Not started | - |
 | 3. Quality Analysis and Reporting | 0/2 | Not started | - |
