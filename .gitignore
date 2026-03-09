@@ -59,7 +59,6 @@ tensorboard/
 Media/
 output/
 model/
-.claude/
 
 # Numba cache
 *.nbc
@@ -79,3 +78,5 @@ temp.md
 # Doc-db (VSCode extension build artifacts)
 .doc-db/
 doc-db/
+.claude/settings.local.json
+.claude/.pytest_cache/
