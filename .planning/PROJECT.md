@@ -1,0 +1,64 @@
+# Surrogate Model Data Collection
+
+## What This Is
+
+An autonomous data collection and monitoring system for the neural surrogate model of the PyElastica Cosserat rod snake robot. The collection pipeline (`aprx_model_elastica/collect_data.py`) runs overnight, generating state-action-next_state transitions with Sobol quasi-random action sampling. An autonomous agent periodically checks on the running collection, fixes issues, and documents everything.
+
+## Core Value
+
+Produce a high-quality, well-covered dataset of snake robot dynamics transitions that enables training an accurate neural surrogate model — without manual babysitting.
+
+## Requirements
+
+### Validated
+
+- ✓ Data collection pipeline with Sobol quasi-random action sampling — existing (`aprx_model_elastica/collect_data.py`)
+- ✓ W&B integration for logging collection metrics — existing (in `collect_data.py`)
+- ✓ Density-weighted sampling for training — existing (`aprx_model_elastica/dataset.py`)
+- ✓ Pre-flight smoke test — existing (commit d3e5277)
+- ✓ Disk space pre-check — existing (commit bdbf093)
+- ✓ Post-collection data validation — existing (commit 9a54b11)
+
+### Active
+
+- [ ] Autonomous periodic monitoring agent that checks collection health
+- [ ] Multi-criteria stop condition: min 8 hours AND min sample count AND state-action grid coverage target
+- [ ] Auto-diagnosis and fix of runtime issues (crashes, bad data, performance degradation)
+- [ ] Markdown documentation of all issues encountered and fixes applied (issues/, logs/)
+- [ ] W&B dashboard monitoring with key health metrics
+- [ ] State-action grid coverage tracking and reporting
+
+### Out of Scope
+
+- Surrogate model training — separate project phase after data is collected
+- RL training with surrogate — depends on trained surrogate model
+- New physics backends — using PyElastica only for data collection
+- Multi-GPU collection — single V100 is sufficient for overnight runs
+
+## Context
+
+- **Existing code:** `aprx_model_elastica/` package has collection, dataset, model, training, and validation modules
+- **Physics:** PyElastica Cosserat rod simulation, ~57 FPS with 16 parallel envs
+- **Hardware:** Tesla V100-PCIE-16GB, 48 CPUs available
+- **W&B:** Already integrated in collect_data.py with basic metric logging
+- **Coverage strategy:** Sobol quasi-random sampling for 5D action hypercube, density bins for reweighting rare states
+- **Branch:** `ralph/surrogate-data-collection` — active development branch
+
+## Constraints
+
+- **Runtime:** Collection must run 8+ hours unattended (overnight)
+- **Hardware:** Single Tesla V100, 48 CPUs, standard disk space
+- **Physics:** PyElastica only — ~57 FPS throughput ceiling with 16 parallel envs
+- **Monitoring:** Agent checks periodically (not continuous), fixes issues autonomously
+
+## Key Decisions
+
+| Decision | Rationale | Outcome |
+|----------|-----------|---------|
+| Sobol quasi-random sampling | Better 5D coverage than uniform random | — Pending |
+| Multi-criteria stop condition | Ensures both quantity and quality of data | — Pending |
+| Autonomous agent fixes issues | Overnight run can't wait for human intervention | — Pending |
+| Density-weighted training data | Compensate for uneven coverage in state space | — Pending |
+
+---
+*Last updated: 2026-03-09 after initialization*
