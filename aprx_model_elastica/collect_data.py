@@ -231,6 +231,10 @@ def parse_args() -> argparse.Namespace:
         "--skip-disk-check", action="store_true", default=False,
         help="Skip the disk space pre-check",
     )
+    parser.add_argument(
+        "--baseline-fps", type=float, default=None,
+        help="Expected FPS from smoke test (for schedule tracking in W&B)",
+    )
     return parser.parse_args()
 
 
@@ -667,7 +671,7 @@ def main():
     )
 
     if config.num_workers > 1:
-        _multiprocess_collect(config)
+        _multiprocess_collect(config, baseline_fps=args.baseline_fps)
     else:
         _single_process_collect(config, policy)
 
@@ -704,7 +708,17 @@ def _single_process_collect(config, policy):
     print(f"Saved to {save_dir}/")
 
 
-def _multiprocess_collect(config):
+def _get_dir_size_gb(path: Path) -> float:
+    """Get total size of a directory in GB."""
+    total = 0
+    if path.exists():
+        for f in path.rglob("*"):
+            if f.is_file():
+                total += f.stat().st_size
+    return total / (1024 ** 3)
+
+
+def _multiprocess_collect(config, baseline_fps: float | None = None):
     """Multiprocess collection with shared transition counter."""
     try:
         mp.set_start_method("forkserver")
@@ -722,6 +736,29 @@ def _multiprocess_collect(config):
 
     print(f"Multiprocess mode: {num_workers} workers (1 env each)")
 
+    # --- W&B init (optional) ---
+    wandb_run = None
+    try:
+        import wandb
+        wandb_run = wandb.init(
+            project="surrogate-data-collection",
+            config={
+                "num_workers": config.num_workers,
+                "num_transitions": config.num_transitions,
+                "baseline_fps": baseline_fps,
+                "save_dir": config.save_dir,
+                "use_sobol_actions": config.use_sobol_actions,
+                "perturbation_fraction": config.perturbation_fraction,
+                "seed": config.seed,
+            },
+        )
+        print(f"W&B run initialized: {wandb_run.url}")
+    except ImportError:
+        print("WARNING: wandb not installed — skipping W&B logging")
+    except Exception as e:
+        print(f"WARNING: wandb init failed ({e}) — skipping W&B logging")
+        wandb_run = None
+
     t_start = time.monotonic()
 
     workers = []
@@ -734,15 +771,92 @@ def _multiprocess_collect(config):
         p.start()
         workers.append(p)
 
+    # --- Monitoring loop (replaces simple p.join()) ---
+    poll_interval = 30  # seconds
+    prev_count = 0
+    prev_time = t_start
+
     try:
-        for p in workers:
-            p.join()
+        while True:
+            # Check if all workers are done
+            alive = [p for p in workers if p.is_alive()]
+            if not alive:
+                break
+
+            time.sleep(poll_interval)
+
+            now = time.monotonic()
+            elapsed = now - t_start
+            current_count = shared_counter.value
+            interval_count = current_count - prev_count
+            interval_time = now - prev_time
+
+            fps_current = interval_count / max(1e-6, interval_time)
+            fps_rolling = current_count / max(1e-6, elapsed)
+            pct_complete = current_count / max(1, config.num_transitions) * 100
+            remaining = config.num_transitions - current_count
+            eta_hours = remaining / max(1, fps_rolling) / 3600
+
+            disk_used_gb = _get_dir_size_gb(save_dir)
+            disk_free_gb = shutil.disk_usage(save_dir).free / (1024 ** 3)
+
+            # Schedule tracking
+            schedule_delta_pct = 0.0
+            if baseline_fps is not None and baseline_fps > 0:
+                expected = baseline_fps * elapsed
+                schedule_delta_pct = (current_count - expected) / max(1, expected) * 100
+
+            # Log to stdout (always)
+            fps_baseline_str = f"  base={baseline_fps:.0f}" if baseline_fps else ""
+            print(
+                f"[monitor] {current_count:,}/{config.num_transitions:,} "
+                f"({pct_complete:.1f}%) | "
+                f"FPS cur={fps_current:.0f} roll={fps_rolling:.0f}{fps_baseline_str} | "
+                f"ETA {eta_hours:.1f}h | "
+                f"disk {disk_used_gb:.1f}GB used, {disk_free_gb:.1f}GB free"
+            )
+
+            # Log to W&B (if available)
+            if wandb_run is not None:
+                try:
+                    import wandb as _wb
+                    metrics: dict[str, float] = {
+                        "transitions_collected": current_count,
+                        "fps_current": fps_current,
+                        "fps_rolling": fps_rolling,
+                        "pct_complete": pct_complete,
+                        "eta_hours": eta_hours,
+                        "disk_used_gb": disk_used_gb,
+                        "disk_free_gb": disk_free_gb,
+                    }
+                    if baseline_fps is not None:
+                        metrics["fps_baseline"] = baseline_fps
+                        metrics["schedule_delta_pct"] = schedule_delta_pct
+                    _wb.log(metrics)
+                except Exception:
+                    pass  # don't crash collection on W&B errors
+
+            prev_count = current_count
+            prev_time = now
+
     except KeyboardInterrupt:
         print("\nInterrupted — terminating workers...")
         for p in workers:
             p.terminate()
         for p in workers:
             p.join(timeout=5)
+    finally:
+        # Wait for any remaining workers
+        for p in workers:
+            if p.is_alive():
+                p.join(timeout=10)
+        # Finish W&B run
+        if wandb_run is not None:
+            try:
+                import wandb as _wb
+                _wb.finish()
+            except Exception:
+                pass
 
     elapsed = time.monotonic() - t_start
     total = shared_counter.value
