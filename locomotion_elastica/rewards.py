@@ -1,11 +1,11 @@
-"""Potential-field reward for snake locomotion (following Liu et al. 2023, eq. 14).
+"""Distance-based potential reward for snake locomotion.
 
-R = c_v * v_g  +  c_g * v_g * cos(theta_g) / dist
+R = c_dist * (prev_dist - curr_dist) + c_align * cos(theta_g) + goal_bonus
 
 where:
-    v_g:       velocity toward goal (projected onto CoM-to-goal direction)
+    prev_dist: previous distance to goal
+    curr_dist: current distance to goal
     theta_g:   heading angle error to goal (radians)
-    dist:      distance from CoM to goal
 """
 
 import math
@@ -15,27 +15,31 @@ from locomotion_elastica.config import LocomotionRewardConfig
 
 def compute_goal_reward(
     config: LocomotionRewardConfig,
-    v_g: float,
-    dist_to_goal: float,
+    prev_dist: float,
+    curr_dist: float,
     theta_g: float,
+    goal_reached: bool,
 ) -> float:
-    """Compute potential-field reward.
+    """Compute distance-based potential reward.
 
     Args:
-        config: Reward coefficients (c_v, c_g).
-        v_g: Velocity toward goal (positive = approaching).
-        dist_to_goal: Current distance to goal.
+        config: Reward coefficients.
+        prev_dist: Previous distance to goal.
+        curr_dist: Current distance to goal.
         theta_g: Heading angle error to goal (radians).
+        goal_reached: Whether the goal was reached this step.
 
     Returns:
         Scalar reward.
     """
-    # Velocity reward: encourage moving toward goal
-    reward = config.c_v * v_g
+    # Distance reduction: positive when getting closer
+    reward = config.c_dist * (prev_dist - curr_dist)
 
-    # Potential-field term: velocity aligned with attractive force / distance
-    epsilon = 1e-6
-    if dist_to_goal > epsilon:
-        reward += config.c_g * v_g * math.cos(theta_g) / dist_to_goal
+    # Heading alignment bonus: encourage facing the goal
+    reward += config.c_align * math.cos(theta_g)
+
+    # Goal reached bonus
+    if goal_reached:
+        reward += config.goal_bonus
 
     return reward

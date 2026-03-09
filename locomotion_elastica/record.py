@@ -29,6 +29,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from matplotlib.animation import FuncAnimation
+from tensordict import TensorDict
+from torchrl.envs.utils import set_exploration_type, ExplorationType
 
 from locomotion_elastica.config import (
     GaitType,
@@ -78,13 +80,17 @@ def load_actor(checkpoint_path: str, env: LocomotionElasticaEnv, device: str):
     """Reconstruct actor network and load trained weights."""
     checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
 
-    network_config = LocomotionElasticaNetworkConfig()
+    # Use checkpoint's network config if available (correct hidden_dims)
+    if "config" in checkpoint:
+        actor_config = checkpoint["config"].network.actor
+    else:
+        actor_config = LocomotionElasticaNetworkConfig().actor
     obs_dim = env.observation_spec["observation"].shape[-1]
 
     actor = create_actor(
         obs_dim=obs_dim,
         action_spec=env.action_spec,
-        config=network_config.actor,
+        config=actor_config,
         device=device,
     )
     actor.load_state_dict(checkpoint["actor_state_dict"])
@@ -128,8 +134,12 @@ def collect_rollout(env, actor, max_steps, device):
         # Select action
         if actor is not None:
             with torch.no_grad():
-                actor(td)
-                td["action"] = td["loc"]  # deterministic
+                td_in = TensorDict(
+                    {"observation": td["observation"].unsqueeze(0)}, batch_size=[1]
+                )
+                with set_exploration_type(ExplorationType.DETERMINISTIC):
+                    td_out = actor(td_in)
+                td["action"] = td_out["action"].squeeze(0)
         else:
             td["action"] = torch.zeros(
                 env.action_spec.shape, dtype=torch.float32, device=device

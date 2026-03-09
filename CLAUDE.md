@@ -6,7 +6,7 @@ Hierarchical Reinforcement Learning (HRL) for snake robot predation using TorchR
 
 ## Project Reference
 
-For detailed project architecture, physics, and background, refer to `doc/overview.tex`.
+For detailed project architecture, physics, and background, refer to `overview.tex`.
 
 ## Directory Structure
 
@@ -18,13 +18,14 @@ snake-hrl/
 ├── CLAUDE.md          # This file — project instructions for Claude
 ├── pyproject.toml     # Package config and dependencies
 ├── requirements.txt   # Pinned dependencies
+├── overview.tex       # Detailed project architecture and physics reference
 ├── bing2019/          # Locomotion env package (Bing et al., IJCAI 2019)
 ├── data/              # Datasets, demos, and saved experiences
-├── doc/               # Documentation, logs, experiments, issues, knowledge
-│   ├── logs/          # One file per log entry (<topic>.md)
-│   ├── experiments/   # One file per experiment (<topic>.md)
-│   ├── issues/        # One file per issue (<topic>.md)
-│   └── knowledge/     # Domain knowledge and reference (<topic>.md)
+├── logs/              # One file per log entry (<topic>.md)
+├── experiments/       # One file per experiment (<topic>.md)
+├── issues/            # One file per issue (<topic>.md)
+├── knowledge/         # Domain knowledge and reference (<topic>.md)
+├── references/        # One file per reference (<topic>.md)
 ├── figures/           # Generated plots and figures
 ├── media/             # Images, videos, and GIFs
 ├── model/             # Saved model weights
@@ -58,7 +59,7 @@ snake-hrl/
 - `tests/` — test files
 - `script/` — standalone scripts
 - `data/` — data files
-- `doc/` — documentation files
+- `logs/`, `experiments/`, `issues/`, `knowledge/`, `references/` — documentation files
 
 ## Architecture
 
@@ -75,22 +76,33 @@ snake-hrl/
 
 - HuggingFace access token: set `HF_TOKEN` env var
 - WandB API key: set `WANDB_API_KEY` env var
+- Docker Hub (user `albatross679`): set `DOCKER_TOKEN` env var
 
 ## Todoist
 
 - Project ID: `6fxH85hJ3hvWq8hh`
 
-## Documentation Requirements
+## Documentation (IMPORTANT)
 
-IMPORTANT: You MUST document all work in `doc/` after completing any task. Each log, experiment, and issue is a **separate file** in its own subdirectory.
-
-Follow the skill at `.claude/skills/markdown-for-project` for formatting, frontmatter, naming conventions, and templates.
-
-There are four file classes (one per doc type): `log`, `experiment`, `issue`, `knowledge`.
+Claude Code MUST document **as it goes** — immediately after each change, not batched at the end of the session. Each entry is a **separate file** in its subdirectory. Follow the `markdown-for-project` skill for formatting, frontmatter, and naming.
 
 | What | Where | Naming | When | File Class |
 |---|---|---|---|---|
-| Logs | `doc/logs/` | `<topic>.md` | After ANY code change or task | `log` |
-| Experiments | `doc/experiments/` | `<topic>.md` | When running simulations/tests | `experiment` |
-| Issues | `doc/issues/` | `<topic>.md` | When encountering bugs/errors | `issue` |
-| Knowledge | `doc/knowledge/` | `<topic>.md` | When capturing domain knowledge or reference material | `knowledge` |
+| Logs | `logs/` | `<topic>.md` | After any code change that adds, fixes, or modifies functionality | `log` |
+| Experiments | `experiments/` | `<topic>.md` | After running a simulation, test, or investigation | `experiment` |
+| Issues | `issues/` | `<topic>.md` | When encountering a bug or error (before or alongside the fix) | `issue` |
+| Knowledge | `knowledge/` | `<topic>.md` | When capturing domain knowledge or reference material | `knowledge` |
+| References | `references/` | `<topic>.md` | When capturing external references or citations | `reference` |
+
+**Threshold for logging:** A change warrants a log if it modifies behavior, fixes a bug, or changes configuration. Trivial edits (typos, whitespace, comment-only changes) do not need a log entry.
+
+## Active Mode ("Stay Active" / Long-Running Tasks)
+
+When the user asks Claude Code to **stay active** (e.g., "keep going", "stay active and fix everything", "run until done"), Claude Code MUST:
+
+1. **Scope** — only address issues related to the current task or explicitly requested area. Do not "fix" unrelated code that appears to work.
+2. **Prioritize** — fix errors and blockers first, then warnings, then improvements.
+3. **Autonomously iterate** — continuously identify and resolve issues without waiting for further prompts.
+4. **Document each resolution** — write a log entry immediately after each fix, before moving to the next problem.
+5. **Check in every ~5 fixes** — briefly summarize progress and remaining issues so the user can redirect if needed.
+6. **Stop when** there are no remaining in-scope issues or the user asks to stop.

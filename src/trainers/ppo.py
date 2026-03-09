@@ -99,7 +99,7 @@ class PPOTrainer:
 
         # Learning rate scheduler
         if self.config.lr_schedule == "linear":
-            total_updates = self.config.total_frames // self.config.frames_per_batch
+            total_updates = max(1, self.config.total_frames // self.config.frames_per_batch)
             self.scheduler = LambdaLR(
                 self.optimizer,
                 lr_lambda=lambda step: max(
@@ -209,6 +209,13 @@ class PPOTrainer:
                     )
                     break
 
+            # Move batch to training device (ParallelEnv produces CPU tensors)
+            batch = batch.to(self.device)
+
+            # Flatten batch if from ParallelEnv (shape [num_envs, T] -> [num_envs*T])
+            if batch.ndim > 1:
+                batch = batch.reshape(-1)
+
             # Compute advantages
             with torch.no_grad():
                 self.advantage_module(batch)
@@ -267,7 +274,7 @@ class PPOTrainer:
                     metrics["mean_final_dist_to_goal"] = finals.mean().item()
 
             # Reward diagnostics (batch means)
-            for key in ("v_g", "dist_to_goal", "theta_g", "reward_velocity", "reward_potential"):
+            for key in ("v_g", "dist_to_goal", "theta_g", "reward_dist", "reward_align"):
                 if key in next_td.keys():
                     metrics[f"mean_{key}"] = next_td[key].mean().item()
 
@@ -377,8 +384,10 @@ class PPOTrainer:
                 if grad_norm is not None:
                     metrics["grad_norm"] += float(grad_norm)
 
-            # Early stopping on KL divergence
-            if self.config.target_kl and metrics["kl_divergence"] > self.config.target_kl:
+            # Early stopping on KL divergence (compare average, not accumulated sum)
+            updates_so_far = (epoch + 1) * num_batches
+            avg_kl = metrics["kl_divergence"] / max(1, updates_so_far)
+            if self.config.target_kl and avg_kl > self.config.target_kl:
                 break
 
         # Average metrics
@@ -396,7 +405,9 @@ class PPOTrainer:
         """
         log_str = f"Step {self.total_frames}: "
         log_str += f"actor_loss={metrics['loss_actor']:.4f}, "
-        log_str += f"critic_loss={metrics['loss_critic']:.4f}"
+        log_str += f"critic_loss={metrics['loss_critic']:.4f}, "
+        log_str += f"entropy={metrics['loss_entropy']:.4f}, "
+        log_str += f"kl={metrics['kl_divergence']:.4f}"
 
         if "mean_episode_reward" in metrics:
             log_str += f", reward={metrics['mean_episode_reward']:.2f}"
@@ -434,8 +445,8 @@ class PPOTrainer:
                 ("mean_v_g", "reward/v_g"),
                 ("mean_dist_to_goal", "reward/dist_to_goal"),
                 ("mean_theta_g", "reward/theta_g"),
-                ("mean_reward_velocity", "reward/component_velocity"),
-                ("mean_reward_potential", "reward/component_potential"),
+                ("mean_reward_dist", "reward/component_dist"),
+                ("mean_reward_align", "reward/component_align"),
             ):
                 if key in metrics:
                     wandb_log[wandb_key] = metrics[key]

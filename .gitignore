@@ -71,3 +71,11 @@ dismech-rods/
 # Temporary / auto-generated
 MUJOCO_LOG.TXT
 temp.md
+
+# Binary archives / extensions
+*.tar.gz
+*.vsix
+
+# Doc-db (VSCode extension build artifacts)
+.doc-db/
+doc-db/

@@ -46,8 +46,16 @@ def create_snake_robot(
         return SnakeRobot(config, initial_snake_position, initial_prey_position)
 
 
-# Keep existing exports for backwards compatibility
-from .snake_robot import SnakeRobot
+# Lazy import: SnakeRobot triggers heavy dismech/numba initialization
+# Import on first access only to avoid overhead in parallel env workers
+def __getattr__(name):
+    if name == "SnakeRobot":
+        from .snake_robot import SnakeRobot
+        globals()["SnakeRobot"] = SnakeRobot
+        return SnakeRobot
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
 from .cpg import (
     MatsuokaOscillator,
     HopfOscillator,

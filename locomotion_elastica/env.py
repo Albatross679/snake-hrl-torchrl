@@ -7,8 +7,8 @@ transformed to joint curvatures via DirectSerpenoidSteeringTransform.
 Uses PyElastica's Cosserat rod simulation instead of DisMech.
 
 The goal is placed along the snake's initial heading direction. The reward
-follows Liu et al. (2023) potential-field formulation:
-    R = c_v * v_g + c_g * v_g * cos(theta_g) / dist
+uses a distance-based potential formulation:
+    R = c_dist * (prev_dist - curr_dist) + c_align * cos(theta_g) + goal_bonus
 """
 
 import math
@@ -56,6 +56,42 @@ class SnakeSimulator(
 ):
     """PyElastica simulator container for the snake rod."""
     pass
+
+
+class AnisotropicRFTForce(elastica.external_forces.NoForces):
+    """Resistive Force Theory (RFT) anisotropic drag for ground locomotion.
+
+    Applies velocity-dependent drag with different coefficients for tangential
+    (along body) and normal (perpendicular to body) directions:
+        F_t = -c_t * v_t   (tangential drag, lower)
+        F_n = -c_n * v_n   (normal drag, higher)
+
+    The anisotropy (c_n > c_t) is what enables serpentine locomotion: lateral
+    undulation pushes against the ground more than it slides along it.
+    """
+
+    def __init__(self, c_t: float, c_n: float):
+        self.c_t = c_t
+        self.c_n = c_n
+
+    def apply_forces(self, system, time=0.0):
+        # Element tangents: (3, n_elements)
+        tangents = system.tangents  # (3, n_elem)
+        # Element velocities from node velocities: average adjacent nodes
+        vel_nodes = system.velocity_collection  # (3, n_nodes)
+        vel_elem = 0.5 * (vel_nodes[:, :-1] + vel_nodes[:, 1:])  # (3, n_elem)
+
+        # Vectorized projection: v_t_scalar = sum(v * t, axis=0)
+        v_t_scalar = np.sum(vel_elem * tangents, axis=0)  # (n_elem,)
+        v_t = v_t_scalar[np.newaxis, :] * tangents  # (3, n_elem)
+        v_n = vel_elem - v_t  # (3, n_elem)
+
+        # RFT drag force per element
+        f_elem = -self.c_t * v_t - self.c_n * v_n  # (3, n_elem)
+
+        # Distribute to adjacent nodes (half each)
+        system.external_forces[:, :-1] += 0.5 * f_elem
+        system.external_forces[:, 1:] += 0.5 * f_elem
 
 
 class LocomotionElasticaEnv(EnvBase):
@@ -122,19 +158,35 @@ class LocomotionElasticaEnv(EnvBase):
         self._goal_xy = np.array([2.0, 0.0])
         self._prev_com = np.zeros(2)
         self._prev_heading_angle = 0.0
+        self._prev_dist_to_goal = 2.0
         self._energy_rate = 0.0
         self._episode_start_time = 0.0
-        self._v_g_history = []
+        self._no_progress_count = 0
 
         # Build specs
         self._make_spec()
 
     def _make_spec(self):
         """Define observation, action, reward, and done specs."""
+        _scalar = lambda dtype=torch.float32: UnboundedContinuousTensorSpec(
+            shape=(1,), dtype=dtype, device=self._device
+        )
+
         self.observation_spec = CompositeSpec(
             observation=UnboundedContinuousTensorSpec(
                 shape=(self.OBS_DIM,), dtype=torch.float32, device=self._device
             ),
+            # Reward diagnostics (preserved by collector)
+            v_g=_scalar(),
+            dist_to_goal=_scalar(),
+            theta_g=_scalar(),
+            reward_dist=_scalar(),
+            reward_align=_scalar(),
+            # Episode-end diagnostics
+            episode_wall_time_s=_scalar(),
+            final_dist_to_goal=_scalar(),
+            goal_reached=_scalar(torch.bool),
+            starvation=_scalar(torch.bool),
             shape=(),
         )
 
@@ -201,12 +253,24 @@ class LocomotionElasticaEnv(EnvBase):
                 GravityForces, acc_gravity=np.array(physics.gravity)
             )
 
-        # Add damping
+        # Add damping (low value — high damping freezes the rod entirely)
         from elastica.dissipation import AnalyticalLinearDamper
         self._simulator.dampen(self._rod).using(
             AnalyticalLinearDamper,
             damping_constant=physics.elastica_damping,
             time_step=physics.dt / physics.elastica_substeps,
+        )
+
+        # Add RFT anisotropic friction (required for serpentine locomotion)
+        friction = physics.friction
+        self._rft_force = AnisotropicRFTForce(
+            c_t=friction.rft_ct,
+            c_n=friction.rft_cn,
+        )
+        self._simulator.add_forcing_to(self._rod).using(
+            AnisotropicRFTForce,
+            c_t=friction.rft_ct,
+            c_n=friction.rft_cn,
         )
 
         # Finalize
@@ -410,7 +474,7 @@ class LocomotionElasticaEnv(EnvBase):
         # Initialize episode state
         self._step_count = 0
         self._episode_start_time = _time.monotonic()
-        self._v_g_history.clear()
+        self._no_progress_count = 0
         positions = self._get_positions()
         self._prev_com = self._get_com(positions)
         self._prev_heading_angle = self._get_heading_angle(positions)
@@ -419,15 +483,31 @@ class LocomotionElasticaEnv(EnvBase):
         # Place goal along initial heading
         com = self._get_com(positions)
         self._goal_xy = com + self.config.goal.goal_distance * self._initial_heading
+        self._prev_dist_to_goal = self.config.goal.goal_distance
 
         obs = self._get_obs()
+
+        _zero = torch.tensor([0.0], dtype=torch.float32, device=self._device)
+        _false = torch.tensor([False], dtype=torch.bool, device=self._device)
 
         return TensorDict(
             {
                 "observation": torch.tensor(obs, dtype=torch.float32, device=self._device),
-                "done": torch.tensor([False], dtype=torch.bool, device=self._device),
-                "terminated": torch.tensor([False], dtype=torch.bool, device=self._device),
-                "truncated": torch.tensor([False], dtype=torch.bool, device=self._device),
+                "done": _false.clone(),
+                "terminated": _false.clone(),
+                "truncated": _false.clone(),
+                # Diagnostic defaults
+                "v_g": _zero.clone(),
+                "dist_to_goal": torch.tensor(
+                    [self.config.goal.goal_distance], dtype=torch.float32, device=self._device
+                ),
+                "theta_g": _zero.clone(),
+                "reward_dist": _zero.clone(),
+                "reward_align": _zero.clone(),
+                "episode_wall_time_s": _zero.clone(),
+                "final_dist_to_goal": _zero.clone(),
+                "goal_reached": _false.clone(),
+                "starvation": _false.clone(),
             },
             batch_size=self.batch_size,
             device=self._device,
@@ -441,23 +521,42 @@ class LocomotionElasticaEnv(EnvBase):
         self._prev_com = self._get_com(positions)
         self._prev_heading_angle = self._get_heading_angle(positions)
 
-        # Apply serpenoid curvatures once, then let physics run for all substeps.
-        # Reverse curvature order so wave travels head→tail for forward motion.
-        dt_total = self.config.physics.dt * self.config.control.substeps_per_action
-        curvatures = self._serpenoid.step(action, dt=dt_total)
-        curvatures = curvatures[::-1]
-        self._apply_curvature_to_elastica(curvatures)
+        # Denormalize action to physical serpenoid parameters
+        params = self._serpenoid.denormalize_action(action)
+        self._serpenoid._current_params = params
+        amplitude = params["amplitude"]
+        frequency = params["frequency"]
+        wave_number = params["wave_number"]
+        phase = params["phase"]
+        turn_bias = params["turn_bias"]
 
-        # Step PyElastica with internal substeps
+        omega = 2 * np.pi * frequency
+        k = 2 * np.pi * wave_number
+
+        # Step PyElastica: update curvature once per physics step, then run substeps
         physics = self.config.physics
         dt_sub = physics.dt / physics.elastica_substeps
+        dt_physics = physics.dt
+        joint_positions = self._serpenoid._joint_positions
         time = 0.0
         for _ in range(self.config.control.substeps_per_action):
+            # Update curvature wave at the start of each physics step
+            curvatures = (
+                amplitude * np.sin(
+                    k * joint_positions
+                    + omega * self._serpenoid._time
+                    + phase
+                )
+                + turn_bias
+            )
+            self._apply_curvature_to_elastica(curvatures)
+            # Run elastica substeps with this curvature held constant
             for _ in range(physics.elastica_substeps):
                 time = self._do_step(
                     self._time_stepper, self._steps_and_prefactors,
                     self._simulator, time, dt_sub
                 )
+            self._serpenoid._time += dt_physics
 
         # Post-step state
         positions = self._get_positions()
@@ -473,15 +572,16 @@ class LocomotionElasticaEnv(EnvBase):
         v_g = self._get_velocity_toward_goal(com, v_com_xy)
         self._energy_rate = self._get_energy_rate(velocities)
 
-        # Track v_g history for starvation detection
-        self._v_g_history.append(v_g)
+        # Termination: goal reached?
+        goal_reached = dist_to_goal <= self.config.goal.goal_radius
 
-        # Compute reward (Liu 2023 potential-field)
+        # Compute reward (distance-based potential)
         reward = compute_goal_reward(
             config=self.config.rewards,
-            v_g=v_g,
-            dist_to_goal=dist_to_goal,
+            prev_dist=self._prev_dist_to_goal,
+            curr_dist=dist_to_goal,
             theta_g=theta_g,
+            goal_reached=goal_reached,
         )
 
         if np.isnan(reward):
@@ -489,18 +589,22 @@ class LocomotionElasticaEnv(EnvBase):
 
         # Reward components for logging
         c = self.config.rewards
-        reward_velocity = c.c_v * v_g
-        epsilon = 1e-6
-        reward_potential = (
-            c.c_g * v_g * math.cos(theta_g) / dist_to_goal
-            if dist_to_goal > epsilon else 0.0
-        )
+        reward_dist = c.c_dist * (self._prev_dist_to_goal - dist_to_goal)
+        reward_align = c.c_align * math.cos(theta_g)
+
+        # Track starvation: no distance reduction for N consecutive steps
+        if dist_to_goal >= self._prev_dist_to_goal:
+            self._no_progress_count += 1
+        else:
+            self._no_progress_count = 0
+
+        # Update previous distance
+        self._prev_dist_to_goal = dist_to_goal
 
         self._step_count += 1
 
         # Termination conditions
-        goal_reached = dist_to_goal <= self.config.goal.goal_radius
-        starvation = self._check_starvation()
+        starvation = self._no_progress_count >= self.config.goal.starvation_timeout
 
         terminated = goal_reached or starvation
         truncated = self._step_count >= self.config.max_episode_steps
@@ -508,34 +612,34 @@ class LocomotionElasticaEnv(EnvBase):
 
         obs = self._get_obs()
 
+        episode_wall_s = _time.monotonic() - self._episode_start_time
+
         step_dict = {
             "observation": torch.tensor(obs, dtype=torch.float32, device=self._device),
             "reward": torch.tensor([reward], dtype=torch.float32, device=self._device),
             "done": torch.tensor([done], dtype=torch.bool, device=self._device),
             "terminated": torch.tensor([terminated], dtype=torch.bool, device=self._device),
             "truncated": torch.tensor([truncated], dtype=torch.bool, device=self._device),
-            # Reward diagnostics (per-step)
+            # Reward diagnostics (per-step, always present for collector)
             "v_g": torch.tensor([v_g], dtype=torch.float32, device=self._device),
             "dist_to_goal": torch.tensor([dist_to_goal], dtype=torch.float32, device=self._device),
             "theta_g": torch.tensor([theta_g], dtype=torch.float32, device=self._device),
-            "reward_velocity": torch.tensor([reward_velocity], dtype=torch.float32, device=self._device),
-            "reward_potential": torch.tensor([reward_potential], dtype=torch.float32, device=self._device),
-        }
-
-        if done:
-            episode_wall_s = _time.monotonic() - self._episode_start_time
-            step_dict["episode_wall_time_s"] = torch.tensor(
+            "reward_dist": torch.tensor([reward_dist], dtype=torch.float32, device=self._device),
+            "reward_align": torch.tensor([reward_align], dtype=torch.float32, device=self._device),
+            # Episode-end diagnostics (always present; meaningful only when done)
+            "episode_wall_time_s": torch.tensor(
                 [episode_wall_s], dtype=torch.float32, device=self._device
-            )
-            step_dict["final_dist_to_goal"] = torch.tensor(
-                [dist_to_goal], dtype=torch.float32, device=self._device
-            )
-            step_dict["goal_reached"] = torch.tensor(
+            ),
+            "final_dist_to_goal": torch.tensor(
+                [dist_to_goal if done else 0.0], dtype=torch.float32, device=self._device
+            ),
+            "goal_reached": torch.tensor(
                 [goal_reached], dtype=torch.bool, device=self._device
-            )
-            step_dict["starvation"] = torch.tensor(
+            ),
+            "starvation": torch.tensor(
                 [starvation], dtype=torch.bool, device=self._device
-            )
+            ),
+        }
 
         return TensorDict(
             step_dict,
@@ -544,11 +648,8 @@ class LocomotionElasticaEnv(EnvBase):
         )
 
     def _check_starvation(self) -> bool:
-        """Check if v_g has been negative for too many consecutive steps."""
-        timeout = self.config.goal.starvation_timeout
-        if len(self._v_g_history) < timeout:
-            return False
-        return all(v < 0 for v in self._v_g_history[-timeout:])
+        """Check if no distance progress for too many consecutive steps."""
+        return self._no_progress_count >= self.config.goal.starvation_timeout
 
     def close(self, **kwargs):
         self._simulator = None

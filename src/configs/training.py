@@ -44,7 +44,7 @@ class RLConfig(MLBaseConfig):
     gamma: float = 0.99  # Discount factor
 
     # Logging
-    log_interval: int = 10
+    log_interval: int = 1
     eval_interval: int = 50
     save_interval: int = 100
 

@@ -49,7 +49,7 @@ class LocomotionElasticaPhysicsConfig(ElasticaConfig):
     Overrides ElasticaConfig defaults:
     - 2D simulation with RFT friction (anisotropic drag)
     - Free body (no clamped nodes)
-    - 0.5m snake, radius 0.001m, 20 segments
+    - 0.5m snake, radius 0.02m, 20 segments
     """
 
     # Free body (not clamped)
@@ -57,10 +57,11 @@ class LocomotionElasticaPhysicsConfig(ElasticaConfig):
     two_d_sim: bool = False
 
     # Override geometry for locomotion snake
+    # Radius 0.02m gives sufficient bending stiffness (EI) for serpentine locomotion
     geometry: GeometryConfig = field(
         default_factory=lambda: GeometryConfig(
             snake_length=0.5,
-            snake_radius=0.001,
+            snake_radius=0.02,
             num_segments=20,
         )
     )
@@ -68,25 +69,26 @@ class LocomotionElasticaPhysicsConfig(ElasticaConfig):
     # Time stepping
     dt: float = 0.05
 
-    # Material
-    youngs_modulus: float = 2e6
+    # Material (E=1e5 with r=0.02 gives stable serpentine locomotion)
+    youngs_modulus: float = 1e5
     poisson_ratio: float = 0.5
     density: float = 1200.0
 
     # No gravity — snake moves in XY ground plane
     enable_gravity: bool = False
 
-    # PyElastica-specific
-    elastica_damping: float = 0.1
+    # PyElastica-specific (damping >= 0.008 freezes the rod completely)
+    elastica_damping: float = 0.002
     elastica_time_stepper: str = "PositionVerlet"
     elastica_substeps: int = 50
 
-    # RFT friction (anisotropic drag: ct < cn for anisotropic locomotion)
+    # RFT friction (anisotropic drag: ct < cn for serpentine locomotion)
+    # ct=0.01, cn=0.05 (5:1 ratio) produces stable forward locomotion
     friction: FrictionConfig = field(
         default_factory=lambda: FrictionConfig(
             model=FrictionModel.RFT,
             rft_ct=0.01,
-            rft_cn=0.1,
+            rft_cn=0.05,
         )
     )
 
@@ -108,7 +110,9 @@ class SerpenoidControlConfig:
     action_dim: int = 5
 
     # Parameter ranges (physical values mapped from [-1, 1])
-    amplitude_range: Tuple[float, float] = (0.0, 2.0)
+    # Amplitude is curvature in rad/m. For a 0.5m snake with 20 segments,
+    # segment length = 0.025m. Amplitude 5.0 → max angle/segment = 0.125 rad ≈ 7°.
+    amplitude_range: Tuple[float, float] = (0.0, 5.0)
     frequency_range: Tuple[float, float] = (0.5, 3.0)
     turn_bias_range: Tuple[float, float] = (-2.0, 2.0)
 
@@ -126,8 +130,8 @@ class GoalConfig:
     """Goal placement and termination for forward locomotion."""
 
     goal_distance: float = 2.0  # Distance from CoM along initial heading (meters)
-    goal_radius: float = 0.1  # Reach threshold (meters)
-    starvation_timeout: int = 60  # Consecutive steps with v_g < 0 → terminate
+    goal_radius: float = 0.3  # Reach threshold (meters) — larger since snake moves fast
+    starvation_timeout: int = 200  # Consecutive steps with no distance reduction → terminate
 
 
 # ---------------------------------------------------------------------------
@@ -137,13 +141,14 @@ class GoalConfig:
 
 @dataclass
 class LocomotionRewardConfig:
-    """Potential-field reward coefficients (Liu et al. 2023, eq. 14).
+    """Distance-based potential reward with heading alignment bonus.
 
-    R = c_v * v_g + c_g * v_g * cos(theta_g) / dist
+    R = c_dist * (prev_dist - curr_dist) + c_align * cos(theta_g) + goal_bonus
     """
 
-    c_v: float = 1.0  # Velocity-toward-goal coefficient
-    c_g: float = 0.5  # Potential-field (proximity) coefficient
+    c_dist: float = 10.0   # Distance reduction scale (positive = getting closer)
+    c_align: float = 0.1   # Heading alignment bonus per step
+    goal_bonus: float = 100.0  # One-time bonus for reaching goal
 
 
 # ---------------------------------------------------------------------------
@@ -221,16 +226,16 @@ class LocomotionElasticaConfig(PPOConfig):
     name: str = "locomotion_elastica"
     experiment_name: str = "locomotion_elastica"
 
-    # PPO hyperparameters
+    # PPO hyperparameters (conservative: high reward variance → fewer epochs, lower LR)
     total_frames: int = 2_000_000
-    learning_rate: float = 3e-4
+    learning_rate: float = 1e-4
     frames_per_batch: int = 8192
     clip_epsilon: float = 0.2
-    num_epochs: int = 10
+    num_epochs: int = 4
     mini_batch_size: int = 512
     gamma: float = 0.99
     gae_lambda: float = 0.95
-    entropy_coef: float = 0.01
+    entropy_coef: float = 0.02
 
     # Compose env + network + logging
     env: LocomotionElasticaEnvConfig = field(default_factory=LocomotionElasticaEnvConfig)

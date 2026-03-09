@@ -6,6 +6,12 @@ Usage:
     python -m locomotion_elastica.train --gait u_turn --max-wall-time 30m
 """
 
+import os
+# Limit thread spawning per process for parallel envs (must be set before numpy import)
+os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
+os.environ.setdefault("OMP_NUM_THREADS", "1")
+os.environ.setdefault("MKL_NUM_THREADS", "1")
+
 import argparse
 import re
 
@@ -78,6 +84,10 @@ def parse_args() -> argparse.Namespace:
         help="Number of parallel envs (default: CPU cores - 1)",
     )
     parser.add_argument(
+        "--frames-per-batch", type=int, default=None,
+        help="Frames per batch (default: config value, 8192)",
+    )
+    parser.add_argument(
         "--max-wall-time",
         type=str,
         default=None,
@@ -110,6 +120,8 @@ def main():
         config.max_wall_time = parse_wall_time(args.max_wall_time)
     if args.num_envs is not None:
         config.num_envs = args.num_envs
+    if args.frames_per_batch is not None:
+        config.frames_per_batch = args.frames_per_batch
     if args.wandb:
         config.wandb.enabled = True
         config.wandb.project = args.wandb_project
@@ -126,9 +138,10 @@ def main():
     if config.num_envs > 1:
         from torchrl.envs import ParallelEnv
 
+        # ParallelEnv workers must use CPU; collector moves data to training device
         base_env = ParallelEnv(
             config.num_envs,
-            _EnvFactory(config.env, device),
+            _EnvFactory(config.env, "cpu"),
         )
     else:
         base_env = LocomotionElasticaEnv(config.env, device=device)

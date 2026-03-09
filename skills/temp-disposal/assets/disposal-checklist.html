@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Temporary File Disposal</title>
+<style>
+  :root {
+    --bg: #1e1e2e;
+    --surface: #262637;
+    --surface2: #2e2e42;
+    --border: #3e3e56;
+    --text: #cdd6f4;
+    --text-dim: #8888aa;
+    --accent: #89b4fa;
+    --green: #a6e3a1;
+    --red: #f38ba8;
+    --yellow: #f9e2af;
+    --peach: #fab387;
+    --overlay: rgba(0,0,0,0.5);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: var(--bg); color: var(--text); padding: 2rem; line-height: 1.6;
+  }
+  h1 { font-size: 1.6rem; margin-bottom: 0.3rem; color: var(--accent); }
+  .subtitle { color: var(--text-dim); margin-bottom: 1.5rem; font-size: 0.9rem; }
+  .stats { display: flex; gap: 1rem; margin-bottom: 1.5rem; flex-wrap: wrap; }
+  .stat-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; padding: 0.8rem 1.2rem; min-width: 120px;
+  }
+  .stat-card .num { font-size: 1.6rem; font-weight: 700; }
+  .stat-card .label { font-size: 0.75rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.05em; }
+  .section {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; margin-bottom: 1.5rem; overflow: hidden;
+  }
+  .section-header {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 0.8rem 1.2rem; background: var(--surface2); cursor: pointer; user-select: none;
+  }
+  .section-header:hover { background: #33334d; }
+  .section-header h2 { font-size: 1rem; display: flex; align-items: center; gap: 0.5rem; }
+  .badge {
+    background: var(--accent); color: var(--bg); font-size: 0.7rem;
+    padding: 2px 7px; border-radius: 10px; font-weight: 600;
+  }
+  .toggle { font-size: 1.1rem; transition: transform 0.2s; color: var(--text-dim); }
+  .section.collapsed .section-body { display: none; }
+  .section.collapsed .toggle { transform: rotate(-90deg); }
+  .bulk-actions {
+    display: flex; gap: 0.5rem; padding: 0.6rem 1.2rem;
+    border-bottom: 1px solid var(--border); background: var(--surface);
+  }
+  .bulk-actions button {
+    font-size: 0.75rem; padding: 3px 10px; border-radius: 4px;
+    border: 1px solid var(--border); background: var(--surface2); color: var(--text-dim); cursor: pointer;
+  }
+  .bulk-actions button:hover { background: var(--border); color: var(--text); }
+  .item {
+    display: grid; grid-template-columns: 36px 1fr;
+    border-bottom: 1px solid var(--border); transition: background 0.15s;
+  }
+  .item:last-child { border-bottom: none; }
+  .item:hover { background: var(--surface2); }
+  .item.approved { background: rgba(166,227,161,0.06); }
+  .item-check { display: flex; align-items: flex-start; justify-content: center; padding-top: 1rem; }
+  .item-check input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--green); cursor: pointer; }
+  .item-content { padding: 0.8rem 1rem 0.8rem 0; }
+  .item-file { font-weight: 600; font-size: 0.9rem; word-break: break-all; }
+  .item-meta { display: flex; gap: 0.6rem; margin-top: 0.3rem; flex-wrap: wrap; align-items: center; }
+  .tag { font-size: 0.7rem; padding: 2px 7px; border-radius: 4px; font-weight: 500; }
+  .tag-md { background: rgba(137,180,250,0.15); color: var(--accent); }
+  .tag-pdf { background: rgba(243,139,168,0.15); color: var(--red); }
+  .tag-img { background: rgba(166,227,161,0.15); color: var(--green); }
+  .tag-other { background: rgba(250,179,135,0.15); color: var(--peach); }
+  .tag-status { background: rgba(249,226,175,0.15); color: var(--yellow); }
+  .tag-auto { background: rgba(166,227,161,0.25); color: var(--green); font-style: italic; }
+  .suggested-solution {
+    margin-top: 0.5rem; padding: 0.5rem 0.7rem; background: var(--bg);
+    border: 1px solid var(--border); border-radius: 6px; font-size: 0.8rem;
+  }
+  .sol-label {
+    font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.05em;
+    color: var(--text-dim); margin-bottom: 0.2rem; font-weight: 600;
+  }
+  .sol-text { color: var(--accent); line-height: 1.4; }
+  .custom-solution { margin-top: 0.4rem; width: 100%; display: flex; flex-direction: column; gap: 0.2rem; }
+  .custom-solution textarea {
+    width: 100%; min-height: 38px; padding: 0.4rem 0.6rem; background: var(--bg);
+    border: 1px solid var(--border); border-radius: 6px; color: var(--text);
+    font-family: inherit; font-size: 0.8rem; resize: vertical; line-height: 1.4;
+    transition: border-color 0.15s;
+  }
+  .custom-solution textarea:focus { outline: none; border-color: var(--accent); }
+  .custom-solution textarea::placeholder { color: #55556e; }
+  .custom-solution textarea:not(:placeholder-shown) { border-color: var(--peach); }
+  .item.has-custom .suggested-solution { opacity: 0.4; text-decoration: line-through; }
+  .bottom-bar {
+    position: fixed; bottom: 0; left: 0; right: 0; background: var(--surface);
+    border-top: 1px solid var(--border); padding: 0.8rem 2rem;
+    display: flex; justify-content: space-between; align-items: center; z-index: 100;
+  }
+  .bottom-bar .summary { font-size: 0.85rem; color: var(--text-dim); }
+  .bottom-bar .summary span { color: var(--green); font-weight: 600; }
+  .btn-generate {
+    padding: 8px 20px; background: var(--accent); color: var(--bg); border: none;
+    border-radius: 6px; font-weight: 600; font-size: 0.9rem; cursor: pointer; transition: opacity 0.15s;
+  }
+  .btn-generate:hover { opacity: 0.85; }
+  .btn-generate:disabled { opacity: 0.4; cursor: not-allowed; }
+  .modal-overlay {
+    display: none; position: fixed; inset: 0; background: var(--overlay);
+    z-index: 200; justify-content: center; align-items: center;
+  }
+  .modal-overlay.active { display: flex; }
+  .modal {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+    padding: 1.5rem; max-width: 700px; width: 90%; max-height: 80vh; overflow-y: auto;
+  }
+  .modal h2 { margin-bottom: 0.8rem; color: var(--accent); font-size: 1.1rem; }
+  .modal pre {
+    background: var(--bg); padding: 1rem; border-radius: 6px; font-size: 0.8rem;
+    overflow-x: auto; white-space: pre-wrap; word-break: break-all;
+    line-height: 1.5; max-height: 50vh; overflow-y: auto;
+  }
+  .modal .actions { display: flex; gap: 0.75rem; margin-top: 1.2rem; justify-content: flex-end; }
+  .modal .actions button { padding: 7px 18px; border-radius: 6px; border: 1px solid var(--border); cursor: pointer; font-weight: 500; }
+  .btn-copy { background: var(--green); color: var(--bg); border-color: var(--green) !important; }
+  .btn-close { background: var(--surface2); color: var(--text); }
+  .spacer { height: 70px; }
+  .empty-state { padding: 2rem; text-align: center; color: var(--text-dim); font-size: 0.9rem; }
+</style>
+</head>
+<body>
+
+<h1>Temporary File Disposal</h1>
+<p class="subtitle">Review files in the Temporary folder. Check items to approve disposal, or type your own instructions.</p>
+
+<div class="stats">
+  <div class="stat-card"><div class="num" id="stat-total">0</div><div class="label">Total Files</div></div>
+  <div class="stat-card"><div class="num" style="color:var(--green)" id="stat-approved">0</div><div class="label">Approved</div></div>
+  <div class="stat-card"><div class="num" style="color:var(--text-dim)" id="stat-remaining">0</div><div class="label">Remaining</div></div>
+</div>
+
+<div id="sections"></div>
+<div class="spacer"></div>
+
+<div class="bottom-bar">
+  <div class="summary"><span id="bar-count">0</span> disposals approved</div>
+  <button class="btn-generate" id="btn-generate" onclick="generateOutput()" disabled>Generate Task List</button>
+</div>
+
+<div class="modal-overlay" id="modal">
+  <div class="modal">
+    <h2>Approved Disposals</h2>
+    <p style="color:var(--text-dim);margin-bottom:0.8rem;font-size:0.85rem;">Copy this and paste it to Claude Code to execute the approved disposals.</p>
+    <pre id="modal-output"></pre>
+    <div class="actions">
+      <button class="btn-close" onclick="closeModal()">Close</button>
+      <button class="btn-copy" onclick="copyOutput()">Copy to Clipboard</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// DATA is injected by Claude when generating the checklist.
+// Each item: { id, file, ext, type, status, suggestion, autoCheck, isNonMd }
+// DATA_SECTIONS is an array of { section, items[] }
+// These will be replaced by Claude with actual file data.
+const DATA = /*__DATA__*/[];
+
+function getFileTag(item) {
+  if (item.isNonMd) {
+    const ext = item.ext || '';
+    if (/\.(pdf)$/i.test(ext)) return '<span class="tag tag-pdf">PDF</span>';
+    if (/\.(png|jpg|jpeg|gif|svg|webp)$/i.test(ext)) return '<span class="tag tag-img">Image</span>';
+    if (/\.(css)$/i.test(ext)) return '<span class="tag tag-other">CSS</span>';
+    return '<span class="tag tag-other">' + (ext || 'File') + '</span>';
+  }
+  return '<span class="tag tag-md">Markdown</span>';
+}
+
+function render() {
+  const container = document.getElementById('sections');
+  container.innerHTML = '';
+
+  if (DATA.length === 0) {
+    container.innerHTML = '<div class="empty-state">No files found in Temporary/. Nothing to dispose.</div>';
+    document.getElementById('stat-total').textContent = '0';
+    document.getElementById('stat-remaining').textContent = '0';
+    return;
+  }
+
+  // Group: auto-checked first, then manual
+  const autoItems = DATA.filter(i => i.autoCheck);
+  const manualItems = DATA.filter(i => !i.autoCheck);
+
+  const sections = [];
+  if (autoItems.length > 0) sections.push({ section: 'Ready to Dispose (auto-selected)', items: autoItems });
+  if (manualItems.length > 0) sections.push({ section: 'Needs Review', items: manualItems });
+
+  sections.forEach(section => {
+    const el = document.createElement('div');
+    el.className = 'section';
+    el.innerHTML = `
+      <div class="section-header" onclick="this.parentElement.classList.toggle('collapsed')">
+        <h2>${section.section} <span class="badge">${section.items.length}</span></h2>
+        <span class="toggle">&#9662;</span>
+      </div>
+      <div class="section-body">
+        <div class="bulk-actions">
+          <button onclick="bulkSelect('${section.section}', true)">Select All</button>
+          <button onclick="bulkSelect('${section.section}', false)">Deselect All</button>
+        </div>
+        ${section.items.map(renderItem).join('')}
+      </div>`;
+    container.appendChild(el);
+  });
+
+  // Auto-check items
+  DATA.forEach(item => {
+    if (item.autoCheck) {
+      const cb = document.getElementById('check-' + item.id);
+      if (cb) { cb.checked = true; onCheck(item.id); }
+    }
+  });
+
+  document.getElementById('stat-total').textContent = DATA.length;
+  updateCounts();
+}
+
+function renderItem(item) {
+  const fileTag = getFileTag(item);
+  const statusTag = item.status ? `<span class="tag tag-status">${item.status}</span>` : '';
+  const typeTag = item.type ? `<span class="tag tag-other">${item.type}</span>` : '';
+  const autoTag = item.autoCheck ? '<span class="tag tag-auto">auto</span>' : '';
+
+  const suggestionHtml = item.suggestion ? `
+    <div class="suggested-solution" id="suggestion-${item.id}">
+      <div class="sol-label">Suggested action</div>
+      <div class="sol-text">${item.suggestion}</div>
+    </div>` : '';
+
+  const customHtml = `
+    <div class="custom-solution">
+      <div class="sol-label">Your instruction (overrides suggestion)</div>
+      <textarea id="custom-${item.id}" placeholder="e.g. move to Archives/, reclassify as Concept..." oninput="onCustomInput('${item.id}')"></textarea>
+    </div>`;
+
+  const sectionName = item.autoCheck ? 'Ready to Dispose (auto-selected)' : 'Needs Review';
+
+  return `
+    <div class="item" id="item-${item.id}" data-section="${sectionName}">
+      <div class="item-check">
+        <input type="checkbox" id="check-${item.id}" onchange="onCheck('${item.id}')" />
+      </div>
+      <div class="item-content">
+        <div class="item-file">${item.file}</div>
+        <div class="item-meta">${fileTag}${typeTag}${statusTag}${autoTag}</div>
+        ${suggestionHtml}
+        ${customHtml}
+      </div>
+    </div>`;
+}
+
+function bulkSelect(sectionName, checked) {
+  DATA.forEach(item => {
+    const itemSection = item.autoCheck ? 'Ready to Dispose (auto-selected)' : 'Needs Review';
+    if (itemSection === sectionName) {
+      const cb = document.getElementById('check-' + item.id);
+      if (cb) { cb.checked = checked; onCheck(item.id); }
+    }
+  });
+}
+
+function onCheck(id) {
+  const cb = document.getElementById('check-' + id);
+  const el = document.getElementById('item-' + id);
+  el.classList.toggle('approved', cb.checked);
+  updateCounts();
+}
+
+function onCustomInput(id) {
+  const ta = document.getElementById('custom-' + id);
+  document.getElementById('item-' + id).classList.toggle('has-custom', ta.value.trim().length > 0);
+}
+
+function updateCounts() {
+  let total = DATA.length, approved = 0;
+  DATA.forEach(item => { if (document.getElementById('check-' + item.id)?.checked) approved++; });
+  document.getElementById('stat-approved').textContent = approved;
+  document.getElementById('stat-remaining').textContent = total - approved;
+  document.getElementById('bar-count').textContent = approved;
+  document.getElementById('btn-generate').disabled = approved === 0;
+}
+
+function generateOutput() {
+  const lines = ['Please execute the following temporary file disposals in my vault:\n'];
+  let n = 1;
+  DATA.forEach(item => {
+    const cb = document.getElementById('check-' + item.id);
+    if (!cb?.checked) return;
+    const custom = document.getElementById('custom-' + item.id)?.value?.trim();
+    if (custom) {
+      lines.push(`${n}. **${item.file}**`);
+      lines.push(`   User instruction: ${custom}`);
+    } else {
+      lines.push(`${n}. **${item.file}**`);
+      lines.push(`   Action: ${item.suggestion}`);
+    }
+    lines.push('');
+    n++;
+  });
+  lines.push('Update any [[wikilinks]] if files are moved or renamed.');
+  document.getElementById('modal-output').textContent = lines.join('\n');
+  document.getElementById('modal').classList.add('active');
+}
+
+function copyOutput() {
+  navigator.clipboard.writeText(document.getElementById('modal-output').textContent).then(() => {
+    const btn = document.querySelector('.btn-copy');
+    btn.textContent = 'Copied!';
+    setTimeout(() => btn.textContent = 'Copy to Clipboard', 1500);
+  });
+}
+
+function closeModal() { document.getElementById('modal').classList.remove('active'); }
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+
+render();
+</script>
+</body>
+</html>
