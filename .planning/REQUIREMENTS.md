@@ -58,26 +58,26 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| HLTH-01 | — | Pending |
-| HLTH-02 | — | Pending |
-| HLTH-03 | — | Pending |
-| HLTH-04 | — | Pending |
-| HLTH-05 | — | Pending |
-| STOP-01 | — | Pending |
-| STOP-02 | — | Pending |
-| STOP-03 | — | Pending |
-| STOP-04 | — | Pending |
-| OBSV-01 | — | Pending |
-| OBSV-02 | — | Pending |
-| OBSV-03 | — | Pending |
-| OBSV-04 | — | Pending |
-| OBSV-05 | — | Pending |
+| HLTH-01 | Phase 1 | Pending |
+| HLTH-02 | Phase 1 | Pending |
+| HLTH-03 | Phase 1 | Pending |
+| HLTH-04 | Phase 1 | Pending |
+| HLTH-05 | Phase 1 | Pending |
+| STOP-01 | Phase 2 | Pending |
+| STOP-02 | Phase 2 | Pending |
+| STOP-03 | Phase 2 | Pending |
+| STOP-04 | Phase 2 | Pending |
+| OBSV-01 | Phase 1 | Pending |
+| OBSV-02 | Phase 3 | Pending |
+| OBSV-03 | Phase 3 | Pending |
+| OBSV-04 | Phase 1 | Pending |
+| OBSV-05 | Phase 3 | Pending |
 
 **Coverage:**
 - v1 requirements: 14 total
-- Mapped to phases: 0
-- Unmapped: 14 ⚠️
+- Mapped to phases: 14
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-09*
-*Last updated: 2026-03-09 after initial definition*
+*Last updated: 2026-03-09 after roadmap creation*
