@@ -66,38 +66,29 @@ Plans:
 - [ ] 02.2-01-PLAN.md — Test dataset compatibility with steps_per_run=1, write launch script, smoke test, launch 16-worker collection to data/surrogate_rl_step/
 
 ### Phase 3: Train surrogate model using supervised learning
-**Goal**: Train an MLP surrogate model on the Phase 02.1 dataset via hyperparameter sweep (LR x model size), select the best model by validation MSE, and produce per-component error analysis with diagnostic plots
+**Goal**: Train an MLP surrogate model on the Phase 02.1 dataset via hyperparameter sweep, then run architecture experiments (rollout loss tuning, residual connections, history window) to select the best model for Phase 4. Produces a confirmed checkpoint at output/surrogate/best/.
 **Depends on**: Phase 02.1
-**Requirements**: SURR-01, SURR-02, SURR-03, SURR-04, SURR-05
+**Requirements**: SURR-01, SURR-02, SURR-03, SURR-04, SURR-05, ARCH-01, ARCH-02, ARCH-03, ARCH-04, ARCH-05
 **Success Criteria** (what must be TRUE):
-  1. 5 sweep configurations trained to convergence with W&B logging
-  2. Best model selected by lowest single-step validation MSE
-  3. Per-component errors reported in physical units (position mm, velocity mm/s, angle rad, angular velocity rad/s)
+  1. 5 LR×model-size sweep configurations trained to convergence with W&B logging
+  2. Architecture experiments A (rollout loss tuning) and B (residual MLP) completed; C (history window) if needed
+  3. Best model selected by human review of val_loss, rollout_loss, and omega_z R²
   4. Diagnostic plots saved: error histograms, predicted-vs-actual, sweep comparison
-  5. Best model checkpoint ready at output/surrogate/best/ for Phase 4
-**Plans:** 2 plans
+  5. Best model checkpoint confirmed at output/surrogate/best/ with selection.json for Phase 4
+**Plans:** 4/5 complete
 
 Plans:
-- [ ] 03-01-PLAN.md — Sweep infrastructure and execute hyperparameter sweep (5 configs)
-- [ ] 03-02-PLAN.md — Analyze sweep results, select best model, generate diagnostic plots
-
-### Phase 03.1: Surrogate Model Architecture Experiments — Rollout Loss, Residual, History Window (INSERTED)
-
-**Goal:** Run architecture experiments comparing 3 improvements to the 512x3 MLP baseline: (A) rollout loss weight/horizon tuning across 4 variants, (B) residual MLP, (C) history window K=2 if A+B fall short. Select the best architecture for Phase 4 validation. If none improve significantly over baseline (val_loss=0.2161, R²=0.784), proceed with existing checkpoint.
-**Requirements**: ARCH-01, ARCH-02, ARCH-03, ARCH-04, ARCH-05
-**Depends on:** Phase 3
-**Plans:** 2/3 plans executed
-
-Plans:
-- [ ] 03.1-01-PLAN.md — Add architectural variants to code (ResidualSurrogateModel, HistorySurrogateModel, HistoryDataset, CLI args) with unit tests
-- [ ] 03.1-02-PLAN.md — Create arch_sweep.py and run Experiments A+B (rollout loss variants + residual)
-- [ ] 03.1-03-PLAN.md — Analyze results, human selection gate, copy winner to output/surrogate/best/
+- [x] 03-01-PLAN.md — Sweep infrastructure and execute hyperparameter sweep (5 configs)
+- [x] 03-02-PLAN.md — Analyze sweep results, select best model, generate diagnostic plots
+- [x] 03-03-PLAN.md — Add architectural variants (ResidualSurrogateModel, HistorySurrogateModel, HistoryDataset, CLI args) with unit tests
+- [x] 03-04-PLAN.md — Create arch_sweep.py and run Experiments A+B (rollout loss variants + residual)
+- [ ] 03-05-PLAN.md — Analyze arch sweep results, human selection gate, copy winner to output/surrogate/best/
 
 ### Phase 4: Validate surrogate model against Elastica solver trajectories
 
 **Goal:** [To be planned]
 **Requirements**: TBD
-**Depends on:** Phase 03.1
+**Depends on:** Phase 3
 **Plans:** 0 plans
 
 Plans:
@@ -115,13 +106,16 @@ Plans:
 
 ### Phase 6: Write research report in LaTeX
 
-**Goal:** Write a comprehensive research report documenting the surrogate modeling pipeline, RL training results, and comparisons with direct simulation training
-**Requirements**: TBD
-**Depends on:** Phase 5
-**Plans:** 0 plans
+**Goal:** Write a comprehensive research report documenting the surrogate modeling pipeline, RL training results, and comparisons with direct simulation training. Writing begins immediately with Background/Related Work/Methods sections; Results sections use placeholders until Phases 4/5/8 complete.
+**Requirements**: (none — report writing has no formal requirement IDs)
+**Depends on:** Phase 5 (for Results); can begin immediately (Background/Methods)
+**Plans:** 4 plans
 
 Plans:
-- [ ] TBD (run /gsd:plan-phase 6 to break down)
+- [ ] 06-01-PLAN.md — Create report/ scaffold: report.tex skeleton (8 sections + preamble), references.bib (11 papers), Makefile (Docker latexmk)
+- [ ] 06-02-PLAN.md — Write Background section (Cosserat rod PDEs, RFT, CPG, PyElastica) and Related Work section (DD-PINN, KNODE, SoRoLEX, MBPO)
+- [ ] 06-03-PLAN.md — Write Methods section (data collection, per-element encoding, MLP architecture, training) and Discussion subsections (physics calibration, data pipeline)
+- [ ] 06-04-PLAN.md — Compile PDF via Docker, human review checkpoint
 
 ### Phase 7: Foundation model exploration for snake robot dynamics
 
@@ -156,11 +150,10 @@ Phase 8 (Elastica baseline) can run in parallel with Phases 3-5 after Phase 2.
 | 2. Data Validation | 0/2 | Not started | - |
 | 02.1. Re-collect with Per-Node Phase | 3/3 | Complete    | 2026-03-10 |
 | 02.2. Collect RL-step-only (min change) | 0/1 | Planned | - |
-| 3. Surrogate Training | 0/2 | Not started | - |
-| 3.1. Arch Experiments | 1/3 | In Progress|  |
+| 3. Surrogate Training + Arch Experiments | 4/5 | In Progress | - |
 | 4. Surrogate Validation | 0/0 | Not planned | - |
 | 5. RL Training | 0/0 | Not planned | - |
-| 6. LaTeX Report | 0/0 | Not planned | - |
+| 6. LaTeX Report | 0/4 | Planned | - |
 | 7. Foundation Model | 0/0 | Not planned | - |
 | 8. Elastica RL Baseline | 0/0 | Not planned | - |
 
