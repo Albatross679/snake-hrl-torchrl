@@ -31,6 +31,12 @@ Requirements for initial release. Each maps to roadmap phases.
 - [x] **RCOL-03**: Improved omega_z coverage — perturb_omega_std increased to 1.5 rad/s (from 0.05), forces collection disabled; 25 GB target dataset
 - [x] **RCOL-04**: OverlappingPairDataset — loads checkpoint batch files, forms (state, per_element_phase, next_state) pairs on-the-fly with density-weighted sampling
 
+### RL-Step Data Collection (Phase 02.2)
+
+- [ ] **RLDC-01**: Flat-format RL-step collection — steps_per_run=1, producing flat states(N,124)/next_states(N,124) instead of substep_states(N,K+1,124); auto-enabled when steps_per_run=1 and collect_forces=True
+- [ ] **RLDC-02**: Force/torque capture in each batch file — external_forces(N,3,21), internal_forces(N,3,21), external_torques(N,3,20), internal_torques(N,3,20); captured via RodState2D.pack_forces() after each env._step()
+- [ ] **RLDC-03**: FlatStepDataset class loading Phase 02.2 flat .pt batches with forces, train/val split by episode_id, per-item forces dict in __getitem__; 8 automated tests
+
 ### Surrogate Model Training (Phase 3)
 
 - [ ] **SURR-01**: Hyperparameter sweep infrastructure — sweep runner script that launches training with different LR x model size configs, tracks results per run
@@ -77,6 +83,9 @@ Deferred to future release. Tracked but not in current roadmap.
 | RCOL-02 | Phase 02.1 | Planned |
 | RCOL-03 | Phase 02.1 | Planned |
 | RCOL-04 | Phase 02.1 | Planned |
+| RLDC-01 | Phase 02.2 | Planned |
+| RLDC-02 | Phase 02.2 | Planned |
+| RLDC-03 | Phase 02.2 | Planned |
 | SURR-01 | Phase 3 | Planned |
 | SURR-02 | Phase 3 | Planned |
 | SURR-03 | Phase 3 | Planned |
@@ -84,10 +93,10 @@ Deferred to future release. Tracked but not in current roadmap.
 | SURR-05 | Phase 3 | Planned |
 
 **Coverage:**
-- v1 requirements: 19 total
-- Mapped to phases: 19
+- v1 requirements: 22 total
+- Mapped to phases: 22
 - Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-09*
-*Last updated: 2026-03-10 — added Phase 02.1 re-collection requirements (RCOL-01 through RCOL-04)*
+*Last updated: 2026-03-10 — added Phase 02.1 re-collection requirements (RCOL-01 through RCOL-04); added Phase 02.2 RL-step data collection requirements (RLDC-01 through RLDC-03)*
