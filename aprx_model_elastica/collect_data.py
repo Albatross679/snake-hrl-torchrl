@@ -6,6 +6,15 @@ and force snapshots.
 
 Each worker process runs 1 env. Parallelism = num_workers.
 
+Health monitoring features:
+- Per-worker progress tracking
+- NaN/Inf episode filtering
+- Atomic batch saves (tmp + os.replace)
+- Graceful shutdown on SIGINT/SIGTERM
+- Worker crash/stall detection and auto-respawn
+- W&B alerts for critical events
+- Structured JSONL event log
+
 Usage:
     python -m aprx_model_elastica.collect_data --num-transitions 100000
     python -m aprx_model_elastica.collect_data --num-workers 24
@@ -15,6 +24,7 @@ Usage:
 import argparse
 import multiprocessing as mp
 import os
+import signal
 import shutil
 import sys
 import time
@@ -23,6 +33,8 @@ from pathlib import Path
 os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
 os.environ.setdefault("OMP_NUM_THREADS", "1")
 os.environ.setdefault("MKL_NUM_THREADS", "1")
+os.environ.setdefault("NUMBA_NUM_THREADS", "1")
+os.environ.setdefault("NUMBA_THREADING_LAYER", "workqueue")
 
 import numpy as np
 import torch
@@ -30,6 +42,7 @@ import torch
 from locomotion_elastica.config import LocomotionElasticaEnvConfig
 from locomotion_elastica.env import LocomotionElasticaEnv
 from aprx_model_elastica.state import RodState2D, ACTION_DIM
+from aprx_model_elastica.health import log_event, validate_episode_finite
 
 
 def _find_next_batch_idx(save_dir: Path, prefix: str, save_format: str) -> int:
@@ -235,6 +248,22 @@ def parse_args() -> argparse.Namespace:
         "--baseline-fps", type=float, default=None,
         help="Expected FPS from smoke test (for schedule tracking in W&B)",
     )
+    parser.add_argument(
+        "--poll-interval", type=float, default=None,
+        help="Seconds between health checks (default: 30)",
+    )
+    parser.add_argument(
+        "--stall-intervals", type=int, default=None,
+        help="Consecutive zero-progress polls before stall detection (default: 2)",
+    )
+    parser.add_argument(
+        "--steps-per-run", type=int, default=None,
+        help="env.step() calls per collection run (default: 4 → 2000 Elastica substeps)",
+    )
+    parser.add_argument(
+        "--perturb-omega-std", type=float, default=None,
+        help="Angular velocity perturbation std (default: 1.5 rad/s)",
+    )
     return parser.parse_args()
 
 
@@ -387,6 +416,82 @@ def collect_episode(
     return result
 
 
+def validate_run_finite(run_data: dict) -> bool:
+    """Return True if all states in a checkpoint run are finite (no NaN/Inf).
+
+    Args:
+        run_data: dict returned by collect_checkpoint_run(), must contain
+                  key 'substep_states' of shape (K+1, 124).
+
+    Returns:
+        True if all elements of substep_states are finite.
+    """
+    return bool(np.all(np.isfinite(run_data["substep_states"])))
+
+
+def collect_checkpoint_run(
+    env: LocomotionElasticaEnv,
+    action: np.ndarray,
+    steps_per_run: int = 4,
+) -> dict:
+    """Collect one checkpoint run: call env.step(action) steps_per_run times.
+
+    Each call to env.step() runs substeps_per_action=500 Elastica substeps internally.
+    Returns states at each macro-step boundary: initial state + post-step states.
+
+    The env must already be reset (and optionally perturbed) by the caller before
+    calling this function. This function does NOT call env.reset().
+
+    Args:
+        env: LocomotionElasticaEnv with rod already reset and perturbed (caller's
+             responsibility to call env.reset() before this function).
+        action: (5,) action array normalized in [-1, 1]. Same action for all steps.
+        steps_per_run: Number of env.step() calls (default 4 → 5 states, 4 pairs).
+
+    Returns:
+        dict with:
+            substep_states: (steps_per_run + 1, 124) float32 — state at each boundary
+                            (may be shorter if done_early=True)
+            action:         (5,) float32 — same action used for all steps
+            t_start:        float — env._serpenoid._time at run start
+            done_early:     bool — True if env signaled done before steps_per_run calls
+    """
+    from tensordict import TensorDict
+
+    t_start = float(env._serpenoid._time)
+    action_tensor = torch.tensor(action, dtype=torch.float32, device=env._device)
+
+    # Capture initial state (env already reset by caller)
+    states = [RodState2D.pack_from_rod(env._rod)]
+    done_early = False
+
+    # Build a minimal TensorDict for _step — env._step only reads tensordict["action"],
+    # so we pass a stub observation to satisfy any shape checks.
+    td = TensorDict(
+        {
+            "action": action_tensor,
+            "observation": torch.zeros(env.OBS_DIM, dtype=torch.float32, device=env._device),
+        },
+        batch_size=[],
+        device=env._device,
+    )
+
+    for _ in range(steps_per_run):
+        td["action"] = action_tensor
+        td_result = env._step(td)
+        states.append(RodState2D.pack_from_rod(env._rod))
+        if td_result["done"].item():
+            done_early = True
+            break
+
+    return {
+        "substep_states": np.stack(states, axis=0).astype(np.float32),  # (K+1, 124)
+        "action": action.copy().astype(np.float32),                      # (5,)
+        "t_start": t_start,
+        "done_early": done_early,
+    }
+
+
 # ---------------------------------------------------------------------------
 # Collection loop (shared by single-process and worker modes)
 # ---------------------------------------------------------------------------
@@ -401,9 +506,16 @@ def _collection_loop(
     prefix: str = "batch",
     episode_id_offset: int = 0,
     shared_counter=None,
+    worker_counter=None,
+    shared_nan_counter=None,
+    shutdown_event=None,
     worker_id: int = -1,
 ):
-    """Run the episode collection loop with a single env.
+    """Run the checkpoint-format collection loop with a single env.
+
+    Phase 2.1+ format: each "run" calls env.step(action) steps_per_run times,
+    capturing state at each macro-step boundary. Replaces the episode-based
+    loop (collect_episode). episodes_per_save now means "runs per save batch".
 
     Args:
         config: DataCollectionConfig.
@@ -413,139 +525,155 @@ def _collection_loop(
         sobol_sampler: SobolActionSampler or None.
         save_dir: Directory to save batch files.
         prefix: Batch file name prefix (e.g. "batch" or "batch_w00").
-        episode_id_offset: Starting episode ID for this worker.
+        episode_id_offset: Starting run ID offset for this worker.
         shared_counter: mp.Value for total transitions (or None for single-process).
+        worker_counter: mp.Value for per-worker transitions (or None).
+        shared_nan_counter: mp.Value for per-worker NaN discard count (or None).
+        shutdown_event: mp.Event for graceful shutdown (or None).
         worker_id: Worker ID for logging (-1 = single-process).
     """
-    collect_forces = config.collect_forces
-    save_format = config.save_format
     log_prefix = f"[W{worker_id}] " if worker_id >= 0 else ""
+    steps_per_run = config.steps_per_run
 
     total_transitions = 0
-    total_episodes = 0
-    batch_idx = _find_next_batch_idx(save_dir, prefix, save_format)
+    total_runs = 0
+    batch_idx = _find_next_batch_idx(save_dir, prefix, "pt")
     if batch_idx > 0:
         print(f"{log_prefix}Resuming: found existing files, starting at batch_idx={batch_idx}")
-    batch_states = []
-    batch_actions = []
-    batch_serp_times = []
-    batch_next_states = []
-    batch_ext_forces = []
-    batch_int_forces = []
-    batch_ext_torques = []
-    batch_int_torques = []
-    batch_episode_ids = []
-    batch_step_indices = []
-    episodes_in_batch = 0
 
-    t_start = time.monotonic()
+    # Checkpoint-format batch accumulators
+    batch_substep_states: list = []   # each (K+1, 124)
+    batch_actions: list = []          # each (5,)
+    batch_t_starts: list = []         # each float
+    batch_episode_ids: list = []      # each int (run id)
+    batch_run_ids: list = []          # each int (global step within run sequence)
+    runs_in_batch = 0
+
+    t_start_wall = time.monotonic()
 
     def _target_reached():
         if shared_counter is not None:
             return shared_counter.value >= config.num_transitions
         return total_transitions >= config.num_transitions
 
-    while not _target_reached():
-        use_random = rng.random() < config.random_action_fraction or policy is None
+    def _should_stop():
+        if shutdown_event is not None and shutdown_event.is_set():
+            return True
+        return _target_reached()
+
+    while not _should_stop():
+        # Reset env and optionally perturb rod state
+        env.reset()
         perturb = (
             config.perturbation_fraction > 0
             and rng.random() < config.perturbation_fraction
         )
+        if perturb:
+            perturb_rod_state(
+                env, rng,
+                position_std=config.perturb_position_std,
+                velocity_std=config.perturb_velocity_std,
+                omega_std=config.perturb_omega_std,
+                curvature_max=config.perturb_curvature_max,
+            )
 
-        ep_data = collect_episode(
-            env, policy=policy, use_random=use_random, rng=rng,
-            collect_forces=collect_forces,
-            sobol_sampler=sobol_sampler if use_random else None,
-            perturb=perturb,
-            perturb_position_std=config.perturb_position_std,
-            perturb_velocity_std=config.perturb_velocity_std,
-            perturb_omega_std=config.perturb_omega_std,
-            perturb_curvature_max=config.perturb_curvature_max,
-        )
-        n_steps = len(ep_data["states"])
+        # Sample action (Sobol or random)
+        use_random = rng.random() < config.random_action_fraction or policy is None
+        if use_random and sobol_sampler is not None:
+            action = sobol_sampler.sample()
+        else:
+            action = rng.uniform(-1.0, 1.0, size=(5,)).astype(np.float32)
 
-        batch_states.append(ep_data["states"])
-        batch_actions.append(ep_data["actions"])
-        batch_serp_times.append(ep_data["serpenoid_times"])
-        batch_next_states.append(ep_data["next_states"])
-        if collect_forces:
-            batch_ext_forces.append(ep_data["forces"]["external_forces"])
-            batch_int_forces.append(ep_data["forces"]["internal_forces"])
-            batch_ext_torques.append(ep_data["forces"]["external_torques"])
-            batch_int_torques.append(ep_data["forces"]["internal_torques"])
-        batch_episode_ids.append(
-            np.full(n_steps, episode_id_offset + total_episodes, dtype=np.int64)
-        )
-        batch_step_indices.append(ep_data["step_indices"])
+        # Collect one checkpoint run
+        run_data = collect_checkpoint_run(env, action, steps_per_run=steps_per_run)
 
-        total_transitions += n_steps
-        total_episodes += 1
-        episodes_in_batch += 1
+        # Skip runs with done_early or non-finite states
+        if run_data["done_early"] or not validate_run_finite(run_data):
+            if shared_nan_counter is not None:
+                with shared_nan_counter.get_lock():
+                    shared_nan_counter.value += 1
+            continue
 
-        # Update shared counter
+        # Number of valid (state, action, next_state) pairs in this run
+        n_pairs = len(run_data["substep_states"]) - 1  # typically 4
+
+        batch_substep_states.append(run_data["substep_states"])
+        batch_actions.append(run_data["action"])
+        batch_t_starts.append(run_data["t_start"])
+        batch_episode_ids.append(episode_id_offset + total_runs)
+        batch_run_ids.append(episode_id_offset + total_runs)
+
+        total_transitions += n_pairs
+        total_runs += 1
+        runs_in_batch += 1
+
+        # Update shared counter (increment by pairs)
         if shared_counter is not None:
             with shared_counter.get_lock():
-                shared_counter.value += n_steps
+                shared_counter.value += n_pairs
 
-        # Save batch to disk
-        if episodes_in_batch >= config.episodes_per_save:
+        # Update per-worker counter
+        if worker_counter is not None:
+            with worker_counter.get_lock():
+                worker_counter.value += n_pairs
+
+        # Save batch to disk (episodes_per_save now means runs per save)
+        if runs_in_batch >= config.episodes_per_save:
             _save_batch(
-                save_dir, batch_idx,
-                batch_states, batch_actions, batch_serp_times,
-                batch_next_states,
-                batch_ext_forces, batch_int_forces,
-                batch_ext_torques, batch_int_torques,
-                batch_episode_ids, batch_step_indices,
-                collect_forces=collect_forces,
-                save_format=save_format,
+                save_dir=save_dir,
+                batch_idx=batch_idx,
+                batch_substep_states=batch_substep_states,
+                batch_actions=batch_actions,
+                batch_t_starts=batch_t_starts,
+                batch_episode_ids=batch_episode_ids,
+                batch_run_ids=batch_run_ids,
                 prefix=prefix,
             )
             batch_idx += 1
-            batch_states, batch_actions, batch_serp_times = [], [], []
-            batch_next_states = []
-            batch_ext_forces, batch_int_forces = [], []
-            batch_ext_torques, batch_int_torques = [], []
-            batch_episode_ids, batch_step_indices = [], []
-            episodes_in_batch = 0
+            batch_substep_states = []
+            batch_actions = []
+            batch_t_starts = []
+            batch_episode_ids = []
+            batch_run_ids = []
+            runs_in_batch = 0
 
         # Progress report
-        elapsed = time.monotonic() - t_start
+        elapsed = time.monotonic() - t_start_wall
         fps = total_transitions / elapsed if elapsed > 0 else 0
-        if total_episodes % 50 == 0:
+        if total_runs % 50 == 0:
             if shared_counter is not None:
                 global_total = shared_counter.value
                 print(
-                    f"{log_prefix}Episodes: {total_episodes:,} | "
+                    f"{log_prefix}Runs: {total_runs:,} | "
                     f"Global: {global_total:,}/{config.num_transitions:,} | "
                     f"FPS: {fps:.0f}"
                 )
             else:
                 print(
-                    f"Episodes: {total_episodes:,} | "
+                    f"Runs: {total_runs:,} | "
                     f"Transitions: {total_transitions:,}/{config.num_transitions:,} | "
                     f"FPS: {fps:.0f} | "
                     f"Elapsed: {elapsed:.0f}s"
                 )
 
     # Save remaining batch
-    if episodes_in_batch > 0:
+    if runs_in_batch > 0:
         _save_batch(
-            save_dir, batch_idx,
-            batch_states, batch_actions, batch_serp_times,
-            batch_next_states,
-            batch_ext_forces, batch_int_forces,
-            batch_ext_torques, batch_int_torques,
-            batch_episode_ids, batch_step_indices,
-            collect_forces=collect_forces,
-            save_format=save_format,
+            save_dir=save_dir,
+            batch_idx=batch_idx,
+            batch_substep_states=batch_substep_states,
+            batch_actions=batch_actions,
+            batch_t_starts=batch_t_starts,
+            batch_episode_ids=batch_episode_ids,
+            batch_run_ids=batch_run_ids,
             prefix=prefix,
         )
 
-    elapsed = time.monotonic() - t_start
+    elapsed = time.monotonic() - t_start_wall
     print(
         f"{log_prefix}Done: {total_transitions:,} transitions "
-        f"from {total_episodes:,} episodes in {elapsed:.0f}s "
-        f"({total_transitions / elapsed:.0f} FPS)"
+        f"from {total_runs:,} runs in {elapsed:.0f}s "
+        f"({total_transitions / max(1, elapsed):.0f} FPS)"
     )
 
     env.close()
@@ -555,15 +683,21 @@ def _collection_loop(
 # Worker function for multiprocess collection
 # ---------------------------------------------------------------------------
 
-def _worker_fn(worker_id, config, shared_counter, existing_episode_offset=0):
+def _worker_fn(
+    worker_id, config, shared_counter, worker_counter, shared_nan_counter,
+    shutdown_event, existing_episode_offset=0, seed_offset=0,
+):
     """Worker process: create 1 env and run collection loop."""
+    # Workers ignore SIGINT — only main process handles it
+    signal.signal(signal.SIGINT, signal.SIG_IGN)
+
     # Ensure thread env vars are set (safety for forkserver)
     os.environ["OPENBLAS_NUM_THREADS"] = "1"
     os.environ["OMP_NUM_THREADS"] = "1"
     os.environ["MKL_NUM_THREADS"] = "1"
 
-    # Worker-specific seed
-    worker_seed = config.seed + worker_id * 137
+    # Worker-specific seed (with offset for respawned workers)
+    worker_seed = config.seed + worker_id * 137 + seed_offset
     rng = np.random.default_rng(worker_seed)
 
     save_dir = Path(config.save_dir)
@@ -578,7 +712,7 @@ def _worker_fn(worker_id, config, shared_counter, existing_episode_offset=0):
     # Sobol sampler with worker-specific seed for diverse coverage
     sobol_sampler = None
     if config.use_sobol_actions:
-        sobol_sampler = SobolActionSampler(seed=config.seed + worker_id * 1000)
+        sobol_sampler = SobolActionSampler(seed=config.seed + worker_id * 1000 + seed_offset)
 
     print(f"[W{worker_id}] Started, seed={worker_seed}")
 
@@ -592,8 +726,60 @@ def _worker_fn(worker_id, config, shared_counter, existing_episode_offset=0):
         prefix=f"batch_w{worker_id:02d}",
         episode_id_offset=existing_episode_offset + worker_id * 10_000_000,
         shared_counter=shared_counter,
+        worker_counter=worker_counter,
+        shared_nan_counter=shared_nan_counter,
+        shutdown_event=shutdown_event,
         worker_id=worker_id,
     )
+
+
+# ---------------------------------------------------------------------------
+# Worker respawn and alerting helpers
+# ---------------------------------------------------------------------------
+
+def _respawn_worker(
+    worker_id, config, shared_counter, worker_counter, nan_counter,
+    shutdown_event, existing_episode_offset, respawn_count, save_dir,
+):
+    """Respawn a dead/stalled worker with a fresh seed."""
+    # Clean up any .tmp files from the dead worker
+    prefix = f"batch_w{worker_id:02d}"
+    for tmp in save_dir.glob(f"{prefix}_*.tmp"):
+        tmp.unlink(missing_ok=True)
+
+    # Reset the worker's per-worker counter
+    with worker_counter.get_lock():
+        worker_counter.value = 0
+
+    # New seed offset to avoid collision
+    seed_offset = respawn_count * 7919
+
+    p = mp.Process(
+        target=_worker_fn,
+        args=(worker_id, config, shared_counter, worker_counter, nan_counter,
+              shutdown_event, existing_episode_offset, seed_offset),
+        name=f"collector-{worker_id}-r{respawn_count}",
+    )
+    p.start()
+    return p
+
+
+def _send_alert(wandb_run, title: str, text: str, level: str = "WARN", wait_duration: int = 300):
+    """Send W&B alert if wandb is active. Silently no-op otherwise."""
+    if wandb_run is None:
+        return
+    try:
+        from wandb import AlertLevel
+        import wandb
+        level_map = {"INFO": AlertLevel.INFO, "WARN": AlertLevel.WARN, "ERROR": AlertLevel.ERROR}
+        wandb.alert(
+            title=title[:63],
+            text=text,
+            level=level_map.get(level, AlertLevel.WARN),
+            wait_duration=wait_duration,
+        )
+    except Exception:
+        pass  # Never crash collection on alert failure
 
 
 # ---------------------------------------------------------------------------
@@ -634,6 +820,14 @@ def main():
         config.use_sobol_actions = True
     if args.perturbation_fraction is not None:
         config.perturbation_fraction = args.perturbation_fraction
+    if args.poll_interval is not None:
+        config.poll_interval = args.poll_interval
+    if args.stall_intervals is not None:
+        config.stall_intervals = args.stall_intervals
+    if args.steps_per_run is not None:
+        config.steps_per_run = args.steps_per_run
+    if args.perturb_omega_std is not None:
+        config.perturb_omega_std = args.perturb_omega_std
 
     save_dir = Path(config.save_dir)
     save_dir.mkdir(parents=True, exist_ok=True)
@@ -719,7 +913,7 @@ def _get_dir_size_gb(path: Path) -> float:
 
 
 def _multiprocess_collect(config, baseline_fps: float | None = None):
-    """Multiprocess collection with shared transition counter."""
+    """Multiprocess collection with health monitoring, respawn, and alerting."""
     try:
         mp.set_start_method("forkserver")
     except RuntimeError:
@@ -734,7 +928,26 @@ def _multiprocess_collect(config, baseline_fps: float | None = None):
     shared_counter = mp.Value("l", 0)
     num_workers = config.num_workers
 
+    # Per-worker health tracking
+    worker_counters = [mp.Value("l", 0) for _ in range(num_workers)]
+    nan_counters = [mp.Value("l", 0) for _ in range(num_workers)]
+    shutdown_event = mp.Event()
+    event_log_path = save_dir / "events.jsonl"
+
     print(f"Multiprocess mode: {num_workers} workers (1 env each)")
+
+    # --- Signal handling for graceful shutdown ---
+    original_sigint = signal.getsignal(signal.SIGINT)
+    original_sigterm = signal.getsignal(signal.SIGTERM)
+
+    def _shutdown_handler(signum, frame):
+        sig_name = signal.Signals(signum).name
+        print(f"\n{sig_name} received, requesting graceful shutdown...")
+        shutdown_event.set()
+        log_event(event_log_path, "shutdown_requested", "info", details={"signal": sig_name})
+
+    signal.signal(signal.SIGINT, _shutdown_handler)
+    signal.signal(signal.SIGTERM, _shutdown_handler)
 
     # --- W&B init (optional) ---
     wandb_run = None
@@ -759,35 +972,113 @@ def _multiprocess_collect(config, baseline_fps: float | None = None):
         print(f"WARNING: wandb init failed ({e}) — skipping W&B logging")
         wandb_run = None
 
+    log_event(event_log_path, "collection_started", "info",
+              details={"num_workers": num_workers, "target": config.num_transitions})
+
     t_start = time.monotonic()
 
     workers = []
     for w in range(num_workers):
         p = mp.Process(
             target=_worker_fn,
-            args=(w, config, shared_counter, existing_episode_offset),
+            args=(w, config, shared_counter, worker_counters[w], nan_counters[w],
+                  shutdown_event, existing_episode_offset, 0),
             name=f"collector-{w}",
         )
         p.start()
         workers.append(p)
 
-    # --- Monitoring loop (replaces simple p.join()) ---
-    poll_interval = 30  # seconds
+    # --- Monitoring loop with health checks ---
+    prev_worker_counts = [0] * num_workers
+    stall_counts = [0] * num_workers
+    respawn_counts = [0] * num_workers
     prev_count = 0
     prev_time = t_start
 
     try:
         while True:
-            # Check if all workers are done
-            alive = [p for p in workers if p.is_alive()]
-            if not alive:
+            # Check termination conditions
+            if shutdown_event.is_set():
+                break
+            if shared_counter.value >= config.num_transitions:
+                time.sleep(2)  # let workers finish current episode
                 break
 
-            time.sleep(poll_interval)
+            # Wait for next poll (responsive to shutdown)
+            shutdown_event.wait(timeout=config.poll_interval)
+            if shutdown_event.is_set():
+                break
 
             now = time.monotonic()
             elapsed = now - t_start
             current_count = shared_counter.value
+
+            # --- Per-worker health checks ---
+            for i in range(num_workers):
+                p = workers[i]
+                wc = worker_counters[i]
+                current_wc = wc.value
+                delta = current_wc - prev_worker_counts[i]
+
+                if p.is_alive():
+                    # Only count stalls after worker has produced at least 1 transition
+                    # (PyElastica initialization takes >60s)
+                    if delta == 0 and current_wc > 0:
+                        stall_counts[i] += 1
+                    elif delta > 0:
+                        stall_counts[i] = 0
+
+                    # Stall detection
+                    if stall_counts[i] >= config.stall_intervals:
+                        log_event(event_log_path, "worker_stalled", "warn", worker_id=i,
+                                  details={"stall_intervals": stall_counts[i], "pid": p.pid})
+                        _send_alert(wandb_run, "Worker Stalled",
+                                    f"Worker {i} (PID {p.pid}) stalled for {stall_counts[i]} intervals. Restarting.",
+                                    level="WARN", wait_duration=config.alert_wait_duration)
+                        p.terminate()
+                        p.join(timeout=10)
+                        respawn_counts[i] += 1
+                        workers[i] = _respawn_worker(
+                            i, config, shared_counter, worker_counters[i], nan_counters[i],
+                            shutdown_event, existing_episode_offset, respawn_counts[i], save_dir)
+                        stall_counts[i] = 0
+                        log_event(event_log_path, "worker_respawned", "info", worker_id=i,
+                                  details={"respawn_count": respawn_counts[i], "reason": "stall"})
+                    else:
+                        status = "alive"
+                        log_event(event_log_path, "worker_status", "info", worker_id=i,
+                                  details={"status": status, "transitions": current_wc, "delta": delta})
+                else:
+                    # Worker died
+                    exitcode = p.exitcode
+                    log_event(event_log_path, "worker_died", "error", worker_id=i,
+                              details={"exitcode": exitcode, "pid": p.pid})
+                    _send_alert(wandb_run, "Worker Died",
+                                f"Worker {i} (PID {p.pid}) exited with code {exitcode}. Respawning.",
+                                level="ERROR", wait_duration=config.alert_wait_duration)
+                    respawn_counts[i] += 1
+                    workers[i] = _respawn_worker(
+                        i, config, shared_counter, worker_counters[i], nan_counters[i],
+                        shutdown_event, existing_episode_offset, respawn_counts[i], save_dir)
+                    stall_counts[i] = 0
+                    log_event(event_log_path, "worker_respawned", "info", worker_id=i,
+                              details={"respawn_count": respawn_counts[i], "reason": "death"})
+
+                prev_worker_counts[i] = current_wc
+
+            # --- NaN rate alerting ---
+            total_nan = sum(nc.value for nc in nan_counters)
+            total_episodes_approx = max(1, current_count // 500)
+            nan_rate = total_nan / max(1, total_nan + total_episodes_approx)
+            if nan_rate > config.nan_rate_threshold:
+                _send_alert(wandb_run, "High NaN Rate",
+                            f"NaN discard rate {nan_rate:.1%} exceeds threshold {config.nan_rate_threshold:.1%}. "
+                            f"Total discards: {total_nan}",
+                            level="WARN", wait_duration=config.alert_wait_duration * 2)
+                log_event(event_log_path, "high_nan_rate", "warn",
+                          details={"nan_rate": round(nan_rate, 4), "total_discards": total_nan})
+
+            # --- Aggregate metrics ---
             interval_count = current_count - prev_count
             interval_time = now - prev_time
 
@@ -806,17 +1097,19 @@ def _multiprocess_collect(config, baseline_fps: float | None = None):
                 expected = baseline_fps * elapsed
                 schedule_delta_pct = (current_count - expected) / max(1, expected) * 100
 
-            # Log to stdout (always)
+            # Log to stdout
             fps_baseline_str = f"  base={baseline_fps:.0f}" if baseline_fps else ""
+            total_respawns = sum(respawn_counts)
             print(
                 f"[monitor] {current_count:,}/{config.num_transitions:,} "
                 f"({pct_complete:.1f}%) | "
                 f"FPS cur={fps_current:.0f} roll={fps_rolling:.0f}{fps_baseline_str} | "
                 f"ETA {eta_hours:.1f}h | "
+                f"NaN={total_nan} respawns={total_respawns} | "
                 f"disk {disk_used_gb:.1f}GB used, {disk_free_gb:.1f}GB free"
             )
 
-            # Log to W&B (if available)
+            # Log to W&B
             if wandb_run is not None:
                 try:
                     import wandb as _wb
@@ -828,28 +1121,41 @@ def _multiprocess_collect(config, baseline_fps: float | None = None):
                         "eta_hours": eta_hours,
                         "disk_used_gb": disk_used_gb,
                         "disk_free_gb": disk_free_gb,
+                        "nan_discards_total": total_nan,
+                        "respawns_total": total_respawns,
                     }
                     if baseline_fps is not None:
                         metrics["fps_baseline"] = baseline_fps
                         metrics["schedule_delta_pct"] = schedule_delta_pct
                     _wb.log(metrics)
                 except Exception:
-                    pass  # don't crash collection on W&B errors
+                    pass
 
             prev_count = current_count
             prev_time = now
 
-    except KeyboardInterrupt:
-        print("\nInterrupted — terminating workers...")
-        for p in workers:
-            p.terminate()
-        for p in workers:
-            p.join(timeout=5)
     finally:
-        # Wait for any remaining workers
-        for p in workers:
-            if p.is_alive():
-                p.join(timeout=10)
+        # Restore original signal handlers
+        signal.signal(signal.SIGINT, original_sigint)
+        signal.signal(signal.SIGTERM, original_sigterm)
+
+        if shutdown_event.is_set():
+            print("Graceful shutdown: waiting for workers to drain...")
+            for p in workers:
+                p.join(timeout=60)
+            for p in workers:
+                if p.is_alive():
+                    p.terminate()
+                    p.join(timeout=5)
+        else:
+            # Normal completion — wait for workers
+            for p in workers:
+                if p.is_alive():
+                    p.join(timeout=30)
+
+        log_event(event_log_path, "shutdown_complete", "info",
+                  details={"total_transitions": shared_counter.value})
+
         # Finish W&B run
         if wandb_run is not None:
             try:
@@ -868,124 +1174,51 @@ def _multiprocess_collect(config, baseline_fps: float | None = None):
 
 
 # ---------------------------------------------------------------------------
-# Batch saving
+# Batch saving — Phase 2.1+ checkpoint format (with atomic writes)
 # ---------------------------------------------------------------------------
 
 def _save_batch(
     save_dir: Path,
     batch_idx: int,
-    states, actions, serp_times, next_states,
-    ext_forces, int_forces, ext_torques, int_torques,
-    episode_ids, step_indices,
-    collect_forces: bool = True,
-    save_format: str = "pt",
+    batch_substep_states: list,
+    batch_actions: list,
+    batch_t_starts: list,
+    batch_episode_ids: list,
+    batch_run_ids: list,
     prefix: str = "batch",
-):
-    """Save a batch of transitions to disk."""
-    cat_states = np.concatenate(states, axis=0)
-    cat_actions = np.concatenate(actions, axis=0)
-    cat_serp_times = np.concatenate(serp_times, axis=0)
-    cat_next_states = np.concatenate(next_states, axis=0)
-    cat_episode_ids = np.concatenate(episode_ids, axis=0)
-    cat_step_indices = np.concatenate(step_indices, axis=0)
-    n = cat_states.shape[0]
+) -> None:
+    """Save a batch of checkpoint runs to disk as a .pt file.
 
-    if save_format == "parquet":
-        _save_batch_parquet(
-            save_dir, batch_idx, n,
-            cat_states, cat_actions, cat_serp_times, cat_next_states,
-            cat_episode_ids, cat_step_indices,
-            ext_forces, int_forces, ext_torques, int_torques,
-            collect_forces,
-            prefix=prefix,
-        )
-    else:
-        _save_batch_pt(
-            save_dir, batch_idx, n,
-            cat_states, cat_actions, cat_serp_times, cat_next_states,
-            cat_episode_ids, cat_step_indices,
-            ext_forces, int_forces, ext_torques, int_torques,
-            collect_forces,
-            prefix=prefix,
-        )
+    Phase 2.1+ format: always .pt. Parquet not supported.
 
+    Each run contributes one row to the batch tensors:
+        substep_states: (N_runs, K+1, 124)  — states at each macro-step boundary
+        actions:        (N_runs, 5)          — same action applied for all K steps
+        t_start:        (N_runs,)            — serpenoid time at run start
+        episode_ids:    (N_runs,)            — run identifier
+        step_ids:       (N_runs,)            — same as episode_ids (alias for compat)
 
-def _save_batch_pt(
-    save_dir, batch_idx, n,
-    states, actions, serp_times, next_states,
-    episode_ids, step_indices,
-    ext_forces, int_forces, ext_torques, int_torques,
-    collect_forces,
-    prefix="batch",
-):
-    """Save batch as .pt (torch tensor) file."""
-    data = {
-        "states": torch.from_numpy(states),
-        "actions": torch.from_numpy(actions),
-        "serpenoid_times": torch.from_numpy(serp_times),
-        "next_states": torch.from_numpy(next_states),
-        "episode_ids": torch.from_numpy(episode_ids),
-        "step_indices": torch.from_numpy(step_indices),
-    }
-    if collect_forces and ext_forces:
-        data["forces"] = {
-            "external_forces": torch.from_numpy(np.concatenate(ext_forces, axis=0)),
-            "internal_forces": torch.from_numpy(np.concatenate(int_forces, axis=0)),
-            "external_torques": torch.from_numpy(np.concatenate(ext_torques, axis=0)),
-            "internal_torques": torch.from_numpy(np.concatenate(int_torques, axis=0)),
-        }
-    path = save_dir / f"{prefix}_{batch_idx:04d}.pt"
-    torch.save(data, path)
-    print(f"  Saved {n:,} transitions to {path}")
-
-
-def _save_batch_parquet(
-    save_dir, batch_idx, n,
-    states, actions, serp_times, next_states,
-    episode_ids, step_indices,
-    ext_forces, int_forces, ext_torques, int_torques,
-    collect_forces,
-    prefix="batch",
-):
-    """Save batch as .parquet file.
-
-    Multi-dimensional arrays (states, actions, forces) are stored as
-    fixed-size-list columns for efficient columnar access.
+    Uses atomic write (tmp file + os.replace) to avoid partial files on crash.
     """
-    import pyarrow as pa
-    import pyarrow.parquet as pq
+    n_runs = len(batch_substep_states)
+    # Stack: each element is (K+1, 124) → (N_runs, K+1, 124)
+    stacked_states = np.stack(batch_substep_states, axis=0)  # (N_runs, K+1, 124)
+    stacked_actions = np.array(batch_actions, dtype=np.float32)  # (N_runs, 5)
 
-    arrays = {
-        "states": pa.FixedSizeListArray.from_arrays(
-            pa.array(states.ravel(), type=pa.float32()), list_size=states.shape[1]
-        ),
-        "actions": pa.FixedSizeListArray.from_arrays(
-            pa.array(actions.ravel(), type=pa.float32()), list_size=actions.shape[1]
-        ),
-        "serpenoid_times": pa.array(serp_times, type=pa.float32()),
-        "next_states": pa.FixedSizeListArray.from_arrays(
-            pa.array(next_states.ravel(), type=pa.float32()), list_size=next_states.shape[1]
-        ),
-        "episode_ids": pa.array(episode_ids, type=pa.int64()),
-        "step_indices": pa.array(step_indices, type=pa.int64()),
+    data = {
+        "substep_states": torch.from_numpy(stacked_states),              # (N_runs, K+1, 124)
+        "actions": torch.from_numpy(stacked_actions),                    # (N_runs, 5)
+        "t_start": torch.tensor(batch_t_starts, dtype=torch.float32),   # (N_runs,)
+        "episode_ids": torch.tensor(batch_episode_ids, dtype=torch.int64),  # (N_runs,)
+        "step_ids": torch.tensor(batch_run_ids, dtype=torch.int64),     # (N_runs,)
     }
-    if collect_forces and ext_forces:
-        for name, data_list in [
-            ("external_forces", ext_forces),
-            ("internal_forces", int_forces),
-            ("external_torques", ext_torques),
-            ("internal_torques", int_torques),
-        ]:
-            arr = np.concatenate(data_list, axis=0)  # (T, 3, N)
-            flat_size = arr.shape[1] * arr.shape[2]  # 3*21 or 3*20
-            arrays[name] = pa.FixedSizeListArray.from_arrays(
-                pa.array(arr.reshape(-1), type=pa.float32()), list_size=flat_size
-            )
 
-    table = pa.table(arrays)
-    path = save_dir / f"{prefix}_{batch_idx:04d}.parquet"
-    pq.write_table(table, path, compression="zstd")
-    print(f"  Saved {n:,} transitions to {path}")
+    path = save_dir / f"{prefix}_{batch_idx:04d}.pt"
+    tmp_path = save_dir / f"{prefix}_{batch_idx:04d}.pt.tmp"
+    torch.save(data, str(tmp_path))
+    os.replace(str(tmp_path), str(path))
+    n_pairs = n_runs * (stacked_states.shape[1] - 1)
+    print(f"  Saved {n_runs:,} runs ({n_pairs:,} pairs) to {path}")
 
 
 if __name__ == "__main__":
