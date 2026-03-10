@@ -22,6 +22,9 @@ class DataCollectionConfig:
     # Phase 2.1+: checkpoint-format collection
     steps_per_run: int = 4           # env.step() calls per collection run (4 × 500 substeps = 2000 substeps)
 
+    # Phase 02.2+: flat output format (states/next_states instead of substep_states)
+    flat_output: bool = False        # Auto-set True when steps_per_run==1 and collect_forces==True
+
     # Exploration: Sobol quasi-random actions (better 5D coverage than uniform)
     use_sobol_actions: bool = True   # Sobol quasi-random vs uniform random
 

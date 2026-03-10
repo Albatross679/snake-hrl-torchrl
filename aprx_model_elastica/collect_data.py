@@ -264,6 +264,10 @@ def parse_args() -> argparse.Namespace:
         "--perturb-omega-std", type=float, default=None,
         help="Angular velocity perturbation std (default: 1.5 rad/s)",
     )
+    parser.add_argument(
+        "--flat-output", action="store_true", default=False,
+        help="Save flat (states/next_states) format instead of substep_states format (Phase 02.2)",
+    )
     return parser.parse_args()
 
 
@@ -433,6 +437,7 @@ def collect_checkpoint_run(
     env: LocomotionElasticaEnv,
     action: np.ndarray,
     steps_per_run: int = 4,
+    collect_forces: bool = False,
 ) -> dict:
     """Collect one checkpoint run: call env.step(action) steps_per_run times.
 
@@ -447,6 +452,9 @@ def collect_checkpoint_run(
              responsibility to call env.reset() before this function).
         action: (5,) action array normalized in [-1, 1]. Same action for all steps.
         steps_per_run: Number of env.step() calls (default 4 → 5 states, 4 pairs).
+        collect_forces: If True, capture force/torque snapshots after each env._step().
+                        Returns forces dict with (K, 3, 21/20) arrays. Default False
+                        (backward compatible with Phase 02.1).
 
     Returns:
         dict with:
@@ -455,6 +463,11 @@ def collect_checkpoint_run(
             action:         (5,) float32 — same action used for all steps
             t_start:        float — env._serpenoid._time at run start
             done_early:     bool — True if env signaled done before steps_per_run calls
+            forces:         (optional, only if collect_forces=True) dict with:
+                                external_forces:  (K, 3, 21) float32
+                                internal_forces:  (K, 3, 21) float32
+                                external_torques: (K, 3, 20) float32
+                                internal_torques: (K, 3, 20) float32
     """
     from tensordict import TensorDict
 
@@ -464,6 +477,12 @@ def collect_checkpoint_run(
     # Capture initial state (env already reset by caller)
     states = [RodState2D.pack_from_rod(env._rod)]
     done_early = False
+
+    # Force accumulation lists (only populated when collect_forces=True)
+    ext_forces: list = []
+    int_forces: list = []
+    ext_torques: list = []
+    int_torques: list = []
 
     # Build a minimal TensorDict for _step — env._step only reads tensordict["action"],
     # so we pass a stub observation to satisfy any shape checks.
@@ -480,16 +499,30 @@ def collect_checkpoint_run(
         td["action"] = action_tensor
         td_result = env._step(td)
         states.append(RodState2D.pack_from_rod(env._rod))
+        if collect_forces:
+            f = RodState2D.pack_forces(env._rod)
+            ext_forces.append(f["external_forces"])
+            int_forces.append(f["internal_forces"])
+            ext_torques.append(f["external_torques"])
+            int_torques.append(f["internal_torques"])
         if td_result["done"].item():
             done_early = True
             break
 
-    return {
+    result = {
         "substep_states": np.stack(states, axis=0).astype(np.float32),  # (K+1, 124)
         "action": action.copy().astype(np.float32),                      # (5,)
         "t_start": t_start,
         "done_early": done_early,
     }
+    if collect_forces:
+        result["forces"] = {
+            "external_forces": np.stack(ext_forces),    # (K, 3, 21)
+            "internal_forces": np.stack(int_forces),    # (K, 3, 21)
+            "external_torques": np.stack(ext_torques),  # (K, 3, 20)
+            "internal_torques": np.stack(int_torques),  # (K, 3, 20)
+        }
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -547,6 +580,16 @@ def _collection_loop(
     batch_t_starts: list = []         # each float
     batch_episode_ids: list = []      # each int (run id)
     batch_run_ids: list = []          # each int (global step within run sequence)
+
+    # Flat-format batch accumulators (Phase 02.2 — only used when config.flat_output=True)
+    # These are separate from the checkpoint-format lists above.
+    flat_states: list = []            # each (124,) — pre-step state
+    flat_next_states: list = []       # each (124,) — post-step state
+    flat_actions: list = []           # each (5,)
+    flat_t_starts: list = []          # each float
+    flat_episode_ids: list = []       # each int
+    flat_run_ids: list = []           # each int
+    flat_forces: list = []            # each forces dict or None
     runs_in_batch = 0
 
     t_start_wall = time.monotonic()
@@ -585,7 +628,11 @@ def _collection_loop(
             action = rng.uniform(-1.0, 1.0, size=(5,)).astype(np.float32)
 
         # Collect one checkpoint run
-        run_data = collect_checkpoint_run(env, action, steps_per_run=steps_per_run)
+        run_data = collect_checkpoint_run(
+            env, action,
+            steps_per_run=steps_per_run,
+            collect_forces=config.collect_forces,
+        )
 
         # Skip runs with done_early or non-finite states
         if run_data["done_early"] or not validate_run_finite(run_data):
@@ -603,6 +650,26 @@ def _collection_loop(
         batch_episode_ids.append(episode_id_offset + total_runs)
         batch_run_ids.append(episode_id_offset + total_runs)
 
+        # Flat-format accumulation (Phase 02.2)
+        if config.flat_output:
+            ss = run_data["substep_states"]  # (K+1, 124)
+            run_forces = run_data.get("forces")  # dict of (K, 3, 21/20) or None
+            run_action = run_data["action"]
+            run_t_start = run_data["t_start"]
+            # total_runs not yet incremented at this point
+            run_episode_id = episode_id_offset + total_runs
+            for k in range(ss.shape[0] - 1):
+                flat_states.append(ss[k])
+                flat_next_states.append(ss[k + 1])
+                flat_actions.append(run_action)
+                flat_t_starts.append(run_t_start)
+                flat_episode_ids.append(run_episode_id)
+                flat_run_ids.append(run_episode_id)
+                if run_forces is not None:
+                    flat_forces.append({key: val[k] for key, val in run_forces.items()})
+                else:
+                    flat_forces.append(None)
+
         total_transitions += n_pairs
         total_runs += 1
         runs_in_batch += 1
@@ -619,22 +686,43 @@ def _collection_loop(
 
         # Save batch to disk (episodes_per_save now means runs per save)
         if runs_in_batch >= config.episodes_per_save:
-            _save_batch(
-                save_dir=save_dir,
-                batch_idx=batch_idx,
-                batch_substep_states=batch_substep_states,
-                batch_actions=batch_actions,
-                batch_t_starts=batch_t_starts,
-                batch_episode_ids=batch_episode_ids,
-                batch_run_ids=batch_run_ids,
-                prefix=prefix,
-            )
+            if config.flat_output:
+                _save_batch_flat(
+                    save_dir=save_dir,
+                    batch_idx=batch_idx,
+                    batch_states=flat_states,
+                    batch_next_states=flat_next_states,
+                    batch_actions=flat_actions,
+                    batch_t_starts=flat_t_starts,
+                    batch_episode_ids=flat_episode_ids,
+                    batch_run_ids=flat_run_ids,
+                    batch_forces=flat_forces,
+                    prefix=prefix,
+                )
+            else:
+                _save_batch(
+                    save_dir=save_dir,
+                    batch_idx=batch_idx,
+                    batch_substep_states=batch_substep_states,
+                    batch_actions=batch_actions,
+                    batch_t_starts=batch_t_starts,
+                    batch_episode_ids=batch_episode_ids,
+                    batch_run_ids=batch_run_ids,
+                    prefix=prefix,
+                )
             batch_idx += 1
             batch_substep_states = []
             batch_actions = []
             batch_t_starts = []
             batch_episode_ids = []
             batch_run_ids = []
+            flat_states = []
+            flat_next_states = []
+            flat_actions = []
+            flat_t_starts = []
+            flat_episode_ids = []
+            flat_run_ids = []
+            flat_forces = []
             runs_in_batch = 0
 
         # Progress report
@@ -658,16 +746,30 @@ def _collection_loop(
 
     # Save remaining batch
     if runs_in_batch > 0:
-        _save_batch(
-            save_dir=save_dir,
-            batch_idx=batch_idx,
-            batch_substep_states=batch_substep_states,
-            batch_actions=batch_actions,
-            batch_t_starts=batch_t_starts,
-            batch_episode_ids=batch_episode_ids,
-            batch_run_ids=batch_run_ids,
-            prefix=prefix,
-        )
+        if config.flat_output:
+            _save_batch_flat(
+                save_dir=save_dir,
+                batch_idx=batch_idx,
+                batch_states=flat_states,
+                batch_next_states=flat_next_states,
+                batch_actions=flat_actions,
+                batch_t_starts=flat_t_starts,
+                batch_episode_ids=flat_episode_ids,
+                batch_run_ids=flat_run_ids,
+                batch_forces=flat_forces,
+                prefix=prefix,
+            )
+        else:
+            _save_batch(
+                save_dir=save_dir,
+                batch_idx=batch_idx,
+                batch_substep_states=batch_substep_states,
+                batch_actions=batch_actions,
+                batch_t_starts=batch_t_starts,
+                batch_episode_ids=batch_episode_ids,
+                batch_run_ids=batch_run_ids,
+                prefix=prefix,
+            )
 
     elapsed = time.monotonic() - t_start_wall
     print(
@@ -828,6 +930,11 @@ def main():
         config.steps_per_run = args.steps_per_run
     if args.perturb_omega_std is not None:
         config.perturb_omega_std = args.perturb_omega_std
+    if args.flat_output:
+        config.flat_output = True
+    # Auto-set flat_output when collecting 1-step runs with forces (Phase 02.2 mode)
+    if config.steps_per_run == 1 and config.collect_forces:
+        config.flat_output = True
 
     save_dir = Path(config.save_dir)
     save_dir.mkdir(parents=True, exist_ok=True)
@@ -1219,6 +1326,60 @@ def _save_batch(
     os.replace(str(tmp_path), str(path))
     n_pairs = n_runs * (stacked_states.shape[1] - 1)
     print(f"  Saved {n_runs:,} runs ({n_pairs:,} pairs) to {path}")
+
+
+def _save_batch_flat(
+    save_dir: Path,
+    batch_idx: int,
+    batch_states: list,
+    batch_next_states: list,
+    batch_actions: list,
+    batch_t_starts: list,
+    batch_episode_ids: list,
+    batch_run_ids: list,
+    batch_forces: list,
+    prefix: str = "batch",
+) -> None:
+    """Save flat (state, action, next_state, forces) batch — Phase 1 consistent format.
+
+    Phase 02.2+ format: each transition is stored as a flat (state, next_state) pair
+    rather than the checkpoint substep_states format used in Phase 02.1.
+    Forces dict is included when available (collect_forces=True).
+
+    Args:
+        save_dir: Output directory.
+        batch_idx: Batch file index (used in filename).
+        batch_states: List of (124,) ndarrays — pre-step rod states.
+        batch_next_states: List of (124,) ndarrays — post-step rod states.
+        batch_actions: List of (5,) ndarrays.
+        batch_t_starts: List of float — serpenoid time at step start.
+        batch_episode_ids: List of int — episode/run identifiers.
+        batch_run_ids: List of int — step identifiers within run sequence.
+        batch_forces: List of forces dicts (or None entries). If any element is not
+                      None, forces are stacked and saved under the 'forces' key.
+        prefix: Filename prefix (e.g. "batch" or "batch_w00").
+    """
+    data = {
+        "states":      torch.from_numpy(np.stack(batch_states).astype(np.float32)),       # (N, 124)
+        "next_states": torch.from_numpy(np.stack(batch_next_states).astype(np.float32)),  # (N, 124)
+        "actions":     torch.from_numpy(np.array(batch_actions, dtype=np.float32)),       # (N, 5)
+        "t_start":     torch.tensor(batch_t_starts, dtype=torch.float32),                 # (N,)
+        "episode_ids": torch.tensor(batch_episode_ids, dtype=torch.int64),                # (N,)
+        "step_ids":    torch.tensor(batch_run_ids, dtype=torch.int64),                    # (N,)
+    }
+    # Include forces if at least one entry is non-None
+    if batch_forces and batch_forces[0] is not None:
+        force_keys = ("external_forces", "internal_forces", "external_torques", "internal_torques")
+        data["forces"] = {
+            k: torch.from_numpy(np.stack([f[k] for f in batch_forces]).astype(np.float32))
+            for k in force_keys
+        }
+
+    path = save_dir / f"{prefix}_{batch_idx:04d}.pt"
+    tmp_path = path.with_suffix(".pt.tmp")
+    torch.save(data, str(tmp_path))
+    os.replace(str(tmp_path), str(path))
+    print(f"  Saved {len(batch_states):,} flat transitions to {path}")
 
 
 if __name__ == "__main__":
