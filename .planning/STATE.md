@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: planning
-stopped_at: Phase 1 context gathered
-last_updated: "2026-03-09T20:09:48.609Z"
-last_activity: 2026-03-09 -- Roadmap created
+stopped_at: Phase 2 context gathered
+last_updated: "2026-03-10T02:14:03.747Z"
+last_activity: 2026-03-10 -- Roadmap restructured, Phase 1 marked complete
 progress:
-  total_phases: 3
+  total_phases: 2
   completed_phases: 0
-  total_plans: 0
+  total_plans: 2
   completed_plans: 0
-  percent: 0
+  percent: 50
 ---
 
 # Project State
@@ -20,17 +20,26 @@ progress:
 
 See: .planning/PROJECT.md (updated 2026-03-09)
 
-**Core value:** Produce a high-quality, well-covered dataset of snake robot dynamics transitions without manual babysitting
-**Current focus:** Phase 1: Health Monitoring and Data Integrity
+**Core value:** Produce a high-quality, well-covered dataset of snake robot dynamics transitions ready for surrogate training
+**Current focus:** Phase 2: Data Validation
 
 ## Current Position
 
-Phase: 1 of 3 (Health Monitoring and Data Integrity)
-Plan: 0 of 3 in current phase
+Phase: 2 of 2 (Data Validation)
+Plan: 0 plans created yet
 Status: Ready to plan
-Last activity: 2026-03-09 -- Roadmap created
+Last activity: 2026-03-10 -- Roadmap restructured, Phase 1 marked complete
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [█████░░░░░] 50%
+
+## Dataset Summary (Phase 1 Output)
+
+- **Location:** `data/surrogate/`
+- **Size:** 2.3 GB, 28 batch files from 16 workers (w00–w15)
+- **Per batch:** states (N, 124), actions (N, 5), serpenoid_times (N), next_states (N, 124), episode_ids, step_indices, forces dict
+- **State vector (124-dim):** pos_x(21), pos_y(21), vel_x(21), vel_y(21), yaw(20), omega_z(20)
+- **Actions (5-dim):** amplitude, frequency, wave_number, phase_offset, direction_bias
+- **Collection config:** Sobol quasi-random, 30% perturbation, 50% random action fraction
 
 ## Performance Metrics
 
@@ -39,28 +48,12 @@ Progress: [░░░░░░░░░░] 0%
 - Average duration: -
 - Total execution time: 0 hours
 
-**By Phase:**
-
-| Phase | Plans | Total | Avg/Plan |
-|-------|-------|-------|----------|
-| - | - | - | - |
-
-**Recent Trend:**
-- Last 5 plans: -
-- Trend: -
-
-*Updated after each plan completion*
-
 ## Accumulated Context
 
 ### Decisions
 
-Decisions are logged in PROJECT.md Key Decisions table.
-Recent decisions affecting current work:
-
-- [Roadmap]: External observer pattern -- monitor runs as separate process, communicates via filesystem signals
-- [Roadmap]: OBSV-01 and OBSV-04 in Phase 1 (not Phase 3) because alerting and event logging are tightly coupled with health detection
-- [Roadmap]: STOP-02 (disk space) in Phase 2 (not Phase 1) because it is a stop condition that triggers graceful stop, fitting with the stop-condition phase
+- [Restructure]: Phase 1 = data collection (complete), Phase 2 = data validation (current focus)
+- [Restructure]: Removed old Phase 2 (coverage tracking) and Phase 3 (quality reporting) — merged relevant concerns into Phase 2 validation
 
 ### Pending Todos
 
@@ -68,10 +61,9 @@ None yet.
 
 ### Blockers/Concerns
 
-- [Phase 2]: Coverage binning strategy (number of bins, which dimensions, min samples per bin) needs empirical tuning -- research flagged this as the primary uncertainty
+None currently.
 
 ## Session Continuity
 
-Last session: 2026-03-09T20:09:48.606Z
-Stopped at: Phase 1 context gathered
-Resume file: .planning/phases/01-health-monitoring-and-data-integrity/01-CONTEXT.md
+Last session: 2026-03-10T02:14:03.742Z
+Stopped at: Phase 2 context gathered
