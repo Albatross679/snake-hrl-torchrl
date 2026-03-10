@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 02.1-03-PLAN.md — OverlappingPairDataset added to dataset.py, 9 tests passing
-last_updated: "2026-03-10T13:53:52.864Z"
+stopped_at: Completed 02.1-02-PLAN.md — checkpoint-format collection pipeline launched, Phase 1 data archived to data/surrogate_v1/
+last_updated: "2026-03-10T14:00:32.459Z"
 last_activity: "2026-03-10 -- Completed 03-01: 5-run hyperparameter sweep (best: sweep_lr1e3_h512x3, val_loss=0.2161, R²=0.784)"
 progress:
   total_phases: 10
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 12
-  completed_plans: 6
+  completed_plans: 7
   percent: 25
 ---
 
@@ -25,21 +25,30 @@ See: .planning/PROJECT.md (updated 2026-03-09)
 
 ## Current Position
 
-Phase: 3 (Train Surrogate Model Using Supervised Learning)
-Plan: 1 of 2 complete (03-01 done, 03-02 pending)
-Status: Executing — ready for Wave 2
-Last activity: 2026-03-10 -- Completed 03-01: 5-run hyperparameter sweep (best: sweep_lr1e3_h512x3, val_loss=0.2161, R²=0.784)
+Phase: 02.1 (Re-collect Surrogate Data with Per-Node Phase Encoding) — COMPLETE (3/3 plans done)
+Next Phase: Phase 3 training will need re-run on V2 data once collection reaches ~25 GB
+Status: Collection running in tmux gsd-collect → data/surrogate/ (V2 checkpoint format)
+Last activity: 2026-03-10 -- Completed 02.1-02: checkpoint-format collection pipeline, Phase 1 data archived
 
-Progress: [███░░░░░░░] 25%
+Progress: [██████░░░░] 58%
 
-## Dataset Summary (Phase 1 Output)
+## Dataset Summary
 
-- **Location:** `data/surrogate/`
+### V1 (Phase 1 Output — Archived)
+
+- **Location:** `data/surrogate_v1/` (archived — use for reference only)
 - **Size:** 2.3 GB, 28 batch files from 16 workers (w00–w15)
 - **Per batch:** states (N, 124), actions (N, 5), serpenoid_times (N), next_states (N, 124), episode_ids, step_indices, forces dict
+
+### V2 (Phase 02.1 Output — Active Collection)
+
+- **Location:** `data/surrogate/` (active — collection running)
+- **Target size:** ~25 GB (50M transition pairs)
+- **Per batch:** substep_states (N, 5, 124), actions (N, 5), t_start (N,), episode_ids, step_ids
+- **Format:** Checkpoint-style — 5 rod boundary states per run (start + 4 post-step)
 - **State vector (124-dim):** pos_x(21), pos_y(21), vel_x(21), vel_y(21), yaw(20), omega_z(20)
 - **Actions (5-dim):** amplitude, frequency, wave_number, phase_offset, direction_bias
-- **Collection config:** Sobol quasi-random, 30% perturbation, 50% random action fraction
+- **Collection config:** Sobol quasi-random, 30% perturbation, 50% random action fraction, perturb_omega_std=1.5 rad/s
 
 ## Performance Metrics
 
@@ -65,6 +74,9 @@ Progress: [███░░░░░░░] 25%
 - [Phase 03.1-02]: Default output-base is output/surrogate/arch_sweep — isolates arch sweep from Phase 3 runs
 - [Phase 02.1]: wave_number denorm range [0.5,3.5] hardcoded from perturb_rod_state(); TIME_ENC_DIM deprecated but kept; INPUT_DIM 131→189 breaks old models intentionally
 - [Phase 02.1]: [Phase 02.1-03]: OverlappingPairDataset computes per-element phase on-the-fly from (action, t_start) — not pre-stored in batch files
+- [Phase 02.1]: V2 checkpoint format: 5 boundary states per run enables flexible overlapping training pairs without episode boundary data loss
+- [Phase 02.1]: perturb_omega_std increased 0.05→1.5 rad/s to cover operational CPG omega_z range of 1-10 rad/s
+- [Phase 02.1]: Phase 1 surrogate data archived to data/surrogate_v1/ (not deleted) — rollback capability preserved
 
 ### Pending Todos
 
@@ -86,5 +98,5 @@ None currently.
 
 ## Session Continuity
 
-Last session: 2026-03-10T13:53:52.856Z
-Stopped at: Completed 02.1-03-PLAN.md — OverlappingPairDataset added to dataset.py, 9 tests passing
+Last session: 2026-03-10T14:00:32.449Z
+Stopped at: Completed 02.1-02-PLAN.md — checkpoint-format collection pipeline launched, Phase 1 data archived to data/surrogate_v1/

@@ -48,7 +48,7 @@ Plans:
 **Goal:** Re-collect snake robot dynamics transitions incorporating per-node CPG phase as an explicit state feature, addressing the coverage and encoding gaps identified in Phase 2 validation. Produces a new dataset that replaces Phase 1 data for surrogate training.
 **Requirements**: RCOL-01, RCOL-02, RCOL-03, RCOL-04
 **Depends on:** Phase 2
-**Plans:** 2/3 plans executed
+**Plans:** 3/3 plans complete
 
 Plans:
 - [ ] 02.1-01-PLAN.md — Add encode_per_element_phase() to state.py and update INPUT_DIM to 189
@@ -144,7 +144,7 @@ Phase 8 (Elastica baseline) can run in parallel with Phases 3-5 after Phase 2.
 |-------|----------------|--------|-----------|
 | 1. Data Collection | - | COMPLETE | 2026-03-10 |
 | 2. Data Validation | 0/2 | Not started | - |
-| 02.1. Re-collect with Per-Node Phase | 2/3 | In Progress|  |
+| 02.1. Re-collect with Per-Node Phase | 3/3 | Complete   | 2026-03-10 |
 | 3. Surrogate Training | 0/2 | Not started | - |
 | 3.1. Arch Experiments | 1/3 | In Progress|  |
 | 4. Surrogate Validation | 0/0 | Not planned | - |

@@ -27,8 +27,8 @@ Requirements for initial release. Each maps to roadmap phases.
 ### Re-collection with Per-Node Phase Encoding (Phase 02.1)
 
 - [x] **RCOL-01**: Per-element CPG phase encoding — 60-dim feature replacing 2-dim global phase: sin/cos/kappa for each of 20 rod elements, computed from action and serpenoid time
-- [ ] **RCOL-02**: Checkpoint-format collection — each run calls env.step(action) 4 times with the same action, saving rod state at each macro-step boundary (5 states, 4 valid pairs)
-- [ ] **RCOL-03**: Improved omega_z coverage — perturb_omega_std increased to 1.5 rad/s (from 0.05), forces collection disabled; 25 GB target dataset
+- [x] **RCOL-02**: Checkpoint-format collection — each run calls env.step(action) 4 times with the same action, saving rod state at each macro-step boundary (5 states, 4 valid pairs)
+- [x] **RCOL-03**: Improved omega_z coverage — perturb_omega_std increased to 1.5 rad/s (from 0.05), forces collection disabled; 25 GB target dataset
 - [x] **RCOL-04**: OverlappingPairDataset — loads checkpoint batch files, forms (state, per_element_phase, next_state) pairs on-the-fly with density-weighted sampling
 
 ### Surrogate Model Training (Phase 3)
