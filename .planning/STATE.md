@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Phase 4 context gathered
-last_updated: "2026-03-10T03:16:41.134Z"
-last_activity: "2026-03-10 -- Completed 02-01: data validation module"
+stopped_at: Phase 3 Wave 1 complete — awaiting Wave 2 (analysis + human review)
+last_updated: "2026-03-10T07:10:00Z"
+last_activity: "2026-03-10 -- Completed 03-01: 5-run hyperparameter sweep (best: sweep_lr1e3_h512x3, val_loss=0.2161, R²=0.784)"
 progress:
   total_phases: 8
   completed_phases: 0
   total_plans: 6
-  completed_plans: 1
-  percent: 25
+  completed_plans: 2
+  percent: 33
 ---
 
 # Project State
@@ -20,15 +20,15 @@ progress:
 
 See: .planning/PROJECT.md (updated 2026-03-09)
 
-**Core value:** Produce a high-quality, well-covered dataset of snake robot dynamics transitions ready for surrogate training
-**Current focus:** Phase 2: Data Validation
+**Core value:** Train and validate a surrogate model of snake robot dynamics for use in RL training
+**Current focus:** Phase 3: Train Surrogate Model — Wave 2 (analysis, plots, model selection)
 
 ## Current Position
 
-Phase: 2 of 2 (Data Validation)
-Plan: 1 of 2 complete
-Status: Executing
-Last activity: 2026-03-10 -- Completed 02-01: data validation module
+Phase: 3 (Train Surrogate Model Using Supervised Learning)
+Plan: 1 of 2 complete (03-01 done, 03-02 pending)
+Status: Executing — ready for Wave 2
+Last activity: 2026-03-10 -- Completed 03-01: 5-run hyperparameter sweep (best: sweep_lr1e3_h512x3, val_loss=0.2161, R²=0.784)
 
 Progress: [███░░░░░░░] 25%
 
@@ -43,10 +43,8 @@ Progress: [███░░░░░░░] 25%
 
 ## Performance Metrics
 
-**Velocity:**
-- Total plans completed: 1
-- Average duration: 8 min
-- Total execution time: 0.13 hours
+- Total plans completed: 2
+- Total execution time: ~3.6 hours
 
 ## Accumulated Context
 
@@ -56,10 +54,15 @@ Progress: [███░░░░░░░] 25%
 - [Restructure]: Removed old Phase 2 (coverage tracking) and Phase 3 (quality reporting) — merged relevant concerns into Phase 2 validation
 - [Phase 02]: Load all batch files directly without SurrogateDataset to validate full unfiltered dataset
 - [Phase 02]: 8-metric pass/fail rubric with PASS/WARN/FAIL thresholds for data quality assessment
+- [Phase 03]: Sweep design — 5 runs, all 3 LRs (1e-4, 3e-4, 1e-3), all 3 model sizes (256x3, 512x3, 512x4)
+- [Phase 03]: Best model = sweep_lr1e3_h512x3 (lr=1e-3, 512x3, val_loss=0.2161, R²=0.784, epoch 124)
+- Phase 03.1 inserted after Phase 3: surrogate model architecture experiments — rollout loss, residual connections, history window (URGENT)
+- Phase 02.1 inserted after Phase 2: re-collect surrogate data with per-node phase encoding (URGENT)
 
 ### Pending Todos
 
 - Update Dockerfile for advisor macOS deployment (area: tooling)
+- Establish mathematical formulation of surrogate model approximation (area: general)
 
 ### Roadmap Evolution
 
@@ -76,5 +79,5 @@ None currently.
 
 ## Session Continuity
 
-Last session: 2026-03-10T03:16:41.131Z
-Stopped at: Phase 4 context gathered
+Last session: 2026-03-10T07:10:00Z
+Stopped at: Phase 3 Wave 1 complete — ready to run Wave 2 (03-02: analysis + plots + human review)
