@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: Collection running in tmux gsd-collect → data/surrogate/ (V2 checkpoint format)
-stopped_at: Completed 02.1-02-PLAN.md — checkpoint-format collection pipeline launched, Phase 1 data archived to data/surrogate_v1/
-last_updated: "2026-03-10T14:12:28.749Z"
+stopped_at: Phase 6 context gathered
+last_updated: "2026-03-10T15:01:32.965Z"
 last_activity: "2026-03-10 -- Completed 02.1-02: checkpoint-format collection pipeline, Phase 1 data archived"
 progress:
-  total_phases: 10
+  total_phases: 11
   completed_phases: 1
-  total_plans: 12
-  completed_plans: 7
+  total_plans: 14
+  completed_plans: 8
   percent: 58
 ---
 
@@ -91,6 +91,7 @@ Progress: [██████░░░░] 58%
 - Phase 6 added: Write research report in LaTeX
 - Phase 7 added: Foundation model exploration for snake robot dynamics
 - Phase 8 added: Train RL baseline directly on Elastica for controlled comparison
+- Phase 02.2 added: collect RL-step-only transitions (minimal change from 2.1)
 
 ### Blockers/Concerns
 
@@ -98,5 +99,5 @@ None currently.
 
 ## Session Continuity
 
-Last session: 2026-03-10T14:00:32.449Z
-Stopped at: Completed 02.1-02-PLAN.md — checkpoint-format collection pipeline launched, Phase 1 data archived to data/surrogate_v1/
+Last session: 2026-03-10T15:01:32.960Z
+Stopped at: Phase 6 context gathered
