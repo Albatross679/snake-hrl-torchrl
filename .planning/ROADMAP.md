@@ -1,4 +1,4 @@
-# Roadmap: Surrogate Data Collection & Validation
+# Roadmap: Neural Surrogate & RL for Snake Robot Locomotion
 
 ## Overview
 
@@ -54,6 +54,16 @@ Plans:
 - [ ] 02.1-01-PLAN.md — Add encode_per_element_phase() to state.py and update INPUT_DIM to 189
 - [ ] 02.1-02-PLAN.md — Rewrite collection pipeline (checkpoint format, perturb_omega_std=1.5), archive Phase 1 data, launch collection
 - [ ] 02.1-03-PLAN.md — Add OverlappingPairDataset to dataset.py (on-the-fly pair formation, 189-dim input)
+
+### Phase 02.2: collect RL-step-only transitions (minimal change from 2.1) (INSERTED)
+
+**Goal:** Minimal change from Phase 02.1: collect only the RL-level step (no sub-steps smaller than the RL step), keeping all other pipeline changes from 02.1 intact.
+**Requirements**: RLDC-01, RLDC-02, RLDC-03
+**Depends on:** Phase 02.1
+**Plans:** 1 plan
+
+Plans:
+- [ ] 02.2-01-PLAN.md — Test dataset compatibility with steps_per_run=1, write launch script, smoke test, launch 16-worker collection to data/surrogate_rl_step/
 
 ### Phase 3: Train surrogate model using supervised learning
 **Goal**: Train an MLP surrogate model on the Phase 02.1 dataset via hyperparameter sweep (LR x model size), select the best model by validation MSE, and produce per-component error analysis with diagnostic plots
@@ -145,6 +155,7 @@ Phase 8 (Elastica baseline) can run in parallel with Phases 3-5 after Phase 2.
 | 1. Data Collection | - | COMPLETE | 2026-03-10 |
 | 2. Data Validation | 0/2 | Not started | - |
 | 02.1. Re-collect with Per-Node Phase | 3/3 | Complete    | 2026-03-10 |
+| 02.2. Collect RL-step-only (min change) | 0/1 | Planned | - |
 | 3. Surrogate Training | 0/2 | Not started | - |
 | 3.1. Arch Experiments | 1/3 | In Progress|  |
 | 4. Surrogate Validation | 0/0 | Not planned | - |
@@ -152,3 +163,4 @@ Phase 8 (Elastica baseline) can run in parallel with Phases 3-5 after Phase 2.
 | 6. LaTeX Report | 0/0 | Not planned | - |
 | 7. Foundation Model | 0/0 | Not planned | - |
 | 8. Elastica RL Baseline | 0/0 | Not planned | - |
+
