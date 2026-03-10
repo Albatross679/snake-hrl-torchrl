@@ -43,9 +43,19 @@ Plans:
 - [ ] 02-01-PLAN.md — Build validation analysis module (distributions, quality, temporal, coverage, figures, report)
 - [ ] 02-02-PLAN.md — Run validation on dataset and human review of results
 
+### Phase 02.1: re-collect surrogate data with per-node phase encoding (INSERTED)
+
+**Goal:** Re-collect snake robot dynamics transitions incorporating per-node CPG phase as an explicit state feature, addressing the coverage and encoding gaps identified in Phase 2 validation. Produces a new dataset that replaces Phase 1 data for surrogate training.
+**Requirements**: TBD
+**Depends on:** Phase 2
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd:plan-phase 02.1 to break down)
+
 ### Phase 3: Train surrogate model using supervised learning
-**Goal**: Train an MLP surrogate model on the Phase 1 dataset via hyperparameter sweep (LR x model size), select the best model by validation MSE, and produce per-component error analysis with diagnostic plots
-**Depends on**: Phase 2
+**Goal**: Train an MLP surrogate model on the Phase 02.1 dataset via hyperparameter sweep (LR x model size), select the best model by validation MSE, and produce per-component error analysis with diagnostic plots
+**Depends on**: Phase 02.1
 **Requirements**: SURR-01, SURR-02, SURR-03, SURR-04, SURR-05
 **Success Criteria** (what must be TRUE):
   1. 5 sweep configurations trained to convergence with W&B logging
@@ -75,7 +85,7 @@ Plans:
 
 **Goal:** [To be planned]
 **Requirements**: TBD
-**Depends on:** Phase 3
+**Depends on:** Phase 03.1
 **Plans:** 0 plans
 
 Plans:
@@ -133,7 +143,7 @@ Phase 8 (Elastica baseline) can run in parallel with Phases 3-5 after Phase 2.
 | 1. Data Collection | - | COMPLETE | 2026-03-10 |
 | 2. Data Validation | 0/2 | Not started | - |
 | 3. Surrogate Training | 0/2 | Not started | - |
-| 3.1. Arch Experiments | 0/3 | Not started | - |
+| 3.1. Arch Experiments | 1/3 | In Progress|  |
 | 4. Surrogate Validation | 0/0 | Not planned | - |
 | 5. RL Training | 0/0 | Not planned | - |
 | 6. LaTeX Report | 0/0 | Not planned | - |

@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Phase 3 Wave 1 complete — awaiting Wave 2 (analysis + human review)
-last_updated: "2026-03-10T07:10:00Z"
+stopped_at: Completed 03.1-01-PLAN.md — surrogate architecture infrastructure (ResidualSurrogateModel, HistorySurrogateModel, HistoryDataset, CLI args)
+last_updated: "2026-03-10T13:00:07.158Z"
 last_activity: "2026-03-10 -- Completed 03-01: 5-run hyperparameter sweep (best: sweep_lr1e3_h512x3, val_loss=0.2161, R²=0.784)"
 progress:
-  total_phases: 8
+  total_phases: 10
   completed_phases: 0
-  total_plans: 6
-  completed_plans: 2
-  percent: 33
+  total_plans: 9
+  completed_plans: 3
+  percent: 25
 ---
 
 # Project State
@@ -58,6 +58,9 @@ Progress: [███░░░░░░░] 25%
 - [Phase 03]: Best model = sweep_lr1e3_h512x3 (lr=1e-3, 512x3, val_loss=0.2161, R²=0.784, epoch 124)
 - Phase 03.1 inserted after Phase 3: surrogate model architecture experiments — rollout loss, residual connections, history window (URGENT)
 - Phase 02.1 inserted after Phase 2: re-collect surrogate data with per-node phase encoding (URGENT)
+- [Phase 03.1]: ResidualSurrogateModel asserts uniform hidden_dims to prevent shape mismatches in skip connections
+- [Phase 03.1]: HistoryDataset extends TrajectoryDataset(rollout_length=history_k+1) — reuses window builder
+- [Phase 03.1]: History training loop deferred to arch_sweep.py (Plan 02) — only CLI arg wiring in train_surrogate.py
 
 ### Pending Todos
 
@@ -79,5 +82,5 @@ None currently.
 
 ## Session Continuity
 
-Last session: 2026-03-10T07:10:00Z
-Stopped at: Phase 3 Wave 1 complete — ready to run Wave 2 (03-02: analysis + plots + human review)
+Last session: 2026-03-10T13:00:07.153Z
+Stopped at: Completed 03.1-01-PLAN.md — surrogate architecture infrastructure (ResidualSurrogateModel, HistorySurrogateModel, HistoryDataset, CLI args)
