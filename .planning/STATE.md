@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Phase 2.1 context gathered
-last_updated: "2026-03-10T13:04:39.200Z"
+stopped_at: Completed 03.1-02-PLAN.md — arch_sweep.py created and sweep launched in tmux gsd-train
+last_updated: "2026-03-10T13:08:01.363Z"
 last_activity: "2026-03-10 -- Completed 03-01: 5-run hyperparameter sweep (best: sweep_lr1e3_h512x3, val_loss=0.2161, R²=0.784)"
 progress:
   total_phases: 10
   completed_phases: 0
   total_plans: 9
-  completed_plans: 3
+  completed_plans: 4
   percent: 25
 ---
 
@@ -61,6 +61,8 @@ Progress: [███░░░░░░░] 25%
 - [Phase 03.1]: ResidualSurrogateModel asserts uniform hidden_dims to prevent shape mismatches in skip connections
 - [Phase 03.1]: HistoryDataset extends TrajectoryDataset(rollout_length=history_k+1) — reuses window builder
 - [Phase 03.1]: History training loop deferred to arch_sweep.py (Plan 02) — only CLI arg wiring in train_surrogate.py
+- [Phase 03.1-02]: ARCH_SWEEP_CONFIGS has 5 entries (A1/A3/A4/A5/B1); A2 injected from Phase 3 metrics.json as baseline
+- [Phase 03.1-02]: Default output-base is output/surrogate/arch_sweep — isolates arch sweep from Phase 3 runs
 
 ### Pending Todos
 
@@ -82,5 +84,5 @@ None currently.
 
 ## Session Continuity
 
-Last session: 2026-03-10T13:04:39.195Z
-Stopped at: Phase 2.1 context gathered
+Last session: 2026-03-10T13:08:01.359Z
+Stopped at: Completed 03.1-02-PLAN.md — arch_sweep.py created and sweep launched in tmux gsd-train

@@ -74,7 +74,7 @@ Plans:
 **Goal:** Run architecture experiments comparing 3 improvements to the 512x3 MLP baseline: (A) rollout loss weight/horizon tuning across 4 variants, (B) residual MLP, (C) history window K=2 if A+B fall short. Select the best architecture for Phase 4 validation. If none improve significantly over baseline (val_loss=0.2161, R²=0.784), proceed with existing checkpoint.
 **Requirements**: ARCH-01, ARCH-02, ARCH-03, ARCH-04, ARCH-05
 **Depends on:** Phase 3
-**Plans:** 3 plans
+**Plans:** 2/3 plans executed
 
 Plans:
 - [ ] 03.1-01-PLAN.md — Add architectural variants to code (ResidualSurrogateModel, HistorySurrogateModel, HistoryDataset, CLI args) with unit tests
