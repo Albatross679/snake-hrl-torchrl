@@ -50,6 +50,23 @@ def parse_args() -> argparse.Namespace:
         "--save-best-val-loss", action="store_true", default=False,
         help="Save best_val_loss and final_epoch to metrics.json after training",
     )
+    # Phase 3.1 architectural experiment args
+    parser.add_argument(
+        "--rollout-weight", type=float, default=None,
+        help="Rollout loss weight override (default: from config)",
+    )
+    parser.add_argument(
+        "--rollout-steps", type=int, default=None,
+        help="Rollout steps override (default: from config)",
+    )
+    parser.add_argument(
+        "--use-residual", action="store_true", default=False,
+        help="Use ResidualSurrogateModel instead of base SurrogateModel",
+    )
+    parser.add_argument(
+        "--history-k", type=int, default=None,
+        help="History window size K for HistorySurrogateModel (0=disabled)",
+    )
     return parser.parse_args()
 
 
@@ -215,6 +232,14 @@ def main():
     config.wandb_enabled = args.wandb
     if args.hidden_dims is not None:
         config.model.hidden_dims = [int(x) for x in args.hidden_dims.split(",")]
+    # Phase 3.1 architectural experiment overrides
+    if args.rollout_weight is not None:
+        config.rollout_loss_weight = args.rollout_weight
+    if args.rollout_steps is not None:
+        config.rollout_steps = args.rollout_steps
+    config.use_residual = args.use_residual
+    if args.history_k is not None:
+        config.history_k = args.history_k
 
     # Output directory
     save_dir = Path(config.save_dir)
@@ -260,12 +285,12 @@ def main():
         print(f"  Weight range: [{sample_weights.min():.2f}, {sample_weights.max():.2f}]")
         train_loader = DataLoader(
             train_dataset, batch_size=config.batch_size, sampler=sampler,
-            num_workers=4, pin_memory=True, drop_last=True,
+            num_workers=2, pin_memory=True, drop_last=True,
         )
     else:
         train_loader = DataLoader(
             train_dataset, batch_size=config.batch_size, shuffle=True,
-            num_workers=4, pin_memory=True, drop_last=True,
+            num_workers=2, pin_memory=True, drop_last=True,
         )
     val_loader = DataLoader(
         val_dataset, batch_size=config.batch_size, shuffle=False,
@@ -290,8 +315,18 @@ def main():
     else:
         normalizer = None
 
-    # Build model
-    model = SurrogateModel(config.model).to(device)
+    # Build model (Phase 3.1: branch on architecture variant)
+    if config.use_residual:
+        from aprx_model_elastica.model import ResidualSurrogateModel
+        model = ResidualSurrogateModel(config.model).to(device)
+    elif config.history_k > 0:
+        from aprx_model_elastica.model import HistorySurrogateModel
+        model = HistorySurrogateModel(config.model, history_k=config.history_k).to(device)
+        # TODO Phase 3.1: history training loop not yet implemented — use arch_sweep.py
+        # which sets up the HistoryDataset loader. Training with history_k>0 via this
+        # script will use the single-step loader (no history context in batches).
+    else:
+        model = SurrogateModel(config.model).to(device)
     n_params = sum(p.numel() for p in model.parameters())
     print(f"Model: {n_params:,} parameters")
 
