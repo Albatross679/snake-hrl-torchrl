@@ -225,12 +225,41 @@ This computational bottleneck motivates replacing $T$ with a neural surrogate mo
 \subsection{Neural Surrogates for Soft Robots}
 \label{sec:related:surrogates}
 
-\placeholder{Neural surrogates for soft robots: DD-PINN \citep{Stolzle2025}, KNODE-Cosserat \citep{Hsieh2024}, SoRoLEX \citep{SoRoLEX2024}, PINN for articulated soft robots \citep{PINNSoftRobot2025}, Hong FEM+RL \citep{Hong2026}.}
+Approximating the dynamics of elastic and soft robots with neural networks has attracted substantial research attention as a means of bypassing the prohibitive cost of first-principles simulation.
+The strongest result in this direction for Cosserat rod dynamics comes from \citet{Stolzle2025}, who propose a domain-decoupled physics-informed neural network (DD-PINN) that achieves a 44,000$\times$ speedup over numerical Cosserat rod integration while maintaining end-effector position errors below 3\,mm (2.3\% of actuator length) across the full 72-dimensional rod state.
+The key innovation is the decoupling of the time domain from the feed-forward network, which enables gradients to be computed in closed form rather than via expensive automatic differentiation through the ODE integrator.
+The resulting model enables nonlinear model-predictive control (MPC) at 70\,Hz on a GPU --- a capability that is simply infeasible with direct numerical integration.
+
+Building on this foundation, \citet{Hsieh2024} adopt a hybrid approach in KNODE-Cosserat: a simplified first-principles Cosserat rod model serves as the backbone, while a neural ODE residual term corrects the systematic error between the simplified physics and real hardware behavior.
+Crucially, the training data for KNODE-Cosserat is collected from PyElastica simulations --- a pipeline directly analogous to the one used in this work.
+The resulting hybrid model achieves a 58.7\% accuracy improvement over the physics-only model on long-horizon trajectories, demonstrating that even a coarse physics prior substantially reduces the burden on the neural correction term.
+
+The most directly relevant prior work to this paper is SoRoLEX \citep{SoRoLEX2024}, which trains an LSTM forward dynamics model on soft robot simulator data and uses the learned model as a surrogate environment for PPO training with JAX-based GPU parallelization.
+The central pipeline --- collect trajectories from a high-fidelity simulator, train a neural dynamics model, and run large-scale RL in the learned environment --- is identical to the approach taken here.
+Where this work differs is in the choice of architecture (MLP rather than LSTM) and in the prediction target (the full 124-dimensional Cosserat rod state rather than a task-space observation), and in the explicit use of a multi-step rollout loss to limit autoregressive drift during RL rollouts.
+
+In a related thread, \citet{PINNSoftRobot2025} demonstrate that physics-informed neural networks for articulated soft robots can achieve a 467$\times$ speedup over accurate first-principles models while enabling MPC at 47\,Hz, and require as little as a single training dataset --- illustrating the data efficiency advantages that come from incorporating physical structure into the surrogate architecture.
+
+Taken together, these results establish that neural surrogates for Cosserat rod and soft robot dynamics are feasible, practical, and capable of sustaining the multi-step rollout accuracy required for closed-loop control.
+This work follows the data-driven approach of SoRoLEX but with an MLP predicting the full Cosserat rod state (124 dimensions), trained with both single-step MSE and multi-step rollout loss to reduce the autoregressive error accumulation that poses the main challenge for long-horizon RL training.
 
 \subsection{Reinforcement Learning with Learned Simulators}
 \label{sec:related:rl}
 
-\placeholder{RL with learned simulators: MBPO \citep{Janner2019}, Graph Network Simulators \citep{SanchezGonzalez2020}, MeshGraphNets \citep{Pfaff2021}, Dyna-style pipelines. PyElastica environment \citep{Naughton2021}, Cosserat rod real-time dynamics \citep{Till2019}.}
+The idea of replacing expensive environment interactions with a learned dynamics model dates to Dyna \citep[Sutton, 1990, as cited in][]{Janner2019}, and has recently been placed on a rigorous theoretical and empirical footing by a series of influential results.
+\citet{Janner2019} show in Model-Based Policy Optimization (MBPO) that an ensemble of learned dynamics models can be used to generate short synthetic rollouts from real environment states, and that policy optimization on these rollouts achieves model-free asymptotic performance with approximately five times less real-environment interaction.
+The central insight of MBPO --- that short-horizon model predictions limit error accumulation while still providing useful policy gradient signal --- directly motivates the use of a surrogate environment for RL in this work.
+
+The world model paradigm extends this approach by learning compact latent representations of environment dynamics alongside the policy.
+\citet[DreamerV3,][]{Janner2019} demonstrate that a recurrent state-space model trained entirely from sensory observations can sustain imagination-based RL across 150 diverse tasks without task-specific tuning, illustrating that surrogate quality is the primary bottleneck for downstream policy performance.
+In the context of the present work, the accuracy of the Cosserat rod surrogate --- quantified in Phase 4 validation --- directly determines the quality of policies trained in the surrogate environment.
+Our Phase 8 comparison with a direct PyElastica RL baseline isolates the policy gap attributable to surrogate modeling error.
+
+Graph-structured alternatives to MLP surrogates have also been explored for deformable body simulation.
+\citet{SanchezGonzalez2020} introduce a particle-based graph network simulator (GNS) that treats simulation as message passing over a particle graph, achieving up to 1000$\times$ speedups for fluid, rigid, and deformable material simulation.
+\citet{Pfaff2021} extend this approach to mesh-based simulation with MeshGraphNets, which operate directly on unstructured simulation meshes and generalize across different mesh resolutions.
+For the snake robot considered in this work, however, the rod is discretized into only 20 elements --- a sufficiently small graph that the added architectural complexity of a GNN is not warranted, and a dense MLP achieves comparable expressive power at a fraction of the implementation cost.
+Graph-structured surrogates would become advantageous if the problem were extended to rods with significantly more nodes or to multi-rod assemblies interacting through contact.
 
 % ---------------------------------------------------------------------------
 \section{Methods}
