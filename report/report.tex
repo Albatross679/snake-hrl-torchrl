@@ -410,7 +410,32 @@ All experiments were logged to Weights \& Biases for tracking and comparison.
 \subsection{Physics Calibration Challenges}
 \label{sec:discussion:physics}
 
-\placeholder{Physics calibration challenges: rod radius (0.001 m $\rightarrow$ 0.02 m, $EI \propto r^4$), Young's modulus tuning (2e6 $\rightarrow$ 1e5 Pa), RFT friction coefficients ($c_t$, $c_n$), serpenoid wave direction sign error, damping parameter. These were critical blockers for stable locomotion.}
+Establishing a reliably locomoting Cosserat rod simulation required resolving three categories of physics calibration errors.
+Each issue independently prevented stable serpentine locomotion and would have rendered any surrogate trained on the resulting data physically meaningless.
+These findings illustrate a general principle: a surrogate model of an incorrectly calibrated physics engine will faithfully replicate the engine's errors --- producing a learned model that is fast but wrong.
+
+\textbf{Rod radius and bending stiffness.}
+The initial rod radius was set to $r = 0.001$\,m, matching a plausible physical snake scale.
+However, bending stiffness scales as $EI \propto r^4$, where $E$ is Young's modulus and $I = \pi r^4/4$ is the second moment of area.
+At $r = 0.001$\,m, a Young's modulus of $E = 2 \times 10^6$\,Pa (the initial value) gave $EI \approx 1.6 \times 10^{-6}$\,N$\cdot$m$^2$ --- small enough that the rod was effectively limp and produced near-zero locomotion velocity.
+Increasing $E$ to resolve this produced a qualitatively different failure: at $E \geq 10^6$\,Pa the rod snapped violently toward the target curvature, with actual curvatures reaching $\pm 100$\,rad/m (compared to targets of $\pm 2.5$\,rad/m) and node velocities exceeding 178\,m/s, causing the simulation to diverge.
+The resolution came from a grid search over $(E, r)$ pairs, which identified $r = 0.02$\,m with $E = 10^5$\,Pa as producing stable serpentine motion.
+Increasing the radius by a factor of 20 increases $I$ by a factor of $160{,}000$, so even though the Young's modulus was simultaneously reduced by a factor of 20, the net bending stiffness $EI$ increased sufficiently to drive meaningful rod deformation at physically plausible velocities.
+This calibration illustrates a fundamental modeling challenge: the parameter values required to produce correct physical behavior in a Cosserat rod simulator need not correspond to the physical material parameters of the modeled object, particularly when the simulator's internal length scales and integration timesteps span orders of magnitude different from the physical system.
+
+\textbf{Serpenoid wave direction sign error.}
+The CPG actuation module contained a sign error in the temporal term of the serpenoid curvature equation.
+The initial implementation computed $\kappa(s, t) = A \sin(k \cdot s - \omega t + \phi)$, which produces a curvature wave with phase velocity $+\omega/k$ in the $+s$ direction --- propagation from tail to head (anteriorly).
+Anisotropic RFT friction generates net forward thrust only when the curvature wave propagates posteriorly (head to tail), so anterior propagation causes the snake to swim backward.
+The correct expression is $\kappa(s, t) = A\sin(k \cdot s + \omega t + \phi)$, with phase velocity $-\omega/k$ in the $+s$ direction.
+This bug was not detected during initial simulator construction because the training environment computed curvatures inline rather than calling the CPG module's export method, so the erroneous code path was exercised only when the module was called externally.
+The error was identified only after observing consistent negative forward-velocity rewards across multiple training runs, which prompted a careful comparison of the CPG wave equation against the serpentine gait literature.
+This experience motivates explicit unit tests that verify the direction of wave propagation for a known CPG configuration, rather than relying on training metrics to surface physics errors.
+
+\textbf{RFT friction coefficient tuning.}
+Anisotropic drag coefficients derived from published values for soil-crawling snakes ($c_n/c_t \approx 10$) produced excessive lateral drift on the flat-surface simulation substrate used here.
+A grid search over the ratio $c_n/c_t$ found that $c_t = 0.01$ and $c_n = 0.05$ (ratio 5:1) yielded stable forward propulsion at the 94:1 forward-to-lateral velocity ratio needed for consistent locomotion across the full range of CPG parameters.
+The discrepancy from published values reflects the different contact mechanics of dry-surface locomotion (no soil deformation, no interlocking with granular media), confirming that substrate-specific friction re-tuning is necessary when the simulation contact model is transferred across physical regimes.
 
 \subsection{Surrogate Architecture Experiments}
 \label{sec:discussion:arch}
@@ -420,7 +445,39 @@ All experiments were logged to Weights \& Biases for tracking and comparison.
 \subsection{Data Collection Pipeline Challenges}
 \label{sec:discussion:pipeline}
 
-\placeholder{Data collection pipeline challenges: parallel scaling bottleneck (IPC overhead dominates at $>$16 workers), Numba thread pool deadlock, stall detection false positives during init, omega\_z coverage gap (perturb\_omega\_std: 0.05 $\rightarrow$ 1.5 rad/s fix), data loss on worker respawn.}
+Building a reliable parallel data collection system for the surrogate model required resolving four engineering challenges.
+Each arose from the interaction between PyElastica's Numba-compiled physics kernel and the Python multiprocessing infrastructure used to achieve parallelism.
+
+\textbf{Numba thread pool deadlock.}
+PyElastica's Cosserat rod solver is implemented as a collection of Numba JIT-compiled functions.
+When new worker processes are spawned via the \texttt{forkserver} start method, they inherit Python module state but not the Numba thread pool runtime.
+On the first physics evaluation in a new worker process, Numba re-initializes its internal thread pool (defaulting to 48 threads on the 48-core machine).
+Under heavy parallel load --- 16 workers each spawning 48 Numba threads yields 768 total threads competing for 48 cores --- a low-probability but non-zero thread pool deadlock occurred at episode reset boundaries.
+The hang was silent: no crash, no exception, no progress.
+The fix was straightforward: setting \texttt{NUMBA\_NUM\_THREADS=1} before any PyElastica import eliminated Numba's internal thread parallelism entirely.
+This is the correct trade-off for this workload: each PyElastica instance operates on a single 20-element rod, so Numba's intra-function parallelism provides no benefit, while process-level parallelism across 16 workers provides a 16$\times$ throughput improvement.
+
+\textbf{Stall detection false positives during initialization.}
+To maintain data collection throughput across long multi-hour runs, a health monitor tracks the data output rate of each worker and respawns any worker that produces no new transitions for an extended interval.
+During initial deployment, this monitor caused a kill-respawn cycle that prevented any data from being collected: all 16 workers were flagged as stalled and respawned within 60 seconds of startup.
+The root cause was that PyElastica worker initialization is itself expensive: each worker must fork via \texttt{forkserver}, import NumPy and PyElastica, construct the Cosserat rod with material properties, initialize the RFT friction model, and warm the Numba JIT cache by running a first simulation step.
+Under load on a 48-core machine, this initialization sequence takes more than 60 seconds --- exactly equal to the stall detection threshold.
+The resolution was to condition the stall counter on the worker having produced at least one transition: zero-progress polls during initialization are not counted as stalls.
+This grace-period pattern --- wait for first output before enforcing liveness --- is more robust than simply increasing the timeout, which would reduce detection sensitivity for genuine post-initialization stalls.
+
+\textbf{Parallel scaling bottleneck.}
+Increasing the number of workers beyond 16 produced diminishing throughput returns, and beyond approximately 32 workers the throughput plateaued rather than continuing to grow.
+The bottleneck was memory bandwidth rather than CPU time.
+PyElastica's Cosserat rod solver performs many small array operations (position updates, internal force computation, geometric computations) that are memory-bound: the CPU arithmetic finishes before the next array is fetched from memory.
+At high worker counts, the shared L3 cache (30\,MB per socket) is exceeded by the aggregate working sets of all workers, increasing cache miss rates and saturating the memory bus.
+The optimal configuration for the 48-core machine was 16 workers --- approximately 8 per socket --- which keeps L3 contention manageable and achieves near-linear scaling relative to single-threaded throughput.
+The surrogate model approach ultimately sidesteps this bottleneck: once the dataset is collected, RL training runs entirely on GPU using the surrogate, at throughputs orders of magnitude higher than any CPU-bound physics simulation.
+
+\textbf{Angular velocity coverage gap.}
+Initial analysis of the V1 dataset revealed that the surrogate's predictions for element angular velocity ($\omega_z$) were qualitatively poor, with mean R$^2 = 0.23$ and individual elements below zero.
+Examination of the dataset's marginal distributions showed that the state perturbation standard deviation for angular velocity of $\sigma_\omega = 0.05$\,rad/s was far smaller than the operational CPG range of 1--10\,rad/s: the training data contained almost no transitions with large $|\omega_z|$, so the model had not been exposed to the states where accurate angular velocity prediction matters most.
+For the V2 dataset, $\sigma_\omega$ was increased to 1.5\,rad/s, improving coverage of the full operational range.
+This case illustrates a general issue with surrogate training data: if the data collection distribution does not cover the regions of state space that the downstream RL policy will encounter, the surrogate will be systematically inaccurate precisely where accuracy is needed most.
 
 % ---------------------------------------------------------------------------
 \section{Conclusion}
