@@ -268,25 +268,121 @@ Graph-structured surrogates would become advantageous if the problem were extend
 \subsection{Data Collection Pipeline}
 \label{sec:methods:datacollection}
 
-\placeholder{Data collection pipeline: parallel PyElastica workers, Sobol quasi-random action sampling, 30\% perturbation, 50\% random action fraction, checkpoint-format V2 data (5 boundary states per run), 25 GB target.}
+Training data for the surrogate model is collected by running 16 independent worker processes, each maintaining its own PyElastica Cosserat rod simulation.
+Each worker samples actions from the 5-dimensional CPG action space using a Sobol quasi-random sequence, which provides better coverage of the action space than pseudo-random sampling by distributing points more uniformly across all dimensions.
+To populate diverse regions of the state space, 30\% of episodes begin with a state perturbation: random position offsets are applied to node positions, and angular velocity noise is injected into the rod elements.
+Within each episode, 50\% of actions are drawn uniformly at random while the remaining 50\% follow the current Sobol sequence; this balance between exploration and structured coverage prevents over-sampling of any particular action regime.
+
+The V2 collection format, introduced to support the per-element phase encoding described in \cref{sec:methods:encoding}, uses a checkpoint-style storage scheme.
+Each worker executes a single action four times consecutively, saving the rod state before execution and after each of the four sub-steps, yielding five boundary states per collection run.
+This produces four overlapping training pairs $(s_t, a_t, s_{t+1})$ from each run without discarding episode boundary transitions.
+The target dataset size is approximately 25\,GB, corresponding to roughly 50\,M transition pairs.
+
+During validation of the initial dataset (V1), the surrogate was found to predict angular velocity poorly, particularly for states with large $|\omega_z|$.
+Analysis revealed that the initial perturbation standard deviation of $\sigma_\omega = 0.05$\,rad/s was far below the operational CPG range of 1--10\,rad/s, leaving this region severely underrepresented.
+For the V2 dataset, $\sigma_\omega$ was increased to 1.5\,rad/s, providing the coverage needed for accurate angular velocity prediction.
+The full discussion of this coverage gap and its implications is given in \cref{sec:discussion:pipeline}.
 
 \subsection{State and Action Representation}
 \label{sec:methods:representation}
 
+The full 124-dimensional rod state vector $\mathbf{s}_t \in \mathbb{R}^{124}$ defined in \cref{sec:background:cosserat} and \cref{tab:state-vector} is used as the Markov state for both surrogate training and RL policy input.
+As noted in \cref{sec:background:cosserat}, snake locomotion in this work is constrained to the horizontal plane: all $z$-components of position and velocity are identically zero, so the three-dimensional Cosserat state reduces to this 124-dimensional 2D projection without loss of physical content.
+The 124 floats comprise 21 node $x$-positions, 21 node $y$-positions, 21 node $x$-velocities, 21 node $y$-velocities, 20 element yaw angles, and 20 element angular velocities about the $z$-axis.
+
+The 5-dimensional action vector $\mathbf{a}_t = (A, f, k, \phi_0, b) \in [-1,1]^5$ is defined in \cref{sec:background:cpg} and linearly mapped to the physical ranges $A \in [0,5]$\,rad\,m$^{-1}$, $f \in [0.5, 3.0]$\,Hz, $k \in [0.5, 3.5]$, $\phi_0 \in [0, 2\pi]$\,rad, and $b \in [-2,2]$\,rad\,m$^{-1}$ at each control step.
+The normalized action $\mathbf{a}_t$ is passed directly to the surrogate as part of its input vector.
+
 \subsection{Per-Element CPG Phase Encoding}
 \label{sec:methods:encoding}
 
-\placeholder{Per-element CPG phase encoding: why raw serpenoid\_time is non-Markov (unbounded), sin/cos encoding $(\sin(\omega t_i), \cos(\omega t_i))$ per element, $\phi_i$ computed on-the-fly from action parameters and $t_{\text{start}}$, INPUT\_DIM expanded from 131 to 189.}
+The target curvature at element $e$ depends on both the global oscillation phase $2\pi f t$ and the element's arc-length position $s_e$ through the serpenoid wave (\cref{eq:cpg-curvature}).
+As a consequence, elements at opposite ends of the rod can be at completely opposite phases of the curvature wave at the same instant in time.
+The V1 surrogate used a global phase encoding $[\sin(2\pi f t), \cos(2\pi f t)] \in \mathbb{R}^2$, appended once to the input.
+With only the global phase available, the model had to reconstruct the per-element phase offset $2\pi k \cdot s_e$ implicitly through shared MLP weights across all 20 elements simultaneously --- a significant implicit learning burden that contributed to poor angular velocity predictions (R$^2 = 0.23$; see \cref{sec:discussion:pipeline}).
+
+The V2 encoding provides the per-element phase to the model explicitly.
+For element $e \in \{1, \ldots, N_e\}$, the effective time $t_e$ at that element's arc-length position $s_e$ is computed as $t_e = k \cdot s_e / f$, giving an element-specific phase triplet:
+\begin{equation}
+  \boldsymbol{\phi}_e = \bigl(\sin(2\pi f \cdot t_e),\; \cos(2\pi f \cdot t_e),\; \kappa_e^{\text{actual}}\bigr)
+  \label{eq:per-element-phase}
+\end{equation}
+where $\kappa_e^{\text{actual}}$ is the current actual curvature of element $e$ (available in the rod state).
+The sine and cosine terms give the model the exact phase of the serpenoid wave at each element's location; the actual curvature provides the control error $(\kappa_e^{\text{target}} - \kappa_e^{\text{actual}})$ that drives the elastic restoring force.
+Stacking $\boldsymbol{\phi}_e$ for all $N_e = 20$ elements yields a 60-dimensional per-element phase feature vector.
+The phase features are computed on-the-fly from the stored action and episode start time $t_{\text{start}}$ during dataset loading, so the batch files store only the rod states, actions, and $t_{\text{start}}$ without any pre-computed phase data.
+
+The full model input concatenates the z-score normalized rod state $\bar{\mathbf{s}}_t$, the normalized action $\mathbf{a}_t$, and the per-element phase features:
+\begin{equation}
+  \mathbf{z}_t = \bigl[\bar{\mathbf{s}}_t \;\|\; \mathbf{a}_t \;\|\; \boldsymbol{\phi}_1, \ldots, \boldsymbol{\phi}_{N_e}\bigr] \in \mathbb{R}^{189}
+  \label{eq:surrogate-input}
+\end{equation}
+where $\bar{\mathbf{s}}_t = (\mathbf{s}_t - \mu_s)/\sigma_s$ and $\mu_s$, $\sigma_s$ are the training-set per-feature mean and standard deviation.
+The 189 input dimensions decompose as $124 + 5 + 60$.
 
 \subsection{Surrogate Model Architecture}
 \label{sec:methods:architecture}
 
-\placeholder{Surrogate architecture: MLP with state-delta prediction, input $\in \mathbb{R}^{189}$ = rod state (124) + action (5) + per-element phase encoding (60), output $\in \mathbb{R}^{124}$ (state delta), hidden layers $512 \times 3$, SiLU activations, residual connection $s_{t+1} = s_t + \Delta$.}
+The surrogate is a feedforward MLP that approximates the ground-truth transition operator $T$ from \cref{sec:background:elastica}:
+\begin{equation}
+  f_\theta: \mathbf{z}_t \mapsto \overline{\Delta\mathbf{s}}, \qquad \hat{\mathbf{s}}_{t+1} = \mathbf{s}_t + \sigma_\Delta \odot f_\theta(\mathbf{z}_t) + \mu_\Delta
+  \label{eq:surrogate-def}
+\end{equation}
+where $\mu_\Delta, \sigma_\Delta \in \mathbb{R}^{124}$ are the training-set per-feature mean and standard deviation of the state delta $(\mathbf{s}_{t+1} - \mathbf{s}_t)$, computed once before training begins.
+The model predicts the \textit{normalized} delta $\overline{\Delta\mathbf{s}}$; the actual next state is recovered via the affine reconstruction in \cref{eq:surrogate-def}.
+
+Delta prediction provides two practical advantages over predicting the absolute next state.
+First, per-step state changes are small relative to absolute state values --- position deltas are typically on the order of centimeters per 0.5\,s control step while absolute positions can span a meter --- so the target distribution is more concentrated and easier to fit.
+Second, when $f_\theta(\mathbf{z}_t) \approx 0$ the reconstruction gives $\hat{\mathbf{s}}_{t+1} \approx \mathbf{s}_t + \mu_\Delta$, which is a reasonable default (the mean empirical delta), acting as an implicit residual connection.
+
+The network architecture is:
+\begin{equation}
+  \mathbb{R}^{189} \xrightarrow{\text{Linear}} [\text{Linear}(512) \to \text{LayerNorm} \to \text{SiLU}]^{\times 3} \xrightarrow{\text{Linear}} \mathbb{R}^{124}
+  \label{eq:architecture}
+\end{equation}
+The output layer is initialized to zero so that the model starts by predicting zero delta (i.e., the mean empirical transition), providing stable early-training behavior.
+Total trainable parameters: approximately 659K.
+LayerNorm is applied after each linear transformation rather than after the activation to stabilize the training dynamics with the SiLU nonlinearity, which can produce large activations for large positive inputs.
 
 \subsection{Training Procedure}
 \label{sec:methods:training}
 
-\placeholder{Training procedure: MSE loss on state deltas, multi-step rollout loss, learning rate schedule, batch size, number of epochs, W\&B logging, architecture sweep configurations.}
+Training proceeds in two phases that introduce the rollout loss gradually to avoid instability during early optimization.
+
+\textbf{Phase 1 (epochs 1--20): single-step MSE loss.}
+The model is trained to minimize the mean squared error on the normalized delta:
+\begin{equation}
+  \mathcal{L}_{\text{single}} = \frac{1}{N} \sum_{i=1}^{N} \bigl\| f_\theta(\mathbf{z}_t^{(i)}) - \overline{\Delta\mathbf{s}}_{\text{true}}^{(i)} \bigr\|^2
+  \label{eq:single-loss}
+\end{equation}
+This phase trains the model to make accurate one-step predictions before introducing the more expensive rollout computation.
+
+\textbf{Phase 2 (epoch 20 onward): combined loss with rollout regularization.}
+An 8-step autoregressive rollout loss is added to penalize error accumulation over multi-step predictions:
+\begin{align}
+  \mathcal{L} &= \mathcal{L}_{\text{single}} + \lambda_r \cdot \mathcal{L}_{\text{rollout}}
+  \label{eq:combined-loss} \\[4pt]
+  \mathcal{L}_{\text{rollout}} &= \frac{1}{L} \sum_{t=0}^{L-1} \gamma^t \bigl\| \hat{\mathbf{s}}_{t+1} - \mathbf{s}_{t+1}^{\text{true}} \bigr\|^2
+  \label{eq:rollout-loss}
+\end{align}
+with rollout weight $\lambda_r = 0.1$, rollout length $L = 8$, and discount $\gamma = 1$ (no temporal discounting).
+Each rollout step uses the model's own prediction $\hat{\mathbf{s}}_{t+1}$ as input for the next step; gradients are back-propagated through the entire unrolled trajectory via BPTT.
+The rollout loss directly penalizes the drift between surrogate rollouts and ground-truth PyElastica trajectories, which is the primary failure mode when the surrogate is used as a substitute environment for RL.
+
+\textbf{Density-weighted sampling.}
+Sobol action sampling produces a non-uniform distribution over the state space, with states near the center of the action space overrepresented.
+To compensate, each training sample is assigned an importance weight proportional to the inverse of its estimated local density:
+\begin{equation}
+  w^{(i)} = \frac{1}{\hat{p}(\mathbf{c}^{(i)})}, \qquad
+  \mathbf{c}^{(i)} = \bigl[\bar{x}_{\text{CoM}},\; \bar{y}_{\text{CoM}},\; \|\dot{\mathbf{x}}\|,\; |\bar{\omega}_z|\bigr]
+  \label{eq:density-weighting}
+\end{equation}
+where $\mathbf{c}^{(i)} \in \mathbb{R}^4$ is a 4-dimensional summary feature capturing center-of-mass position, speed, and angular velocity magnitude.
+The density $\hat{p}$ is estimated from a joint histogram with 20 bins per dimension, and weights are clipped at 10$\times$ the mean weight to prevent any single rare sample from dominating the gradient.
+
+\textbf{Training hyperparameters.}
+The best configuration from an architecture sweep (described in \cref{sec:discussion:arch}) used: learning rate $10^{-3}$, Adam optimizer with default momentum parameters, batch size 4096, and early stopping on the validation MSE.
+All experiments were logged to Weights \& Biases for tracking and comparison.
 
 % ---------------------------------------------------------------------------
 \section{Experiments and Results}
