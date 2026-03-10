@@ -81,15 +81,15 @@
 \usepackage[round, sort, authoryear]{natbib}
 
 % ---------------------------------------------------------------------------
-% Cross-references (cleveref — after amsmath, before hyperref)
-% ---------------------------------------------------------------------------
-\usepackage{cleveref}
-
-% ---------------------------------------------------------------------------
-% Hyperref and microtype — LAST
+% Hyperref and microtype — before cleveref
 % ---------------------------------------------------------------------------
 \usepackage[hidelinks]{hyperref}
 \usepackage{microtype}
+
+% ---------------------------------------------------------------------------
+% Cross-references (cleveref — MUST be loaded after hyperref)
+% ---------------------------------------------------------------------------
+\usepackage{cleveref}
 
 % ---------------------------------------------------------------------------
 % Title
