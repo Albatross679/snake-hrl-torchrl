@@ -7,7 +7,7 @@ stopped_at: Phase 4 context gathered
 last_updated: "2026-03-10T03:16:41.134Z"
 last_activity: "2026-03-10 -- Completed 02-01: data validation module"
 progress:
-  total_phases: 4
+  total_phases: 8
   completed_phases: 0
   total_plans: 6
   completed_plans: 1
@@ -59,12 +59,16 @@ Progress: [███░░░░░░░] 25%
 
 ### Pending Todos
 
-None yet.
+- Update Dockerfile for advisor macOS deployment (area: tooling)
 
 ### Roadmap Evolution
 
 - Phase 3 added: Train surrogate model using supervised learning
 - Phase 4 added: Validate surrogate model against Elastica solver trajectories
+- Phase 5 added: Train RL agent using surrogate model
+- Phase 6 added: Write research report in LaTeX
+- Phase 7 added: Foundation model exploration for snake robot dynamics
+- Phase 8 added: Train RL baseline directly on Elastica for controlled comparison
 
 ### Blockers/Concerns
 
