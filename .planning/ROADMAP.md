@@ -149,7 +149,7 @@ Phase 8 (Elastica baseline) can run in parallel with Phases 3-5 after Phase 2.
 | 1. Data Collection | - | COMPLETE | 2026-03-10 |
 | 2. Data Validation | 0/2 | Not started | - |
 | 02.1. Re-collect with Per-Node Phase | 3/3 | Complete    | 2026-03-10 |
-| 02.2. Collect RL-step-only (min change) | 1/1 | Complete   | 2026-03-10 |
+| 02.2. Collect RL-step-only (min change) | 1/1 | Complete    | 2026-03-10 |
 | 3. Surrogate Training + Arch Experiments | 4/5 | In Progress | - |
 | 4. Surrogate Validation | 0/0 | Not planned | - |
 | 5. RL Training | 0/0 | Not planned | - |

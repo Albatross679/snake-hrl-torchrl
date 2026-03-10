@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: Collection running in tmux gsd-collect-rl → data/surrogate_rl_step/ (flat format + forces); stop manually at 10 GB
-stopped_at: "Completed 06-03-PLAN.md: Methods section and Discussion physics/pipeline subsections"
-last_updated: "2026-03-10T15:41:29.163Z"
+stopped_at: "Completed 02.2-01-PLAN.md: flat collection pipeline + FlatStepDataset + W&B; collection running to data/surrogate_rl_step/"
+last_updated: "2026-03-10T15:48:01.570Z"
 last_activity: "2026-03-10 -- Completed 02.2-01: flat collection pipeline, FlatStepDataset TDD, W&B logging"
 progress:
   total_phases: 13
