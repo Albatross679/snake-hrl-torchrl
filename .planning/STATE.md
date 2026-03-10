@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: executing
+status: Collection running in tmux gsd-collect → data/surrogate/ (V2 checkpoint format)
 stopped_at: Completed 02.1-02-PLAN.md — checkpoint-format collection pipeline launched, Phase 1 data archived to data/surrogate_v1/
-last_updated: "2026-03-10T14:00:32.459Z"
-last_activity: "2026-03-10 -- Completed 03-01: 5-run hyperparameter sweep (best: sweep_lr1e3_h512x3, val_loss=0.2161, R²=0.784)"
+last_updated: "2026-03-10T14:12:28.749Z"
+last_activity: "2026-03-10 -- Completed 02.1-02: checkpoint-format collection pipeline, Phase 1 data archived"
 progress:
   total_phases: 10
   completed_phases: 1
   total_plans: 12
   completed_plans: 7
-  percent: 25
+  percent: 58
 ---
 
 # Project State
