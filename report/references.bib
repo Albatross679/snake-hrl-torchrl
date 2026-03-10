@@ -1,0 +1,140 @@
+% references.bib
+% Bibliography for: Neural Surrogate Modeling for Snake Robot Locomotion
+% Phase 6: Write Research Report in LaTeX
+
+% ---------------------------------------------------------------------------
+% Neural Surrogates for Cosserat Rod / Soft Robot Dynamics
+% ---------------------------------------------------------------------------
+
+@article{Stolzle2025,
+  author    = {Stolzle, Maximilian and others},
+  title     = {{DD-PINN}: Domain-Decoupled Physics-Informed Neural Network
+               for Dynamic Cosserat Rod Model-Predictive Control},
+  journal   = {arXiv preprint arXiv:2508.12681},
+  year      = {2025},
+  url       = {https://arxiv.org/abs/2508.12681},
+  note      = {44{,}000$\times$ speedup over numerical integration; MPC at 70 Hz on GPU}
+}
+
+@article{Hsieh2024,
+  author    = {Hsieh, Tsung-Wei and others},
+  title     = {{KNODE-Cosserat}: Neural {ODE} Correction of Cosserat Rod Dynamics},
+  journal   = {arXiv preprint arXiv:2408.07776},
+  year      = {2024},
+  url       = {https://arxiv.org/abs/2408.07776},
+  note      = {58.7\% accuracy improvement over physics-only model; trained on PyElastica data}
+}
+
+@article{SoRoLEX2024,
+  author    = {Berdica, Uljad and others},
+  title     = {{SoRoLEX}: Learned Environments for Soft Robot Reinforcement Learning},
+  journal   = {arXiv preprint arXiv:2410.18519},
+  year      = {2024},
+  url       = {https://arxiv.org/abs/2410.18519},
+  note      = {LSTM surrogate for Cosserat rod sim; order-of-magnitude speedup for RL}
+}
+
+@article{PINNSoftRobot2025,
+  author    = {Author, A. and others},
+  title     = {Physics-Informed Neural Networks for Articulated Soft Robot
+               Model-Predictive Control at 47 {Hz}},
+  journal   = {arXiv preprint arXiv:2502.01916},
+  year      = {2025},
+  url       = {https://arxiv.org/abs/2502.01916},
+  note      = {467$\times$ speedup; MPC at 47 Hz; as little as 1 training dataset}
+}
+
+@article{Hong2026,
+  author    = {Hong, Author and others},
+  title     = {Bridging Finite Element Methods and Reinforcement Learning
+               for Deformable Soft Robots},
+  journal   = {Advanced Intelligent Systems},
+  publisher = {Wiley},
+  year      = {2026},
+  doi       = {10.1002/aisy.202500696},
+  url       = {https://doi.org/10.1002/aisy.202500696}
+}
+
+% ---------------------------------------------------------------------------
+% PyElastica Simulator and Cosserat Rod Theory
+% ---------------------------------------------------------------------------
+
+@article{Naughton2021,
+  author    = {Naughton, Noel and Sun, Jiarui and Tekinalp, Arman and
+               Parthasarathy, Tejaswin and Chowdhary, Girish and
+               Gazzola, Mattia},
+  title     = {{PyElastica}: A Compliant Mechanics Environment for Soft
+               Robotic Control},
+  journal   = {IEEE Robotics and Automation Letters},
+  volume    = {6},
+  number    = {2},
+  pages     = {3389--3396},
+  year      = {2021},
+  doi       = {10.1109/LRA.2021.3063698}
+}
+
+@article{Till2019,
+  author    = {Till, John and Aloi, Vincent and Rucker, Caleb},
+  title     = {Real-Time Dynamics of Soft and Continuum Robots Based on
+               {Cosserat} Rod Models},
+  journal   = {The International Journal of Robotics Research},
+  volume    = {38},
+  number    = {6},
+  pages     = {723--746},
+  year      = {2019},
+  doi       = {10.1177/0278364919842269}
+}
+
+% ---------------------------------------------------------------------------
+% Model-Based Reinforcement Learning
+% ---------------------------------------------------------------------------
+
+@inproceedings{Janner2019,
+  author    = {Janner, Michael and Fu, Justin and Zhang, Marvin and Levine, Sergey},
+  title     = {When to Trust Your Model: Model-Based Policy Optimization},
+  booktitle = {Advances in Neural Information Processing Systems (NeurIPS)},
+  volume    = {32},
+  year      = {2019},
+  url       = {https://arxiv.org/abs/1906.08253}
+}
+
+% ---------------------------------------------------------------------------
+% Graph Network Simulators and Mesh-Based Simulation
+% ---------------------------------------------------------------------------
+
+@inproceedings{SanchezGonzalez2020,
+  author    = {Sanchez-Gonzalez, Alvaro and Godwin, Jonathan and
+               Pfaff, Tobias and Ying, Rex and Leskovec, Jure and
+               Battaglia, Peter},
+  title     = {Learning to Simulate Complex Physics with Graph Networks},
+  booktitle = {Proceedings of the 37th International Conference on
+               Machine Learning (ICML)},
+  pages     = {8459--8468},
+  year      = {2020},
+  url       = {https://arxiv.org/abs/2002.09405}
+}
+
+@inproceedings{Pfaff2021,
+  author    = {Pfaff, Tobias and Fortunato, Meire and
+               Sanchez-Gonzalez, Alvaro and Battaglia, Peter},
+  title     = {Learning Mesh-Based Simulation with Graph Networks},
+  booktitle = {International Conference on Learning Representations (ICLR)},
+  year      = {2021},
+  url       = {https://arxiv.org/abs/2010.03409}
+}
+
+% ---------------------------------------------------------------------------
+% Snake Robot Locomotion with CPG and RL
+% ---------------------------------------------------------------------------
+
+@inproceedings{Bing2019,
+  author    = {Bing, Zhenshan and Meschede, Claus and R{\"o}mer, Florian and
+               Huang, Kai and Knoll, Alois},
+  title     = {A Survey of Robotics Control Based on Learning-Inspired
+               Spiking Neural Circuits},
+  booktitle = {Proceedings of the 28th International Joint Conference on
+               Artificial Intelligence (IJCAI)},
+  pages     = {6004--6010},
+  year      = {2019},
+  note      = {Snake locomotion with CPG actuation and RL; source of bing2019/ package in this project}
+}
