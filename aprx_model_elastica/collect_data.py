@@ -39,6 +39,14 @@ os.environ.setdefault("NUMBA_THREADING_LAYER", "workqueue")
 import numpy as np
 import torch
 
+# Guarded wandb import — collection must not fail if wandb is unavailable
+try:
+    import wandb as _wandb
+    _WANDB_AVAILABLE = True
+except ImportError:
+    _wandb = None
+    _WANDB_AVAILABLE = False
+
 from locomotion_elastica.config import LocomotionElasticaEnvConfig
 from locomotion_elastica.env import LocomotionElasticaEnv
 from aprx_model_elastica.state import RodState2D, ACTION_DIM
@@ -543,6 +551,7 @@ def _collection_loop(
     shared_nan_counter=None,
     shutdown_event=None,
     worker_id: int = -1,
+    wb_run=None,
 ):
     """Run the checkpoint-format collection loop with a single env.
 
@@ -564,13 +573,17 @@ def _collection_loop(
         shared_nan_counter: mp.Value for per-worker NaN discard count (or None).
         shutdown_event: mp.Event for graceful shutdown (or None).
         worker_id: Worker ID for logging (-1 = single-process).
+        wb_run: Optional W&B run object for per-batch progress logging.
+                Logging is non-fatal — any exception is silently caught.
     """
     log_prefix = f"[W{worker_id}] " if worker_id >= 0 else ""
     steps_per_run = config.steps_per_run
 
     total_transitions = 0
+    total_transitions_saved = 0  # tracks transitions written to disk for W&B
     total_runs = 0
     batch_idx = _find_next_batch_idx(save_dir, prefix, "pt")
+    collection_start_time = time.time()
     if batch_idx > 0:
         print(f"{log_prefix}Resuming: found existing files, starting at batch_idx={batch_idx}")
 
@@ -710,6 +723,28 @@ def _collection_loop(
                     batch_run_ids=batch_run_ids,
                     prefix=prefix,
                 )
+            total_transitions_saved += n_pairs * runs_in_batch
+
+            # W&B per-batch progress logging (non-fatal)
+            if wb_run is not None:
+                try:
+                    gb_on_disk = sum(
+                        os.path.getsize(os.path.join(str(save_dir), f))
+                        for f in os.listdir(str(save_dir))
+                        if f.endswith(".pt")
+                    ) / (1024 ** 3)
+                    elapsed_wb = time.time() - collection_start_time
+                    throughput = total_transitions_saved / max(elapsed_wb, 1.0)
+                    wb_run.log({
+                        "total_transitions": total_transitions_saved,
+                        "throughput_transitions_per_sec": throughput,
+                        "gb_collected": gb_on_disk,
+                        "batch_count": batch_idx,
+                        "worker_count": config.num_workers,
+                    })
+                except Exception as _wb_exc:
+                    print(f"[wandb] log failed (continuing): {_wb_exc}")
+
             batch_idx += 1
             batch_substep_states = []
             batch_actions = []
@@ -996,6 +1031,30 @@ def _single_process_collect(config, policy):
 
     print("Single-process mode: 1 worker, 1 env")
 
+    # W&B run for per-batch progress logging (non-fatal)
+    wb_run = None
+    if _WANDB_AVAILABLE:
+        try:
+            wb_run = _wandb.init(
+                project="snake-surrogate-data",
+                name="phase02.2-rl-step-collection",
+                config={
+                    "steps_per_run": config.steps_per_run,
+                    "num_workers": config.num_workers,
+                    "num_transitions": config.num_transitions,
+                    "perturb_omega_std": config.perturb_omega_std,
+                    "perturbation_fraction": config.perturbation_fraction,
+                    "collect_forces": config.collect_forces,
+                    "flat_output": config.flat_output,
+                    "seed": config.seed,
+                },
+                resume="allow",
+            )
+            print(f"[wandb] Run initialized: {wb_run.url}")
+        except Exception as _wb_init_exc:
+            print(f"[wandb] init failed (continuing without logging): {_wb_init_exc}")
+            wb_run = None
+
     _collection_loop(
         config=config,
         rng=rng,
@@ -1004,7 +1063,15 @@ def _single_process_collect(config, policy):
         sobol_sampler=sobol_sampler,
         save_dir=save_dir,
         episode_id_offset=existing_episode_offset,
+        wb_run=wb_run,
     )
+
+    # Finalize W&B run
+    if wb_run is not None:
+        try:
+            wb_run.finish()
+        except Exception:
+            pass
 
     print(f"Saved to {save_dir}/")
 
@@ -1058,26 +1125,31 @@ def _multiprocess_collect(config, baseline_fps: float | None = None):
 
     # --- W&B init (optional) ---
     wandb_run = None
-    try:
-        import wandb
-        wandb_run = wandb.init(
-            project="surrogate-data-collection",
-            config={
-                "num_workers": config.num_workers,
-                "num_transitions": config.num_transitions,
-                "baseline_fps": baseline_fps,
-                "save_dir": config.save_dir,
-                "use_sobol_actions": config.use_sobol_actions,
-                "perturbation_fraction": config.perturbation_fraction,
-                "seed": config.seed,
-            },
-        )
-        print(f"W&B run initialized: {wandb_run.url}")
-    except ImportError:
+    if _WANDB_AVAILABLE:
+        try:
+            wandb_run = _wandb.init(
+                project="snake-surrogate-data",
+                name="phase02.2-rl-step-collection",
+                config={
+                    "num_workers": config.num_workers,
+                    "num_transitions": config.num_transitions,
+                    "baseline_fps": baseline_fps,
+                    "save_dir": config.save_dir,
+                    "use_sobol_actions": config.use_sobol_actions,
+                    "perturbation_fraction": config.perturbation_fraction,
+                    "perturb_omega_std": config.perturb_omega_std,
+                    "collect_forces": config.collect_forces,
+                    "flat_output": config.flat_output,
+                    "seed": config.seed,
+                },
+                resume="allow",
+            )
+            print(f"W&B run initialized: {wandb_run.url}")
+        except Exception as e:
+            print(f"WARNING: wandb init failed ({e}) — skipping W&B logging")
+            wandb_run = None
+    else:
         print("WARNING: wandb not installed — skipping W&B logging")
-    except Exception as e:
-        print(f"WARNING: wandb init failed ({e}) — skipping W&B logging")
-        wandb_run = None
 
     log_event(event_log_path, "collection_started", "info",
               details={"num_workers": num_workers, "target": config.num_transitions})
@@ -1216,17 +1288,21 @@ def _multiprocess_collect(config, baseline_fps: float | None = None):
                 f"disk {disk_used_gb:.1f}GB used, {disk_free_gb:.1f}GB free"
             )
 
-            # Log to W&B
+            # Log to W&B — includes the 5 required Phase 02.2 metrics plus health metrics
             if wandb_run is not None:
                 try:
-                    import wandb as _wb
                     metrics: dict[str, float] = {
-                        "transitions_collected": current_count,
+                        # Phase 02.2 required metrics
+                        "total_transitions": current_count,
+                        "throughput_transitions_per_sec": fps_rolling,
+                        "gb_collected": disk_used_gb,
+                        "batch_count": int(current_count / max(1, config.episodes_per_save)),
+                        "worker_count": config.num_workers,
+                        # Health metrics
                         "fps_current": fps_current,
                         "fps_rolling": fps_rolling,
                         "pct_complete": pct_complete,
                         "eta_hours": eta_hours,
-                        "disk_used_gb": disk_used_gb,
                         "disk_free_gb": disk_free_gb,
                         "nan_discards_total": total_nan,
                         "respawns_total": total_respawns,
@@ -1234,7 +1310,7 @@ def _multiprocess_collect(config, baseline_fps: float | None = None):
                     if baseline_fps is not None:
                         metrics["fps_baseline"] = baseline_fps
                         metrics["schedule_delta_pct"] = schedule_delta_pct
-                    _wb.log(metrics)
+                    wandb_run.log(metrics)
                 except Exception:
                     pass
 
