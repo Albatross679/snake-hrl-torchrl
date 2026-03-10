@@ -14,6 +14,10 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Data Collection** - Collect snake robot dynamics transitions from PyElastica with parallel workers, health monitoring, NaN filtering, and Sobol quasi-random exploration
 - [ ] **Phase 2: Data Validation** - Analyze collected dataset for distribution evenness, data quality, anomalies, and coverage gaps to determine readiness for surrogate training
+- [ ] **Phase 5: Train RL agent using surrogate model** - Train a reinforcement learning agent using the validated surrogate model as the environment
+- [ ] **Phase 6: Write research report in LaTeX** - Write up findings, methods, and results in a LaTeX research report
+- [ ] **Phase 7: Foundation model exploration** - Explore foundation model approaches for snake robot dynamics to discover interesting generalizable findings
+- [ ] **Phase 8: Elastica RL baseline** - Train RL directly on Elastica with identical reward/observation setup as surrogate RL for controlled comparison
 
 ## Phase Details
 
@@ -55,6 +59,18 @@ Plans:
 - [ ] 03-01-PLAN.md — Sweep infrastructure and execute hyperparameter sweep (5 configs)
 - [ ] 03-02-PLAN.md — Analyze sweep results, select best model, generate diagnostic plots
 
+### Phase 03.1: Surrogate Model Architecture Experiments — Rollout Loss, Residual, History Window (INSERTED)
+
+**Goal:** Run architecture experiments comparing 3 improvements to the 512x3 MLP baseline: (A) rollout loss weight/horizon tuning across 4 variants, (B) residual MLP, (C) history window K=2 if A+B fall short. Select the best architecture for Phase 4 validation. If none improve significantly over baseline (val_loss=0.2161, R²=0.784), proceed with existing checkpoint.
+**Requirements**: ARCH-01, ARCH-02, ARCH-03, ARCH-04, ARCH-05
+**Depends on:** Phase 3
+**Plans:** 3 plans
+
+Plans:
+- [ ] 03.1-01-PLAN.md — Add architectural variants to code (ResidualSurrogateModel, HistorySurrogateModel, HistoryDataset, CLI args) with unit tests
+- [ ] 03.1-02-PLAN.md — Create arch_sweep.py and run Experiments A+B (rollout loss variants + residual)
+- [ ] 03.1-03-PLAN.md — Analyze results, human selection gate, copy winner to output/surrogate/best/
+
 ### Phase 4: Validate surrogate model against Elastica solver trajectories
 
 **Goal:** [To be planned]
@@ -65,14 +81,61 @@ Plans:
 Plans:
 - [ ] TBD (run /gsd:plan-phase 4 to break down)
 
+### Phase 5: Train RL agent using surrogate model
+
+**Goal:** Train a reinforcement learning agent using the validated surrogate model as the environment, achieving locomotion performance comparable to or better than direct Elastica training
+**Requirements**: TBD
+**Depends on:** Phase 4
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd:plan-phase 5 to break down)
+
+### Phase 6: Write research report in LaTeX
+
+**Goal:** Write a comprehensive research report documenting the surrogate modeling pipeline, RL training results, and comparisons with direct simulation training
+**Requirements**: TBD
+**Depends on:** Phase 5
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd:plan-phase 6 to break down)
+
+### Phase 7: Foundation model exploration for snake robot dynamics
+
+**Goal:** Explore whether a foundation model approach (pretrained on diverse snake robot dynamics) yields interesting generalizable findings beyond task-specific surrogates
+**Requirements**: TBD
+**Depends on:** Phase 3 (uses collected data; independent of RL training)
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd:plan-phase 7 to break down)
+
+### Phase 8: Train RL baseline directly on Elastica for controlled comparison
+
+**Goal:** Train RL (PPO) directly on Elastica using the same reward function, observation space, and hyperparameters as Phase 5's surrogate RL, producing a controlled baseline for wall-clock time, sample efficiency, and final performance comparison
+**Requirements**: TBD
+**Depends on:** Phase 2 (needs finalized env/reward setup; can run in parallel with Phases 3-5)
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd:plan-phase 8 to break down)
+
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 -> 2 -> 3 -> 4
+Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6
+Phase 7 is exploratory and can run in parallel after Phase 3.
+Phase 8 (Elastica baseline) can run in parallel with Phases 3-5 after Phase 2.
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Data Collection | - | COMPLETE | 2026-03-10 |
 | 2. Data Validation | 0/2 | Not started | - |
 | 3. Surrogate Training | 0/2 | Not started | - |
+| 3.1. Arch Experiments | 0/3 | Not started | - |
 | 4. Surrogate Validation | 0/0 | Not planned | - |
+| 5. RL Training | 0/0 | Not planned | - |
+| 6. LaTeX Report | 0/0 | Not planned | - |
+| 7. Foundation Model | 0/0 | Not planned | - |
+| 8. Elastica RL Baseline | 0/0 | Not planned | - |
