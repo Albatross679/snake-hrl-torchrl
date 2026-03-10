@@ -1,0 +1,239 @@
+% Neural Surrogate Modeling for Snake Robot Locomotion
+% Research Report
+% Phase 6: Write Research Report in LaTeX
+
+\documentclass[11pt]{article}
+
+% ---------------------------------------------------------------------------
+% Font and encoding
+% ---------------------------------------------------------------------------
+\usepackage{palatino}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+
+% ---------------------------------------------------------------------------
+% Page layout
+% ---------------------------------------------------------------------------
+\usepackage[top=1in, bottom=1in, left=1.25in, right=1.25in]{geometry}
+\usepackage{setspace}
+\setstretch{1.1}
+\setlength{\parindent}{1em}
+\setlength{\parskip}{0.4em}
+
+% ---------------------------------------------------------------------------
+% Math
+% ---------------------------------------------------------------------------
+\usepackage{amsmath}
+\usepackage{amssymb}
+
+% ---------------------------------------------------------------------------
+% Figures and tables
+% ---------------------------------------------------------------------------
+\usepackage{graphicx}
+\usepackage{subcaption}
+\usepackage{float}
+\usepackage{booktabs}
+\graphicspath{{../figures/}}
+
+% ---------------------------------------------------------------------------
+% Colors
+% ---------------------------------------------------------------------------
+\usepackage{xcolor}
+
+% ---------------------------------------------------------------------------
+% Lists
+% ---------------------------------------------------------------------------
+\usepackage{enumitem}
+\setlist[itemize]{nosep, topsep=0.3em, itemsep=0.2em}
+
+% ---------------------------------------------------------------------------
+% Section spacing
+% ---------------------------------------------------------------------------
+\usepackage{titlesec}
+\titlespacing*{\section}{0pt}{1.2em}{0.6em}
+\titlespacing*{\subsection}{0pt}{0.9em}{0.3em}
+
+% ---------------------------------------------------------------------------
+% Header and footer
+% ---------------------------------------------------------------------------
+\usepackage{fancyhdr}
+\pagestyle{fancy}
+\fancyhf{}
+\lhead{\small Neural Surrogate for Snake Robot RL}
+\rfoot{\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+
+% ---------------------------------------------------------------------------
+% Table of contents depth
+% ---------------------------------------------------------------------------
+\setcounter{tocdepth}{2}
+\setcounter{secnumdepth}{3}
+
+% ---------------------------------------------------------------------------
+% Placeholder macros
+% ---------------------------------------------------------------------------
+\newcommand{\placeholder}[1]{\textcolor{gray}{\textit{[Placeholder: #1]}}}
+\newcommand{\mytodo}[1]{\textcolor{red}{\textbf{[TODO: #1]}}}
+
+% ---------------------------------------------------------------------------
+% Bibliography (natbib — before hyperref)
+% ---------------------------------------------------------------------------
+\usepackage[round, sort, authoryear]{natbib}
+
+% ---------------------------------------------------------------------------
+% Cross-references (cleveref — after amsmath, before hyperref)
+% ---------------------------------------------------------------------------
+\usepackage{cleveref}
+
+% ---------------------------------------------------------------------------
+% Hyperref and microtype — LAST
+% ---------------------------------------------------------------------------
+\usepackage[hidelinks]{hyperref}
+\usepackage{microtype}
+
+% ---------------------------------------------------------------------------
+% Title
+% ---------------------------------------------------------------------------
+\title{%
+  \textbf{Neural Surrogate Modeling for Snake Robot Locomotion:}\\[0.3em]
+  \large Faster Reinforcement Learning via Learned Cosserat Rod Dynamics%
+}
+\author{[Author Name]}
+\date{}
+
+% ===========================================================================
+\begin{document}
+% ===========================================================================
+
+\maketitle
+
+% ---------------------------------------------------------------------------
+\begin{abstract}
+\placeholder{Write abstract after all results are in.}
+\end{abstract}
+
+\tableofcontents
+\newpage
+
+% ---------------------------------------------------------------------------
+\section{Introduction}
+\label{sec:intro}
+
+\placeholder{Introduction: problem statement, contribution summary, paper roadmap.}
+
+% ---------------------------------------------------------------------------
+\section{Background}
+\label{sec:background}
+
+\subsection{Cosserat Rod Dynamics}
+\label{sec:background:cosserat}
+
+\placeholder{Cosserat rod background: 2D Cosserat rod PDEs, linear and angular momentum equations, N=21 node discretization, state vector definition (124D).}
+
+\subsection{Resistive Force Theory Contact Model}
+\label{sec:background:rft}
+
+\placeholder{Resistive Force Theory (RFT): anisotropic friction contact for snake locomotion, tangential and normal drag coefficients $c_t$ and $c_n$, velocity-dependent drag formulation.}
+
+\subsection{Central Pattern Generator Actuation}
+\label{sec:background:cpg}
+
+\placeholder{CPG actuation: serpenoid wave curvature profile $\kappa_i^{\text{target}} = A \sin(k s_i - \omega t + \phi_0)$, five action parameters (amplitude, frequency, wave number, phase offset, direction bias), per-element phase encoding.}
+
+\subsection{PyElastica Simulator}
+\label{sec:background:elastica}
+
+\placeholder{PyElastica: compliant mechanics simulator implementing Cosserat rod theory, substep integration, computational cost ($\sim$46 ms per RL step with 500 internal integration steps), motivation for surrogate.}
+
+% ---------------------------------------------------------------------------
+\section{Related Work}
+\label{sec:related}
+
+\subsection{Neural Surrogates for Soft Robots}
+\label{sec:related:surrogates}
+
+\placeholder{Neural surrogates for soft robots: DD-PINN \citep{Stolzle2025}, KNODE-Cosserat \citep{Hsieh2024}, SoRoLEX \citep{SoRoLEX2024}, PINN for articulated soft robots \citep{PINNSoftRobot2025}, Hong FEM+RL \citep{Hong2026}.}
+
+\subsection{Reinforcement Learning with Learned Simulators}
+\label{sec:related:rl}
+
+\placeholder{RL with learned simulators: MBPO \citep{Janner2019}, Graph Network Simulators \citep{SanchezGonzalez2020}, MeshGraphNets \citep{Pfaff2021}, Dyna-style pipelines. PyElastica environment \citep{Naughton2021}, Cosserat rod real-time dynamics \citep{Till2019}.}
+
+% ---------------------------------------------------------------------------
+\section{Methods}
+\label{sec:methods}
+
+\subsection{Data Collection Pipeline}
+\label{sec:methods:datacollection}
+
+\placeholder{Data collection pipeline: parallel PyElastica workers, Sobol quasi-random action sampling, 30\% perturbation, 50\% random action fraction, checkpoint-format V2 data (5 boundary states per run), 25 GB target.}
+
+\subsection{State and Action Representation}
+\label{sec:methods:representation}
+
+\subsection{Per-Element CPG Phase Encoding}
+\label{sec:methods:encoding}
+
+\placeholder{Per-element CPG phase encoding: why raw serpenoid\_time is non-Markov (unbounded), sin/cos encoding $(\sin(\omega t_i), \cos(\omega t_i))$ per element, $\phi_i$ computed on-the-fly from action parameters and $t_{\text{start}}$, INPUT\_DIM expanded from 131 to 189.}
+
+\subsection{Surrogate Model Architecture}
+\label{sec:methods:architecture}
+
+\placeholder{Surrogate architecture: MLP with state-delta prediction, input $\in \mathbb{R}^{189}$ = rod state (124) + action (5) + per-element phase encoding (60), output $\in \mathbb{R}^{124}$ (state delta), hidden layers $512 \times 3$, SiLU activations, residual connection $s_{t+1} = s_t + \Delta$.}
+
+\subsection{Training Procedure}
+\label{sec:methods:training}
+
+\placeholder{Training procedure: MSE loss on state deltas, multi-step rollout loss, learning rate schedule, batch size, number of epochs, W\&B logging, architecture sweep configurations.}
+
+% ---------------------------------------------------------------------------
+\section{Experiments and Results}
+\label{sec:experiments}
+
+\subsection{Surrogate Accuracy}
+\label{sec:experiments:accuracy}
+
+\placeholder{Phase 4/5/8 results here. Surrogate validation against held-out PyElastica trajectories: 1-step MSE, multi-step rollout RMSE, per-state-component accuracy ($\omega_z$ poor prediction issue and fix).}
+
+\subsection{RL Training with Surrogate}
+\label{sec:experiments:rl}
+
+\placeholder{Phase 4/5/8 results here. PPO training on surrogate environment: learning curves, wall-clock time comparison, policy performance on surrogate vs real Elastica environment.}
+
+\subsection{Comparison with Direct Elastica RL Baseline}
+\label{sec:experiments:baseline}
+
+\placeholder{Phase 4/5/8 results here. Head-to-head comparison: surrogate RL vs direct Elastica RL (Phase 8 baseline). Sample efficiency, wall-clock time, final policy quality, transfer gap.}
+
+% ---------------------------------------------------------------------------
+\section{Discussion}
+\label{sec:discussion}
+
+\subsection{Physics Calibration Challenges}
+\label{sec:discussion:physics}
+
+\placeholder{Physics calibration challenges: rod radius (0.001 m $\rightarrow$ 0.02 m, $EI \propto r^4$), Young's modulus tuning (2e6 $\rightarrow$ 1e5 Pa), RFT friction coefficients ($c_t$, $c_n$), serpenoid wave direction sign error, damping parameter. These were critical blockers for stable locomotion.}
+
+\subsection{Surrogate Architecture Experiments}
+\label{sec:discussion:arch}
+
+\placeholder{Surrogate architecture experiments: rollout loss variants, residual MLP vs baseline MLP, history window experiments, architecture sweep comparison findings (Phase 03 Plans 03--05).}
+
+\subsection{Data Collection Pipeline Challenges}
+\label{sec:discussion:pipeline}
+
+\placeholder{Data collection pipeline challenges: parallel scaling bottleneck (IPC overhead dominates at $>$16 workers), Numba thread pool deadlock, stall detection false positives during init, omega\_z coverage gap (perturb\_omega\_std: 0.05 $\rightarrow$ 1.5 rad/s fix), data loss on worker respawn.}
+
+% ---------------------------------------------------------------------------
+\section{Conclusion}
+\label{sec:conclusion}
+
+\placeholder{Write conclusion after all results are in.}
+
+% ---------------------------------------------------------------------------
+% Bibliography
+% ---------------------------------------------------------------------------
+\bibliographystyle{plainnat}
+\bibliography{references}
+
+\end{document}
