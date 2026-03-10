@@ -39,12 +39,40 @@ Plans:
 - [ ] 02-01-PLAN.md — Build validation analysis module (distributions, quality, temporal, coverage, figures, report)
 - [ ] 02-02-PLAN.md — Run validation on dataset and human review of results
 
+### Phase 3: Train surrogate model using supervised learning
+**Goal**: Train an MLP surrogate model on the Phase 1 dataset via hyperparameter sweep (LR x model size), select the best model by validation MSE, and produce per-component error analysis with diagnostic plots
+**Depends on**: Phase 2
+**Requirements**: SURR-01, SURR-02, SURR-03, SURR-04, SURR-05
+**Success Criteria** (what must be TRUE):
+  1. 5 sweep configurations trained to convergence with W&B logging
+  2. Best model selected by lowest single-step validation MSE
+  3. Per-component errors reported in physical units (position mm, velocity mm/s, angle rad, angular velocity rad/s)
+  4. Diagnostic plots saved: error histograms, predicted-vs-actual, sweep comparison
+  5. Best model checkpoint ready at output/surrogate/best/ for Phase 4
+**Plans:** 2 plans
+
+Plans:
+- [ ] 03-01-PLAN.md — Sweep infrastructure and execute hyperparameter sweep (5 configs)
+- [ ] 03-02-PLAN.md — Analyze sweep results, select best model, generate diagnostic plots
+
+### Phase 4: Validate surrogate model against Elastica solver trajectories
+
+**Goal:** [To be planned]
+**Requirements**: TBD
+**Depends on:** Phase 3
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd:plan-phase 4 to break down)
+
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 -> 2
+Phases execute in numeric order: 1 -> 2 -> 3 -> 4
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Data Collection | - | COMPLETE | 2026-03-10 |
 | 2. Data Validation | 0/2 | Not started | - |
+| 3. Surrogate Training | 0/2 | Not started | - |
+| 4. Surrogate Validation | 0/0 | Not planned | - |

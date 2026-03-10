@@ -16,13 +16,21 @@ Requirements for initial release. Each maps to roadmap phases.
 - [x] **DCOL-04**: NaN/Inf filtering, atomic saves, graceful shutdown
 - [x] **DCOL-05**: Health monitoring with crash/stall detection and W&B alerts
 
-### Data Validation (Phase 2)
+### Data Validation (Phase 2 — COMPLETE)
 
 - [x] **DVAL-01**: Per-dimension distribution analysis — histograms for all 124 state dims and 5 action dims showing uniformity or skew
 - [x] **DVAL-02**: Data quality checks — NaN/Inf count, duplicate transitions, constant/near-constant features, outlier detection (>5 sigma)
 - [x] **DVAL-03**: Temporal analysis — episode length distribution, step index bias (early vs late timestep over-representation)
 - [x] **DVAL-04**: Action space coverage — 5D coverage metric (binned fill fraction), identification of under-sampled action regions
 - [x] **DVAL-05**: Summary report with pass/fail assessment per metric and actionable recommendations for surrogate training readiness
+
+### Surrogate Model Training (Phase 3)
+
+- [ ] **SURR-01**: Hyperparameter sweep infrastructure — sweep runner script that launches training with different LR x model size configs, tracks results per run
+- [ ] **SURR-02**: Execute sweep — train 5 configurations (LR={1e-4, 3e-4, 1e-3} x hidden_dims={256x3, 512x3}) with W&B logging, early stopping, density weighting
+- [ ] **SURR-03**: Best model selection — select model with lowest single-step validation MSE across sweep runs
+- [ ] **SURR-04**: Per-component error analysis in physical units — compute RMSE/MAE per state component (pos mm, vel mm/s, yaw rad, omega rad/s)
+- [ ] **SURR-05**: Diagnostic plots — error histograms per component, predicted-vs-actual overlays, sweep comparison chart saved to figures/surrogate_training/
 
 ## v2 Requirements
 
@@ -41,6 +49,8 @@ Deferred to future release. Tracked but not in current roadmap.
 | Real-time web dashboard | W&B already provides dashboards |
 | Automatic recollection | Validate first, then decide manually |
 | Distributed multi-machine | Single machine with 48 CPUs sufficient |
+| Architecture alternatives (1D-CNN, GNN) | Only if MLP fails after expanded sweep |
+| Multi-step trajectory validation | Phase 4 |
 
 ## Traceability
 
@@ -56,12 +66,17 @@ Deferred to future release. Tracked but not in current roadmap.
 | DVAL-03 | Phase 2 | Complete |
 | DVAL-04 | Phase 2 | Complete |
 | DVAL-05 | Phase 2 | Complete |
+| SURR-01 | Phase 3 | Planned |
+| SURR-02 | Phase 3 | Planned |
+| SURR-03 | Phase 3 | Planned |
+| SURR-04 | Phase 3 | Planned |
+| SURR-05 | Phase 3 | Planned |
 
 **Coverage:**
-- v1 requirements: 10 total
-- Mapped to phases: 10
+- v1 requirements: 15 total
+- Mapped to phases: 15
 - Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-09*
-*Last updated: 2026-03-10 — restructured for data collection (complete) + validation*
+*Last updated: 2026-03-10 — added Phase 3 surrogate training requirements (SURR-01 through SURR-05)*
