@@ -2,8 +2,15 @@
 
 Provides single-step and multi-step (trajectory) data loading from .pt or
 .parquet files saved by collect_data.py.
+
+Classes:
+    OverlappingPairDataset: Phase 2.1 checkpoint-format dataset (current).
+    SurrogateDataset: Phase 1 single-step dataset (deprecated).
+    TrajectoryDataset: Multi-step rollout dataset.
+    HistoryDataset: Single-step dataset with K prior steps as history context.
 """
 
+import warnings
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -11,7 +18,15 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset, Sampler
 
-from aprx_model_elastica.state import POS_X, POS_Y, VEL_X, VEL_Y, YAW, OMEGA_Z
+from aprx_model_elastica.state import (
+    POS_X,
+    POS_Y,
+    VEL_X,
+    VEL_Y,
+    YAW,
+    OMEGA_Z,
+    encode_per_element_phase_batch,
+)
 
 
 def compute_density_weights(
@@ -99,6 +114,11 @@ class SurrogateDataset(Dataset):
     """Single-step transition dataset for surrogate training.
 
     Each item is a (state, action, serpenoid_time, next_state, delta) tuple.
+
+    .. deprecated::
+        Phase 2.1 introduced the checkpoint-format OverlappingPairDataset which
+        supersedes this class. SurrogateDataset loads Phase 1 format files
+        (states/next_states keys). Use OverlappingPairDataset for Phase 2.1 data.
     """
 
     def __init__(
@@ -116,6 +136,12 @@ class SurrogateDataset(Dataset):
             val_fraction: Fraction of episodes held out for validation.
             seed: Random seed for train/val split.
         """
+        warnings.warn(
+            "SurrogateDataset is deprecated. Use OverlappingPairDataset for "
+            "Phase 2.1 checkpoint-format data.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         self.data_dir = Path(data_dir)
 
         # Load all batch files (support both .pt and .parquet)
@@ -215,6 +241,159 @@ class SurrogateDataset(Dataset):
             (N,) weight tensor.
         """
         return compute_density_weights(self.states, n_bins=n_bins, clip_max=clip_max)
+
+
+class OverlappingPairDataset(Dataset):
+    """Overlapping-pair dataset for Phase 2.1 checkpoint-format batch files.
+
+    Each batch file contains arrays of checkpoint runs: multiple rod states saved
+    at RL macro-step boundaries (every 500 Elastica substeps). For a run with K+1
+    states (from steps_per_run=K env.step() calls), this yields K valid training
+    pairs: (state[i], state[i+1]) for i = 0..K-1.
+
+    Per-element CPG phase is computed on-the-fly from (action, t_checkpoint) using
+    encode_per_element_phase_batch(). The 189-dim input = state (124) + action (5)
+    + per_element_phase (60) is NOT returned directly — instead the components are
+    returned separately so training code can normalize state/phase independently.
+
+    Train/val split is by episode_id (not by pair index) to prevent data leakage.
+
+    Args:
+        data_dir: Directory containing batch_*.pt files (Phase 2.1 format).
+        split: "train" or "val".
+        val_fraction: Fraction of episodes held out for validation.
+        seed: Random seed for episode split.
+    """
+
+    DT_PER_STEP = 0.5  # seconds per RL macro-step (500 substeps × 0.001s)
+
+    def __init__(
+        self,
+        data_dir: str,
+        split: str = "train",
+        val_fraction: float = 0.1,
+        seed: int = 42,
+    ):
+        self.data_dir = Path(data_dir)
+        pt_files = sorted(self.data_dir.glob("batch_*.pt"))
+        if not pt_files:
+            raise FileNotFoundError(
+                f"No batch_*.pt files in {data_dir}. "
+                "Expected Phase 2.1 checkpoint format (substep_states key)."
+            )
+
+        # Load all batch files, collect run-level arrays
+        all_substep_states: List[torch.Tensor] = []   # list of (N_runs, K+1, 124)
+        all_actions: List[torch.Tensor] = []          # list of (N_runs, 5)
+        all_t_starts: List[torch.Tensor] = []         # list of (N_runs,)
+        all_episode_ids: List[torch.Tensor] = []      # list of (N_runs,)
+
+        episode_offset = 0
+        for bf in pt_files:
+            data = torch.load(bf, map_location="cpu", weights_only=True)
+            if "substep_states" not in data:
+                raise ValueError(
+                    f"{bf} is missing 'substep_states' key — may be Phase 1 format. "
+                    "Use SurrogateDataset for Phase 1 data."
+                )
+            all_substep_states.append(data["substep_states"])  # (N, K+1, 124)
+            all_actions.append(data["actions"])
+            all_t_starts.append(data["t_start"])
+            eids = data["episode_ids"] + episode_offset
+            all_episode_ids.append(eids)
+            episode_offset = int(eids.max().item()) + 1
+
+        # Concatenate across batch files: (N_total_runs, K+1, 124)
+        self.substep_states = torch.cat(all_substep_states, dim=0)   # (N, K+1, 124)
+        self.actions = torch.cat(all_actions, dim=0)                  # (N, 5)
+        self.t_starts = torch.cat(all_t_starts, dim=0)                # (N,)
+        self.episode_ids = torch.cat(all_episode_ids, dim=0)          # (N,)
+
+        n_runs, n_checkpoints, _ = self.substep_states.shape
+        self.steps_per_run = n_checkpoints - 1  # K = 4 for Phase 2.1
+
+        # Train/val split by episode_id (not by run index — avoids leakage)
+        unique_episodes = torch.unique(self.episode_ids).numpy()
+        rng = np.random.default_rng(seed)
+        rng.shuffle(unique_episodes)
+        n_val = max(1, int(len(unique_episodes) * val_fraction))
+        keep_episodes = (
+            set(unique_episodes[:n_val].tolist())
+            if split == "val"
+            else set(unique_episodes[n_val:].tolist())
+        )
+        run_mask = torch.tensor(
+            [eid.item() in keep_episodes for eid in self.episode_ids],
+            dtype=torch.bool,
+        )
+        self.substep_states = self.substep_states[run_mask]
+        self.actions = self.actions[run_mask]
+        self.t_starts = self.t_starts[run_mask]
+        self.episode_ids = self.episode_ids[run_mask]
+
+        # Build flat (run_idx, pair_idx) index for __getitem__
+        # Each run has steps_per_run pairs: pair j = (state[j], state[j+1])
+        n_filtered_runs = self.substep_states.shape[0]
+        self._index: List[Tuple[int, int]] = [
+            (run_i, pair_j)
+            for run_i in range(n_filtered_runs)
+            for pair_j in range(self.steps_per_run)
+        ]
+
+    def __len__(self) -> int:
+        return len(self._index)
+
+    def __getitem__(self, idx: int) -> Dict[str, torch.Tensor]:
+        """Return one training pair.
+
+        Returns dict with:
+            state:            (124,) current state
+            action:           (5,) action applied during this step
+            per_element_phase:(60,) per-element phase at checkpoint t
+            next_state:       (124,) state after this RL macro-step
+            delta:            (124,) next_state - state
+            t:                scalar — serpenoid time at start of this pair
+        """
+        run_i, pair_j = self._index[idx]
+
+        state = self.substep_states[run_i, pair_j]           # (124,)
+        next_state = self.substep_states[run_i, pair_j + 1]  # (124,)
+        action = self.actions[run_i]                          # (5,)
+        t_checkpoint = self.t_starts[run_i] + pair_j * self.DT_PER_STEP  # scalar tensor
+
+        # Compute per-element phase on-the-fly for this single pair.
+        # Use batch function with batch size 1 for consistency with training code.
+        per_element_phase = encode_per_element_phase_batch(
+            action.unsqueeze(0),              # (1, 5)
+            t_checkpoint.unsqueeze(0),        # (1,)
+        ).squeeze(0)                           # (60,)
+
+        return {
+            "state": state,
+            "action": action,
+            "per_element_phase": per_element_phase,
+            "next_state": next_state,
+            "delta": next_state - state,
+            "t": t_checkpoint,
+        }
+
+    def get_sample_weights(
+        self,
+        n_bins: int = 20,
+        clip_max: float = 10.0,
+    ) -> torch.Tensor:
+        """Compute inverse-density weights for WeightedRandomSampler.
+
+        Weights based on the initial state of each pair. Upweights rare state regions.
+
+        Returns:
+            (N,) weight tensor, normalized to mean=1.
+        """
+        # Use all pair initial states for density computation
+        # Efficiently computed: substep_states[:, :-1, :] gives all K pair starts per run,
+        # then reshape to (N_items, 124)
+        initial_states = self.substep_states[:, :-1, :].reshape(-1, 124)  # (N_items, 124)
+        return compute_density_weights(initial_states, n_bins=n_bins, clip_max=clip_max)
 
 
 class TrajectoryDataset(Dataset):
