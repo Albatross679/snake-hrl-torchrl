@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: Collection running in tmux gsd-collect → data/surrogate/ (V2 checkpoint format)
-stopped_at: "Completed 06-01-PLAN.md: LaTeX report skeleton"
-last_updated: "2026-03-10T15:30:15.106Z"
+stopped_at: "Completed 06-02-PLAN.md: Background and Related Work sections"
+last_updated: "2026-03-10T15:35:13.176Z"
 last_activity: "2026-03-10 -- Completed 02.1-02: checkpoint-format collection pipeline, Phase 1 data archived"
 progress:
-  total_phases: 12
+  total_phases: 13
   completed_phases: 1
   total_plans: 17
-  completed_plans: 6
+  completed_plans: 7
   percent: 58
 ---
 
@@ -79,6 +79,7 @@ Progress: [██████░░░░] 58%
 - [Phase 02.1]: Phase 1 surrogate data archived to data/surrogate_v1/ (not deleted) — rollback capability preserved
 - [Phase 06-write-research-report-in-latex]: report/ subdirectory chosen for report.tex with graphicspath set to ../figures/
 - [Phase 06-write-research-report-in-latex]: [Phase 06, Plan 01]: natbib round,sort,authoryear with hyperref loaded last; 11 BibTeX entries for all cited papers
+- [Phase 06]: [Phase 06, Plan 02]: CPG equation uses explicit 2pi factors for unambiguous notation
 
 ### Pending Todos
 
@@ -97,6 +98,7 @@ Progress: [██████░░░░] 58%
 - Phase 03.1 removed: architecture experiments merged into Phase 3 as Plans 03–05
 - Phase 9 added: Physics framework comparison experiment — DisMech, Genesis, FEM vs Elastica
 - Phase 10 added: Train RL agent for tunnel and pipe navigation — snake traverses building infrastructure
+- Phase 11 added: Explore model-based RL using surrogate as world model for planning and policy optimization
 
 ### Blockers/Concerns
 
@@ -104,5 +106,5 @@ None currently.
 
 ## Session Continuity
 
-Last session: 2026-03-10T15:30:15.102Z
-Stopped at: Completed 06-01-PLAN.md: LaTeX report skeleton
+Last session: 2026-03-10T15:35:13.171Z
+Stopped at: Completed 06-02-PLAN.md: Background and Related Work sections
