@@ -46,12 +46,14 @@ Plans:
 ### Phase 02.1: re-collect surrogate data with per-node phase encoding (INSERTED)
 
 **Goal:** Re-collect snake robot dynamics transitions incorporating per-node CPG phase as an explicit state feature, addressing the coverage and encoding gaps identified in Phase 2 validation. Produces a new dataset that replaces Phase 1 data for surrogate training.
-**Requirements**: TBD
+**Requirements**: RCOL-01, RCOL-02, RCOL-03, RCOL-04
 **Depends on:** Phase 2
-**Plans:** 0 plans
+**Plans:** 3 plans
 
 Plans:
-- [ ] TBD (run /gsd:plan-phase 02.1 to break down)
+- [ ] 02.1-01-PLAN.md — Add encode_per_element_phase() to state.py and update INPUT_DIM to 189
+- [ ] 02.1-02-PLAN.md — Rewrite collection pipeline (checkpoint format, perturb_omega_std=1.5), archive Phase 1 data, launch collection
+- [ ] 02.1-03-PLAN.md — Add OverlappingPairDataset to dataset.py (on-the-fly pair formation, 189-dim input)
 
 ### Phase 3: Train surrogate model using supervised learning
 **Goal**: Train an MLP surrogate model on the Phase 02.1 dataset via hyperparameter sweep (LR x model size), select the best model by validation MSE, and produce per-component error analysis with diagnostic plots
@@ -142,6 +144,7 @@ Phase 8 (Elastica baseline) can run in parallel with Phases 3-5 after Phase 2.
 |-------|----------------|--------|-----------|
 | 1. Data Collection | - | COMPLETE | 2026-03-10 |
 | 2. Data Validation | 0/2 | Not started | - |
+| 02.1. Re-collect with Per-Node Phase | 0/3 | Planned | - |
 | 3. Surrogate Training | 0/2 | Not started | - |
 | 3.1. Arch Experiments | 1/3 | In Progress|  |
 | 4. Surrogate Validation | 0/0 | Not planned | - |

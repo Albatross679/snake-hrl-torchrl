@@ -24,6 +24,13 @@ Requirements for initial release. Each maps to roadmap phases.
 - [x] **DVAL-04**: Action space coverage — 5D coverage metric (binned fill fraction), identification of under-sampled action regions
 - [x] **DVAL-05**: Summary report with pass/fail assessment per metric and actionable recommendations for surrogate training readiness
 
+### Re-collection with Per-Node Phase Encoding (Phase 02.1)
+
+- [ ] **RCOL-01**: Per-element CPG phase encoding — 60-dim feature replacing 2-dim global phase: sin/cos/kappa for each of 20 rod elements, computed from action and serpenoid time
+- [ ] **RCOL-02**: Checkpoint-format collection — each run calls env.step(action) 4 times with the same action, saving rod state at each macro-step boundary (5 states, 4 valid pairs)
+- [ ] **RCOL-03**: Improved omega_z coverage — perturb_omega_std increased to 1.5 rad/s (from 0.05), forces collection disabled; 25 GB target dataset
+- [ ] **RCOL-04**: OverlappingPairDataset — loads checkpoint batch files, forms (state, per_element_phase, next_state) pairs on-the-fly with density-weighted sampling
+
 ### Surrogate Model Training (Phase 3)
 
 - [ ] **SURR-01**: Hyperparameter sweep infrastructure — sweep runner script that launches training with different LR x model size configs, tracks results per run
@@ -66,6 +73,10 @@ Deferred to future release. Tracked but not in current roadmap.
 | DVAL-03 | Phase 2 | Complete |
 | DVAL-04 | Phase 2 | Complete |
 | DVAL-05 | Phase 2 | Complete |
+| RCOL-01 | Phase 02.1 | Planned |
+| RCOL-02 | Phase 02.1 | Planned |
+| RCOL-03 | Phase 02.1 | Planned |
+| RCOL-04 | Phase 02.1 | Planned |
 | SURR-01 | Phase 3 | Planned |
 | SURR-02 | Phase 3 | Planned |
 | SURR-03 | Phase 3 | Planned |
@@ -73,10 +84,10 @@ Deferred to future release. Tracked but not in current roadmap.
 | SURR-05 | Phase 3 | Planned |
 
 **Coverage:**
-- v1 requirements: 15 total
-- Mapped to phases: 15
+- v1 requirements: 19 total
+- Mapped to phases: 19
 - Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-09*
-*Last updated: 2026-03-10 — added Phase 3 surrogate training requirements (SURR-01 through SURR-05)*
+*Last updated: 2026-03-10 — added Phase 02.1 re-collection requirements (RCOL-01 through RCOL-04)*
