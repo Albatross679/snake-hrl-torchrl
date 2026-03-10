@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: Collection running in tmux gsd-collect → data/surrogate/ (V2 checkpoint format)
-stopped_at: Phase 6 context gathered
-last_updated: "2026-03-10T15:01:32.965Z"
+stopped_at: "Completed 06-01-PLAN.md: LaTeX report skeleton"
+last_updated: "2026-03-10T15:30:15.106Z"
 last_activity: "2026-03-10 -- Completed 02.1-02: checkpoint-format collection pipeline, Phase 1 data archived"
 progress:
-  total_phases: 11
+  total_phases: 12
   completed_phases: 1
-  total_plans: 14
-  completed_plans: 8
+  total_plans: 17
+  completed_plans: 6
   percent: 58
 ---
 
@@ -65,18 +65,20 @@ Progress: [██████░░░░] 58%
 - [Phase 02]: 8-metric pass/fail rubric with PASS/WARN/FAIL thresholds for data quality assessment
 - [Phase 03]: Sweep design — 5 runs, all 3 LRs (1e-4, 3e-4, 1e-3), all 3 model sizes (256x3, 512x3, 512x4)
 - [Phase 03]: Best model = sweep_lr1e3_h512x3 (lr=1e-3, 512x3, val_loss=0.2161, R²=0.784, epoch 124)
-- Phase 03.1 inserted after Phase 3: surrogate model architecture experiments — rollout loss, residual connections, history window (URGENT)
 - Phase 02.1 inserted after Phase 2: re-collect surrogate data with per-node phase encoding (URGENT)
-- [Phase 03.1]: ResidualSurrogateModel asserts uniform hidden_dims to prevent shape mismatches in skip connections
-- [Phase 03.1]: HistoryDataset extends TrajectoryDataset(rollout_length=history_k+1) — reuses window builder
-- [Phase 03.1]: History training loop deferred to arch_sweep.py (Plan 02) — only CLI arg wiring in train_surrogate.py
-- [Phase 03.1-02]: ARCH_SWEEP_CONFIGS has 5 entries (A1/A3/A4/A5/B1); A2 injected from Phase 3 metrics.json as baseline
-- [Phase 03.1-02]: Default output-base is output/surrogate/arch_sweep — isolates arch sweep from Phase 3 runs
+- [Restructure]: Phase 03.1 merged into Phase 03 — architecture experiments are now Plans 03-05 of Phase 3
+- [Phase 03, Plan 03]: ResidualSurrogateModel asserts uniform hidden_dims to prevent shape mismatches in skip connections
+- [Phase 03, Plan 03]: HistoryDataset extends TrajectoryDataset(rollout_length=history_k+1) — reuses window builder
+- [Phase 03, Plan 03]: History training loop deferred to arch_sweep.py (Plan 04) — only CLI arg wiring in train_surrogate.py
+- [Phase 03, Plan 04]: ARCH_SWEEP_CONFIGS has 5 entries (A1/A3/A4/A5/B1); A2 injected from Plan 01 metrics.json as baseline
+- [Phase 03, Plan 04]: Default output-base is output/surrogate/arch_sweep — isolates arch sweep from Plan 01 runs
 - [Phase 02.1]: wave_number denorm range [0.5,3.5] hardcoded from perturb_rod_state(); TIME_ENC_DIM deprecated but kept; INPUT_DIM 131→189 breaks old models intentionally
 - [Phase 02.1]: [Phase 02.1-03]: OverlappingPairDataset computes per-element phase on-the-fly from (action, t_start) — not pre-stored in batch files
 - [Phase 02.1]: V2 checkpoint format: 5 boundary states per run enables flexible overlapping training pairs without episode boundary data loss
 - [Phase 02.1]: perturb_omega_std increased 0.05→1.5 rad/s to cover operational CPG omega_z range of 1-10 rad/s
 - [Phase 02.1]: Phase 1 surrogate data archived to data/surrogate_v1/ (not deleted) — rollback capability preserved
+- [Phase 06-write-research-report-in-latex]: report/ subdirectory chosen for report.tex with graphicspath set to ../figures/
+- [Phase 06-write-research-report-in-latex]: [Phase 06, Plan 01]: natbib round,sort,authoryear with hyperref loaded last; 11 BibTeX entries for all cited papers
 
 ### Pending Todos
 
@@ -92,6 +94,9 @@ Progress: [██████░░░░] 58%
 - Phase 7 added: Foundation model exploration for snake robot dynamics
 - Phase 8 added: Train RL baseline directly on Elastica for controlled comparison
 - Phase 02.2 added: collect RL-step-only transitions (minimal change from 2.1)
+- Phase 03.1 removed: architecture experiments merged into Phase 3 as Plans 03–05
+- Phase 9 added: Physics framework comparison experiment — DisMech, Genesis, FEM vs Elastica
+- Phase 10 added: Train RL agent for tunnel and pipe navigation — snake traverses building infrastructure
 
 ### Blockers/Concerns
 
@@ -99,5 +104,5 @@ None currently.
 
 ## Session Continuity
 
-Last session: 2026-03-10T15:01:32.960Z
-Stopped at: Phase 6 context gathered
+Last session: 2026-03-10T15:30:15.102Z
+Stopped at: Completed 06-01-PLAN.md: LaTeX report skeleton

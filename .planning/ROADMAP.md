@@ -157,3 +157,23 @@ Phase 8 (Elastica baseline) can run in parallel with Phases 3-5 after Phase 2.
 | 7. Foundation Model | 0/0 | Not planned | - |
 | 8. Elastica RL Baseline | 0/0 | Not planned | - |
 
+
+### Phase 9: Physics framework comparison experiment DisMech Genesis FEM vs Elastica
+
+**Goal:** [To be planned]
+**Requirements**: TBD
+**Depends on:** Phase 8
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd:plan-phase 9 to break down)
+
+### Phase 10: Train RL agent for tunnel and pipe navigation snake learns to traverse building infrastructure
+
+**Goal:** [To be planned]
+**Requirements**: TBD
+**Depends on:** Phase 9
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd:plan-phase 10 to break down)
