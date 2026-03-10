@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: Collection running in tmux gsd-collect-rl → data/surrogate_rl_step/ (flat format + forces); stop manually at 10 GB
-stopped_at: "Completed 02.2-01-PLAN.md: flat collection pipeline + FlatStepDataset + W&B; collection running to data/surrogate_rl_step/"
-last_updated: "2026-03-10T15:48:01.570Z"
+stopped_at: "Completed 06-04-PLAN.md: PDF compiled and human-approved; initial writing milestone complete"
+last_updated: "2026-03-10T15:58:26.950Z"
 last_activity: "2026-03-10 -- Completed 02.2-01: flat collection pipeline, FlatStepDataset TDD, W&B logging"
 progress:
   total_phases: 13
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 17
-  completed_plans: 9
+  completed_plans: 10
   percent: 53
 ---
 
@@ -68,6 +68,7 @@ Progress: [█████░░░░░] 53%
 | Phase | Plan | Duration | Tasks | Files |
 |-------|------|----------|-------|-------|
 | 02.2-collect-rl-step-only-minimal-change-from-2-1 | 01 | 16 min | 6 | 4 |
+| Phase 06-write-research-report-in-latex P04 | 5 | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -100,6 +101,7 @@ Progress: [█████░░░░░] 53%
 - [Phase 06]: [Phase 06, Plan 02]: CPG equation uses explicit 2pi factors for unambiguous notation
 - [Phase 06-write-research-report-in-latex]: [Phase 06, Plan 03]: Methods section uses two-phase training narrative (single-step MSE then combined rollout loss) with xrightarrow architecture pipeline in equation environment
 - [Phase 06-write-research-report-in-latex]: [Phase 06, Plan 03]: Discussion challenges use textbf{} labels within subsection paragraphs rather than nested subsubsections
+- [Phase 06]: Human approved PDF despite DreamerV3/Janner attribution error — deferred to future content revision
 
 ### Pending Todos
 
@@ -126,5 +128,5 @@ None currently.
 
 ## Session Continuity
 
-Last session: 2026-03-10T15:38:06Z
-Stopped at: Completed 02.2-01-PLAN.md: flat collection pipeline + FlatStepDataset + W&B; collection running to data/surrogate_rl_step/
+Last session: 2026-03-10T15:58:26.876Z
+Stopped at: Completed 06-04-PLAN.md: PDF compiled and human-approved; initial writing milestone complete
