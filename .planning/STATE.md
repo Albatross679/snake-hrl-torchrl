@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: Collection running in tmux gsd-collect → data/surrogate/ (V2 checkpoint format)
-stopped_at: "Completed 06-02-PLAN.md: Background and Related Work sections"
-last_updated: "2026-03-10T15:35:13.176Z"
-last_activity: "2026-03-10 -- Completed 02.1-02: checkpoint-format collection pipeline, Phase 1 data archived"
+status: Collection running in tmux gsd-collect-rl → data/surrogate_rl_step/ (flat format + forces); stop manually at 10 GB
+stopped_at: "Completed 06-03-PLAN.md: Methods section and Discussion physics/pipeline subsections"
+last_updated: "2026-03-10T15:41:29.163Z"
+last_activity: "2026-03-10 -- Completed 02.2-01: flat collection pipeline, FlatStepDataset TDD, W&B logging"
 progress:
   total_phases: 13
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 17
-  completed_plans: 7
-  percent: 58
+  completed_plans: 9
+  percent: 53
 ---
 
 # Project State
@@ -25,12 +25,12 @@ See: .planning/PROJECT.md (updated 2026-03-09)
 
 ## Current Position
 
-Phase: 02.1 (Re-collect Surrogate Data with Per-Node Phase Encoding) — COMPLETE (3/3 plans done)
-Next Phase: Phase 3 training will need re-run on V2 data once collection reaches ~25 GB
-Status: Collection running in tmux gsd-collect → data/surrogate/ (V2 checkpoint format)
-Last activity: 2026-03-10 -- Completed 02.1-02: checkpoint-format collection pipeline, Phase 1 data archived
+Phase: 02.2 (Collect RL-Step-Only Data) — COMPLETE (1/1 plans done)
+Next Phase: Phase 3 surrogate training (FlatStepDataset ready; wait for ≥10 GB in data/surrogate_rl_step/)
+Status: Collection running in tmux gsd-collect-rl → data/surrogate_rl_step/ (flat format + forces); stop manually at 10 GB
+Last activity: 2026-03-10 -- Completed 02.2-01: flat collection pipeline, FlatStepDataset TDD, W&B logging
 
-Progress: [██████░░░░] 58%
+Progress: [█████░░░░░] 53%
 
 ## Dataset Summary
 
@@ -77,9 +77,15 @@ Progress: [██████░░░░] 58%
 - [Phase 02.1]: V2 checkpoint format: 5 boundary states per run enables flexible overlapping training pairs without episode boundary data loss
 - [Phase 02.1]: perturb_omega_std increased 0.05→1.5 rad/s to cover operational CPG omega_z range of 1-10 rad/s
 - [Phase 02.1]: Phase 1 surrogate data archived to data/surrogate_v1/ (not deleted) — rollback capability preserved
+- [Phase 02.2]: --skip-disk-check required at runtime: estimator uses 1 KB/transition but forces add ~2x overhead; actual ~2055 bytes/transition
+- [Phase 02.2]: W&B per-batch logging in _collection_loop() (single-process) and monitor loop (multi-process); W&B runs not serializable across subprocess boundaries
+- [Phase 02.2]: Collection stops manually at 10 GB (not 50M), meeting RLDC-03 minimum with ~5M transitions at ~2055 bytes each
+- [Phase 02.2]: flat_output auto-set True when steps_per_run==1 and collect_forces=True
 - [Phase 06-write-research-report-in-latex]: report/ subdirectory chosen for report.tex with graphicspath set to ../figures/
 - [Phase 06-write-research-report-in-latex]: [Phase 06, Plan 01]: natbib round,sort,authoryear with hyperref loaded last; 11 BibTeX entries for all cited papers
 - [Phase 06]: [Phase 06, Plan 02]: CPG equation uses explicit 2pi factors for unambiguous notation
+- [Phase 06-write-research-report-in-latex]: [Phase 06, Plan 03]: Methods section uses two-phase training narrative (single-step MSE then combined rollout loss) with xrightarrow architecture pipeline in equation environment
+- [Phase 06-write-research-report-in-latex]: [Phase 06, Plan 03]: Discussion challenges use textbf{} labels within subsection paragraphs rather than nested subsubsections
 
 ### Pending Todos
 
@@ -106,5 +112,5 @@ None currently.
 
 ## Session Continuity
 
-Last session: 2026-03-10T15:35:13.171Z
-Stopped at: Completed 06-02-PLAN.md: Background and Related Work sections
+Last session: 2026-03-10T15:41:29.153Z
+Stopped at: Completed 06-03-PLAN.md: Methods section and Discussion physics/pipeline subsections
