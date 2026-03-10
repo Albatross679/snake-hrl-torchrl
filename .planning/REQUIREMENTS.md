@@ -33,9 +33,9 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### RL-Step Data Collection (Phase 02.2)
 
-- [ ] **RLDC-01**: Flat-format RL-step collection — steps_per_run=1, producing flat states(N,124)/next_states(N,124) instead of substep_states(N,K+1,124); auto-enabled when steps_per_run=1 and collect_forces=True
-- [ ] **RLDC-02**: Force/torque capture in each batch file — external_forces(N,3,21), internal_forces(N,3,21), external_torques(N,3,20), internal_torques(N,3,20); captured via RodState2D.pack_forces() after each env._step()
-- [ ] **RLDC-03**: FlatStepDataset class loading Phase 02.2 flat .pt batches with forces, train/val split by episode_id, per-item forces dict in __getitem__; 8 automated tests
+- [x] **RLDC-01**: Flat-format RL-step collection — steps_per_run=1, producing flat states(N,124)/next_states(N,124) instead of substep_states(N,K+1,124); auto-enabled when steps_per_run=1 and collect_forces=True
+- [x] **RLDC-02**: Force/torque capture in each batch file — external_forces(N,3,21), internal_forces(N,3,21), external_torques(N,3,20), internal_torques(N,3,20); captured via RodState2D.pack_forces() after each env._step()
+- [x] **RLDC-03**: FlatStepDataset class loading Phase 02.2 flat .pt batches with forces, train/val split by episode_id, per-item forces dict in __getitem__; 8 automated tests
 
 ### Surrogate Model Training (Phase 3)
 

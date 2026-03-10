@@ -42,7 +42,7 @@ Progress: [█████░░░░░] 53%
 
 ### V2 (Phase 02.1 Output — Active Collection)
 
-- **Location:** `data/surrogate/` (active — collection running)
+- **Location:** `data/surrogate/` (active — collection running in tmux gsd-collect)
 - **Target size:** ~25 GB (50M transition pairs)
 - **Per batch:** substep_states (N, 5, 124), actions (N, 5), t_start (N,), episode_ids, step_ids
 - **Format:** Checkpoint-style — 5 rod boundary states per run (start + 4 post-step)
@@ -50,10 +50,24 @@ Progress: [█████░░░░░] 53%
 - **Actions (5-dim):** amplitude, frequency, wave_number, phase_offset, direction_bias
 - **Collection config:** Sobol quasi-random, 30% perturbation, 50% random action fraction, perturb_omega_std=1.5 rad/s
 
+### V2.2 (Phase 02.2 Output — Active Collection)
+
+- **Location:** `data/surrogate_rl_step/` (active — collection running in tmux gsd-collect-rl, stop at 10 GB)
+- **Target size:** ≥10 GB minimum (~5M transitions at ~2055 bytes/transition)
+- **Per batch:** states (N, 124), next_states (N, 124), actions (N, 5), t_start (N,), episode_ids, step_ids, forces dict
+- **Format:** Flat — one row per RL step; ~2055 bytes/transition (with forces)
+- **Forces:** external_forces (N,3,21), internal_forces (N,3,21), external_torques (N,3,20), internal_torques (N,3,20)
+- **Collection config:** Sobol, 30% perturbation, steps_per_run=1, collect_forces=True, perturb_omega_std=1.5 rad/s
+- **Dataset class:** `FlatStepDataset` (aprx_model_elastica/dataset.py)
+
 ## Performance Metrics
 
-- Total plans completed: 2
+- Total plans completed: 9
 - Total execution time: ~3.6 hours
+
+| Phase | Plan | Duration | Tasks | Files |
+|-------|------|----------|-------|-------|
+| 02.2-collect-rl-step-only-minimal-change-from-2-1 | 01 | 16 min | 6 | 4 |
 
 ## Accumulated Context
 
@@ -112,5 +126,5 @@ None currently.
 
 ## Session Continuity
 
-Last session: 2026-03-10T15:41:29.153Z
-Stopped at: Completed 06-03-PLAN.md: Methods section and Discussion physics/pipeline subsections
+Last session: 2026-03-10T15:38:06Z
+Stopped at: Completed 02.2-01-PLAN.md: flat collection pipeline + FlatStepDataset + W&B; collection running to data/surrogate_rl_step/

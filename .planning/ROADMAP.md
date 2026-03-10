@@ -60,7 +60,7 @@ Plans:
 **Goal:** Minimal change from Phase 02.1: collect only the RL-level step (no sub-steps smaller than the RL step), keeping all other pipeline changes from 02.1 intact.
 **Requirements**: RLDC-01, RLDC-02, RLDC-03
 **Depends on:** Phase 02.1
-**Plans:** 1 plan
+**Plans:** 1/1 plans complete
 
 Plans:
 - [ ] 02.2-01-PLAN.md — Test dataset compatibility with steps_per_run=1, write launch script, smoke test, launch 16-worker collection to data/surrogate_rl_step/
@@ -149,7 +149,7 @@ Phase 8 (Elastica baseline) can run in parallel with Phases 3-5 after Phase 2.
 | 1. Data Collection | - | COMPLETE | 2026-03-10 |
 | 2. Data Validation | 0/2 | Not started | - |
 | 02.1. Re-collect with Per-Node Phase | 3/3 | Complete    | 2026-03-10 |
-| 02.2. Collect RL-step-only (min change) | 0/1 | Planned | - |
+| 02.2. Collect RL-step-only (min change) | 1/1 | Complete   | 2026-03-10 |
 | 3. Surrogate Training + Arch Experiments | 4/5 | In Progress | - |
 | 4. Surrogate Validation | 0/0 | Not planned | - |
 | 5. RL Training | 0/0 | Not planned | - |
