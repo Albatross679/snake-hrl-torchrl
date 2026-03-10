@@ -19,7 +19,7 @@ import torch.nn as nn
 from torch.utils.data import DataLoader, WeightedRandomSampler
 
 from aprx_model_elastica.train_config import SurrogateModelConfig, SurrogateTrainConfig
-from aprx_model_elastica.dataset import OverlappingPairDataset, TrajectoryDataset
+from aprx_model_elastica.dataset import SurrogateDataset, TrajectoryDataset
 from aprx_model_elastica.model import SurrogateModel
 from aprx_model_elastica.state import (
     StateNormalizer,
@@ -263,10 +263,10 @@ def main():
 
     # Load data
     print(f"Loading data from {config.data_dir}...")
-    train_dataset = OverlappingPairDataset(
+    train_dataset = SurrogateDataset(
         config.data_dir, split="train", val_fraction=config.val_fraction
     )
-    val_dataset = OverlappingPairDataset(
+    val_dataset = SurrogateDataset(
         config.data_dir, split="val", val_fraction=config.val_fraction
     )
     print(f"  Train: {len(train_dataset):,} transitions")
