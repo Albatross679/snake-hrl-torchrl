@@ -1,6 +1,7 @@
 # Phase 4: Validate Surrogate Model Against Elastica Solver Trajectories - Context
 
 **Gathered:** 2026-03-10
+**Updated:** 2026-03-11 (architecture-aware model loading for Phase 3's multi-architecture sweep)
 **Status:** Ready for planning
 
 <domain>
@@ -49,6 +50,13 @@ Compare trained surrogate model predictions against ground-truth PyElastica traj
 - **New: Per-component error heatmap** — component vs time step, colored by RMSE, shows which components diverge fastest
 - **New: Scenario comparison bars** — bar chart of RMSE@50 across the 4 scenarios
 
+### Architecture-aware model loading (LOCKED)
+- Read `arch` field from `config.json` in checkpoint directory to dispatch model class
+- Dispatch map: `"mlp"` → `SurrogateModel`, `"residual"` → `ResidualSurrogateModel`, `"transformer"` → `TransformerSurrogateModel`
+- **Error out** if `config.json` is missing or lacks `arch` field — no fallback to MLP
+- Validate only `output/surrogate/best/` (best model selected in Phase 3)
+- Same validation logic for all architectures — `predict_next_state(state, action, time_enc, normalizer)` interface is unified across all 3 model classes
+
 ### Claude's Discretion
 - Exact PASS/WARN/FAIL threshold values (data-driven from actual results)
 - Internal refactoring of validate.py to support multiple scenario types
@@ -73,8 +81,10 @@ Compare trained surrogate model predictions against ground-truth PyElastica traj
 ## Existing Code Insights
 
 ### Reusable Assets
-- `validate.py`: Complete validation pipeline — `collect_real_trajectory()`, `rollout_surrogate()`, `compute_errors()`, `_save_plots()`. Needs extension for multiple scenarios and new figures.
-- `model.py:SurrogateModel`: MLP surrogate with `predict_next_state()` method, handles normalization
+- `validate.py`: Complete validation pipeline — `collect_real_trajectory()`, `rollout_surrogate()`, `compute_errors()`, `_save_plots()`. Needs extension for multiple scenarios, architecture dispatch, and new figures.
+- `model.py`: Three model classes with unified `predict_next_state()` interface:
+  - `SurrogateModel` (MLP), `ResidualSurrogateModel` (skip connections), `TransformerSurrogateModel` (FT-Transformer with RMSNorm)
+  - All share: `forward(state, action, time_encoding)` → delta, `predict_next_state(state, action, time_encoding, normalizer)` → next_state
 - `state.py:StateNormalizer`: Load/save normalizer, normalize/denormalize state and delta
 - `state.py:RodState2D`: Pack state from PyElastica rod, named slices (POS_X, POS_Y, etc.)
 - `train_config.py:SurrogateModelConfig`: Config loading pattern (config.json in checkpoint dir)
@@ -107,4 +117,4 @@ None — discussion stayed within phase scope
 ---
 
 *Phase: 04-validate-surrogate-model-against-elastica-solver-trajectories*
-*Context gathered: 2026-03-10*
+*Context gathered: 2026-03-10, updated: 2026-03-11*
