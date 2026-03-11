@@ -108,6 +108,7 @@ Progress: [█████░░░░░] 53%
 - Update Dockerfile for advisor macOS deployment (area: tooling)
 - Establish mathematical formulation of surrogate model approximation (area: general)
 - Optimize PyElastica inner substep loop to reduce Python overhead (area: general)
+- Explore pure ODE data generation as alternative to Elastica (area: general)
 
 ### Roadmap Evolution
 
