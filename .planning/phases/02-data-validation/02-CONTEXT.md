@@ -6,7 +6,7 @@
 <domain>
 ## Phase Boundary
 
-Analyze the collected 814K transitions (27 .pt batch files, 124-dim states, 5-dim actions) for distribution evenness, data quality, anomalies, and coverage gaps. Produce a summary report with structured pass/fail assessment and actionable prose recommendations for surrogate training readiness. Does NOT cover: automatic recollection, config generation for gaps, or surrogate model training.
+Analyze the Phase 2.2 surrogate dataset (~4.3M transitions, ~43K .pt batch files in data/surrogate_rl_step/, 124-dim states, 5-dim actions) for distribution evenness, data quality, anomalies, and coverage gaps. Produce a summary report with structured pass/fail assessment and actionable prose recommendations for surrogate training readiness. Does NOT cover: automatic recollection, config generation for gaps, or surrogate model training.
 
 </domain>
 
@@ -27,7 +27,7 @@ Analyze the collected 814K transitions (27 .pt batch files, 124-dim states, 5-di
 - No individual trajectory plots
 
 ### Figure output
-- Save to `figures/data_validation/` (follows existing pattern from `figures/surrogate_validation/`)
+- Save to `figures/data_validation_rl_step/` (follows existing pattern from `figures/surrogate_validation/`)
 
 ### Actionable recommendations
 - Prose recommendations in the summary report (e.g., "Action dim 3 under-sampled in range [0.5, 0.8] — consider targeted recollection")
@@ -38,8 +38,8 @@ Analyze the collected 814K transitions (27 .pt batch files, 124-dim states, 5-di
 - Clear go/no-go decision for surrogate training readiness
 
 ### Output destinations
-- Summary report: `data/surrogate/validation_report.md` (co-located with dataset)
-- Figures: `figures/data_validation/`
+- Summary report: `data/surrogate_rl_step/validation_report.md` (co-located with dataset)
+- Figures: `figures/data_validation_rl_step/`
 - No W&B logging (one-shot analysis, not a running process)
 
 ### Claude's Discretion
@@ -75,9 +75,9 @@ No specific requirements — open to standard approaches. The requirements (DVAL
 - CLI entry point pattern: `python -m aprx_model_elastica.<module>` with argparse
 
 ### Integration Points
-- Reads from `data/surrogate/` (Phase 1 output)
-- Report written to `data/surrogate/validation_report.md`
-- Figures written to `figures/data_validation/`
+- Reads from `data/surrogate_rl_step/` (Phase 2.2 output)
+- Report written to `data/surrogate_rl_step/validation_report.md`
+- Figures written to `figures/data_validation_rl_step/`
 - New module: `aprx_model_elastica/validate_data.py` (separate from existing `validate.py` which is surrogate model validation)
 
 </code_context>
