@@ -1,5 +1,4 @@
 ---
-id: 9e189ec1-d2fd-44cb-b857-46360b0de102
 name: neural-surrogates-cosserat-rod-dynamics
 description: Survey of neural network architectures (PINN, GNN, neural-ODE) for approximating Cosserat rod physics
 type: knowledge

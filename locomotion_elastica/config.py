@@ -66,8 +66,11 @@ class LocomotionElasticaPhysicsConfig(ElasticaConfig):
         )
     )
 
-    # Time stepping
+    # Time stepping (two-level: substep and RL step)
+    # dt_substep = 0.001s (Elastica integration), substeps_per_action = 500 per RL step
+    # dt and elastica_substeps kept consistent for backward compat with base class
     dt: float = 0.05
+    elastica_substeps: int = 50  # dt / elastica_substeps = 0.001s = dt_substep
 
     # Material (E=1e5 with r=0.02 gives stable serpentine locomotion)
     youngs_modulus: float = 1e5
@@ -80,7 +83,11 @@ class LocomotionElasticaPhysicsConfig(ElasticaConfig):
     # PyElastica-specific (damping >= 0.008 freezes the rod completely)
     elastica_damping: float = 0.002
     elastica_time_stepper: str = "PositionVerlet"
-    elastica_substeps: int = 50
+
+    @property
+    def dt_substep(self) -> float:
+        """Elastica integration timestep (seconds). Currently 0.001s."""
+        return self.dt / self.elastica_substeps
 
     # RFT friction (anisotropic drag: ct < cn for serpentine locomotion)
     # ct=0.01, cn=0.05 (5:1 ratio) produces stable forward locomotion
@@ -116,8 +123,8 @@ class SerpenoidControlConfig:
     frequency_range: Tuple[float, float] = (0.5, 3.0)
     turn_bias_range: Tuple[float, float] = (-2.0, 2.0)
 
-    # Physics substeps per RL action (10 × 0.05s = 0.5s per RL step)
-    substeps_per_action: int = 10
+    # Total Elastica substeps per RL action (500 × 0.001s = 0.5s per RL step)
+    substeps_per_action: int = 500
 
 
 # ---------------------------------------------------------------------------

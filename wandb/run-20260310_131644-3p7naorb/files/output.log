@@ -1,0 +1,53 @@
+Loading data from data/surrogate...
+  Train: 733,000 transitions
+  Val:   81,000 transitions
+Computing density-based sample weights...
+  Weight range: [0.01, 10.00]
+Computing normalization statistics...
+Model: 659,580 parameters
+
+Training for 200 epochs on cuda...
+  Single-step loss: epochs 1-20
+  + Rollout loss:   epochs 21+
+Epoch   1/200 | train=3.351007 | val=0.424839 | best=0.424839 | lr=0.000200 | patience=0/30 | 57.6s
+Epoch   5/200 | train=1.839266 | val=0.296250 | best=0.271728 | lr=0.001000 | patience=1/30 | 55.1s
+Epoch  10/200 | train=1.103291 | val=0.243980 | best=0.243980 | lr=0.000998 | patience=0/30 | 56.4s
+Epoch  15/200 | train=0.648124 | val=0.242170 | best=0.237377 | lr=0.000994 | patience=1/30 | 57.4s
+  Loading trajectory dataset (rollout_steps=16)...
+  Trajectory dataset: 709,544 windows
+Epoch  20/200 | train=0.605901 | val=0.254426 | rollout=0.548405 | best=0.237089 | lr=0.000985 | patience=1/30 | 118.3s
+Epoch  25/200 | train=0.470344 | val=1.086448 | rollout=0.776048 | best=0.237089 | lr=0.000974 | patience=6/30 | 86.1s
+Traceback (most recent call last):
+  File "/home/coder/.local/lib/python3.12/site-packages/torch/utils/data/dataloader.py", line 1310, in _try_get_data
+    data = self._data_queue.get(timeout=timeout)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/queue.py", line 180, in get
+    self.not_empty.wait(remaining)
+  File "/usr/lib/python3.12/threading.py", line 359, in wait
+    gotit = waiter.acquire(True, timeout)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/coder/.local/lib/python3.12/site-packages/torch/utils/data/_utils/signal_handling.py", line 73, in handler
+    _error_if_any_worker_fails()
+RuntimeError: DataLoader worker (pid 128433) exited unexpectedly with exit code 1. Details are lost due to multiprocessing. Rerunning with num_workers=0 may give better error trace.
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/home/coder/snake-hrl-torchrl/aprx_model_elastica/train_surrogate.py", line 475, in <module>
+    main()
+  File "/home/coder/snake-hrl-torchrl/aprx_model_elastica/train_surrogate.py", line 360, in main
+    for batch in train_loader:
+  File "/home/coder/.local/lib/python3.12/site-packages/torch/utils/data/dataloader.py", line 741, in __next__
+    data = self._next_data()
+           ^^^^^^^^^^^^^^^^^
+  File "/home/coder/.local/lib/python3.12/site-packages/torch/utils/data/dataloader.py", line 1524, in _next_data
+    idx, data = self._get_data()
+                ^^^^^^^^^^^^^^^^
+  File "/home/coder/.local/lib/python3.12/site-packages/torch/utils/data/dataloader.py", line 1473, in _get_data
+    success, data = self._try_get_data()
+                    ^^^^^^^^^^^^^^^^^^^^
+  File "/home/coder/.local/lib/python3.12/site-packages/torch/utils/data/dataloader.py", line 1323, in _try_get_data
+    raise RuntimeError(
+RuntimeError: DataLoader worker (pid(s) 128433) exited unexpectedly

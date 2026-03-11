@@ -1,5 +1,4 @@
 ---
-id: c22f35af-832c-4dd6-9616-a7db5c23047f
 name: motion-planning-feasibility
 description: Feasibility study of classical motion planning (RRT, trajectory optimization) for snake locomotion
 type: experiment

@@ -1,5 +1,4 @@
 ---
-id: 60b67bc7-f31e-4911-94c2-4bef55ea2172
 name: genesis-fem-deep-dive
 description: "Genesis FEM solver capabilities, snake robot feasibility, and FEM vs Cosserat comparison"
 type: knowledge

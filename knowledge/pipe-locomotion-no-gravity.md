@@ -1,5 +1,4 @@
 ---
-id: 88324a8f-ab2a-4045-ae3d-eb4e5b403207
 name: pipe-locomotion-no-gravity
 description: Why gravity is not required for snake locomotion inside pipes
 type: knowledge

@@ -1,0 +1,71 @@
+# Ralph Progress Log
+Started: Mon Mar  9 18:14:07 UTC 2026
+---
+
+## Codebase Patterns
+- Project root must be on `sys.path` for scripts in `script/` to import `aprx_model_elastica` and `locomotion_elastica` — add `sys.path.insert(0, PROJECT_ROOT)` at top
+- Data collection uses `_multiprocess_collect()` from `aprx_model_elastica.collect_data` with `DataCollectionConfig` from `aprx_model_elastica.collect_config`
+- Batch files saved as `batch_wWW_NNNN.pt` (multi-worker) with keys: states, actions, serpenoid_times, next_states, episode_ids, step_indices
+- State dim = 124, Action dim = 5 (constants in `aprx_model_elastica/state.py`)
+- Episode ID offset per worker = `worker_id * 10_000_000` to avoid collisions
+- Pre-existing mypy errors in collect_data.py/env.py are expected — typecheck criterion means "no NEW errors in your file"
+
+## 2026-03-09 - US-001
+- What was implemented: Pre-flight smoke test script at `script/smoke_test_collect.py`
+- Fixed: Added `sys.path` insertion for project root so imports work when run as `python3 script/smoke_test_collect.py`
+- Fixed: Changed return type from `dict[str, torch.Tensor]` to `dict[str, Any]` to fix mypy error (dict contains int `num_files`)
+- Files changed: `script/smoke_test_collect.py`
+- Test result: Completed in 63s (under 2 min), 15.9 FPS, all checks passed
+- **Learnings for future iterations:**
+  - The `forkserver` start method is already set in `_multiprocess_collect` — no need to set it again
+  - Workers collect slightly more than their share (each collects full episodes), so total transitions > requested (got 1500 for 1000 target)
+  - FPS with 2 workers ≈ 16; full 10M run at this rate ≈ 175 hours — need more workers for production
+---
+
+## 2026-03-09 - US-002
+- What was implemented: Disk space pre-check in `collect_data.py` main() using `shutil.disk_usage`
+- Estimates required space as `num_transitions * 1024 * 1.5` bytes (1 KB/transition + 50% safety margin)
+- Aborts with clear error message (free vs required in GB) if insufficient space
+- Added `--skip-disk-check` CLI flag to bypass the check
+- Files changed: `aprx_model_elastica/collect_data.py`
+- **Learnings for future iterations:**
+  - `shutil.disk_usage()` works on directories (not just mount points) — pass `save_dir` directly
+  - All pre-existing mypy errors in collect_data.py are from `_rod` being typed as `None` and `build_actor` import — safe to ignore
+  - CLI args with hyphens (e.g. `--skip-disk-check`) become underscored in namespace (e.g. `args.skip_disk_check`)
+---
+
+## 2026-03-09 - US-003
+- What was implemented: W&B live monitoring in `_multiprocess_collect()` with 30s polling loop
+- Added `--baseline-fps` CLI argument for schedule tracking
+- W&B init with project='surrogate-data-collection' and full config logging
+- Monitoring loop replaces `p.join()`: checks `shared_counter` every 30s, logs metrics to W&B and stdout
+- Metrics logged: transitions_collected, fps_current, fps_rolling, fps_baseline, schedule_delta_pct, pct_complete, eta_hours, disk_used_gb, disk_free_gb
+- W&B is fully optional: try/except ImportError + general Exception, collection works without wandb
+- `wandb.finish()` called in finally block (handles normal completion and KeyboardInterrupt)
+- Added `_get_dir_size_gb()` helper for disk usage tracking
+- Files changed: `aprx_model_elastica/collect_data.py`
+- **Learnings for future iterations:**
+  - W&B init can fail for reasons beyond ImportError (missing API key, network issues) — always catch general Exception too
+  - The monitoring loop must check `p.is_alive()` BEFORE sleeping, otherwise it hangs 30s after workers finish
+  - Use `import wandb as _wb` inside the loop body to avoid shadowing the outer wandb import in the try block
+  - `shutil.disk_usage()` returns free space for the filesystem containing the given path — works for tracking disk during collection
+---
+
+## 2026-03-09 - US-004
+- What was implemented: Post-collection data validation script at `script/validate_surrogate_data.py`
+- Takes `--data-dir` argument (default: `data/surrogate/`)
+- Loads all `batch_*.pt` and `batch_*.parquet` files, reports summary stats
+- Integrity checks: NaN/Inf detection, tensor dimension verification, episode ID uniqueness
+- Coverage stats: per-state-group (pos_x, pos_y, vel_x, vel_y, yaw, omega_z) min/max/mean/std
+- Per-action-dimension stats: min/max/mean for all 5 dims
+- Episode length distribution: min/max/mean/median
+- Exits 0 if all integrity checks pass, non-zero otherwise
+- Files changed: `script/validate_surrogate_data.py`
+- Tested with 1,000 transitions from 2 workers — all checks passed
+- **Learnings for future iterations:**
+  - Reuse `_load_parquet_batch` from `aprx_model_elastica/dataset.py` for parquet loading — don't reinvent
+  - State slice constants (POS_X, POS_Y, etc.) from `aprx_model_elastica/state.py` are the canonical way to index into the 124-dim state vector
+  - `torch.load(..., weights_only=True)` is required for batch files — security best practice
+  - Pre-existing mypy errors (104 across 18 files) are all in other modules — typecheck criterion means no NEW errors in your file
+  - Episode IDs use `worker_id * 10_000_000` offset — validation checks both within-worker and cross-worker uniqueness
+---

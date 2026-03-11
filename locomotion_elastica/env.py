@@ -258,7 +258,7 @@ class LocomotionElasticaEnv(EnvBase):
         self._simulator.dampen(self._rod).using(
             AnalyticalLinearDamper,
             damping_constant=physics.elastica_damping,
-            time_step=physics.dt / physics.elastica_substeps,
+            time_step=physics.dt_substep,
         )
 
         # Add RFT anisotropic friction (required for serpentine locomotion)
@@ -315,8 +315,8 @@ class LocomotionElasticaEnv(EnvBase):
         current_angle = self._get_heading_angle(positions)
         delta = current_angle - self._prev_heading_angle
         delta = (delta + np.pi) % (2 * np.pi) - np.pi
-        dt = self.config.physics.dt * self.config.control.substeps_per_action
-        return delta / dt if dt > 0 else 0.0
+        dt_rl = self.config.physics.dt_substep * self.config.control.substeps_per_action
+        return delta / dt_rl if dt_rl > 0 else 0.0
 
     def _get_curvature_modes(self, positions: np.ndarray) -> np.ndarray:
         """Extract curvature modes (amplitude, wave_number, phase) via FFT."""
@@ -404,8 +404,8 @@ class LocomotionElasticaEnv(EnvBase):
 
         # 4. CoM velocity in body frame (forward, lateral) (2)
         com = self._get_com(positions)
-        dt_total = self.config.physics.dt * self.config.control.substeps_per_action
-        v_com_xy = (com - self._prev_com) / dt_total if dt_total > 0 else np.zeros(2)
+        dt_rl = self.config.physics.dt_substep * self.config.control.substeps_per_action
+        v_com_xy = (com - self._prev_com) / dt_rl if dt_rl > 0 else np.zeros(2)
         v_forward = float(np.dot(v_com_xy, heading))
         lateral_dir = np.array([-heading[1], heading[0]])
         v_lateral = float(np.dot(v_com_xy, lateral_dir))
@@ -533,14 +533,12 @@ class LocomotionElasticaEnv(EnvBase):
         omega = 2 * np.pi * frequency
         k = 2 * np.pi * wave_number
 
-        # Step PyElastica: update curvature once per physics step, then run substeps
+        # Step PyElastica: update curvature at every substep
         physics = self.config.physics
-        dt_sub = physics.dt / physics.elastica_substeps
-        dt_physics = physics.dt
+        dt_substep = physics.dt_substep
         joint_positions = self._serpenoid._joint_positions
         time = 0.0
         for _ in range(self.config.control.substeps_per_action):
-            # Update curvature wave at the start of each physics step
             curvatures = (
                 amplitude * np.sin(
                     k * joint_positions
@@ -550,21 +548,19 @@ class LocomotionElasticaEnv(EnvBase):
                 + turn_bias
             )
             self._apply_curvature_to_elastica(curvatures)
-            # Run elastica substeps with this curvature held constant
-            for _ in range(physics.elastica_substeps):
-                time = self._do_step(
-                    self._time_stepper, self._steps_and_prefactors,
-                    self._simulator, time, dt_sub
-                )
-            self._serpenoid._time += dt_physics
+            time = self._do_step(
+                self._time_stepper, self._steps_and_prefactors,
+                self._simulator, time, dt_substep
+            )
+            self._serpenoid._time += dt_substep
 
         # Post-step state
         positions = self._get_positions()
         velocities = self._get_velocities()
         com = self._get_com(positions)
         heading = self._get_heading(positions)
-        dt_total = self.config.physics.dt * self.config.control.substeps_per_action
-        v_com_xy = (com - self._prev_com) / dt_total if dt_total > 0 else np.zeros(2)
+        dt_rl = dt_substep * self.config.control.substeps_per_action
+        v_com_xy = (com - self._prev_com) / dt_rl if dt_rl > 0 else np.zeros(2)
 
         # Goal-relative quantities for reward
         dist_to_goal = self._get_dist_to_goal(com)

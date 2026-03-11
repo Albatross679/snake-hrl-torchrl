@@ -1,5 +1,4 @@
 ---
-id: 921d31f0-27c6-4863-8629-0396acc4f06d
 name: elastica-wrong-wave-direction
 description: Serpenoid wave direction reversal logic was incorrect
 type: issue

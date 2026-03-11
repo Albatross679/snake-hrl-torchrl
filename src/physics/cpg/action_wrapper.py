@@ -339,7 +339,7 @@ class DirectSerpenoidTransform:
         k = 2 * np.pi * wave_number
 
         curvatures = amplitude * np.sin(
-            k * self._joint_positions - omega * self._time + phase
+            k * self._joint_positions + omega * self._time + phase
         )
 
         return curvatures
@@ -475,13 +475,14 @@ class DirectSerpenoidSteeringTransform:
         self._time += dt
 
         # Compute serpenoid profile with steering
-        # kappa(s, t) = A * sin(k * s - omega * t + phi) + kappa_turn
+        # kappa(s, t) = A * sin(k * s + omega * t + phi) + kappa_turn
+        # +omega*t gives head-to-tail (posterior) wave propagation for forward locomotion
         omega = 2 * np.pi * frequency
         k = 2 * np.pi * wave_number
 
         curvatures = (
-            amplitude * np.sin(k * self._joint_positions - omega * self._time + phase)
-            + turn_bias  # This is the key addition for steering!
+            amplitude * np.sin(k * self._joint_positions + omega * self._time + phase)
+            + turn_bias
         )
 
         return curvatures

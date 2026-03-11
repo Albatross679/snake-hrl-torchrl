@@ -1,5 +1,4 @@
 ---
-id: 855b05b9-8f05-4476-a6c2-88fe65c6f062
 name: physics-framework-comparison
 description: Structured comparison of all physics frameworks used or considered for snake robot simulation
 type: knowledge

@@ -1,5 +1,4 @@
 ---
-id: ffcbee03-a0a1-4b24-8286-0b31a5ee67b2
 name: physics-backend-benchmark
 description: Benchmark comparing all 4 physics backends under identical serpenoid control
 type: experiment

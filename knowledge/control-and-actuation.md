@@ -1,5 +1,4 @@
 ---
-id: cfed69ff-5e91-485c-9d70-81e350e9f554
 name: control-and-actuation
 description: How controllers and actuators work across all physics backends and control methods
 type: knowledge

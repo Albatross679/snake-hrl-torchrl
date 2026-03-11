@@ -1,5 +1,4 @@
 ---
-id: cddf410f-8889-4137-a3e8-321a0f3d5bff
 name: elastica-friction-coefficient-tuning
 description: RFT friction 10:1 ratio caused wild lateral drift, tuned to 5:1
 type: issue

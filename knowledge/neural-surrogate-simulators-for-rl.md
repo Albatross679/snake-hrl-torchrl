@@ -1,5 +1,4 @@
 ---
-id: b0b37fef-e33f-4e5e-acfb-f667a2ea7b66
 name: neural-surrogate-simulators-for-rl
 description: Neural network surrogates of physics simulators for RL training with focus on soft robotics
 type: knowledge

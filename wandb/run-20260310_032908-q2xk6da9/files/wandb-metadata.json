@@ -1,0 +1,56 @@
+{
+  "os":  "Linux-5.4.0-216-generic-x86_64-with-glibc2.39",
+  "python":  "CPython 3.12.3",
+  "startedAt":  "2026-03-10T03:29:08.602907Z",
+  "args":  [
+    "--lr",
+    "0.0003",
+    "--hidden-dims",
+    "512,512,512",
+    "--save-dir",
+    "output/surrogate/sweep_lr3e4_h512x3",
+    "--wandb",
+    "--run-name",
+    "sweep_lr3e4_h512x3",
+    "--epochs",
+    "200",
+    "--save-best-val-loss",
+    "--data-dir",
+    "data/surrogate",
+    "--device",
+    "auto"
+  ],
+  "program":  "-m aprx_model_elastica.train_surrogate",
+  "git":  {
+    "remote":  "git@github.com:Albatross679/snake-hrl-torchrl.git",
+    "commit":  "fcfd5cea7c328d46baa1fd68167b7975c78c1337"
+  },
+  "email":  "qifan_wen@outlook.com",
+  "root":  "/home/coder/snake-hrl-torchrl",
+  "host":  "1878b53519e6",
+  "executable":  "/usr/bin/python3",
+  "cpu_count":  24,
+  "cpu_count_logical":  48,
+  "gpu":  "Tesla V100-PCIE-16GB",
+  "gpu_count":  1,
+  "disk":  {
+    "/":  {
+      "total":  "64424509440",
+      "used":  "19398946816"
+    }
+  },
+  "memory":  {
+    "total":  "270328070144"
+  },
+  "gpu_nvidia":  [
+    {
+      "name":  "Tesla V100-PCIE-16GB",
+      "memoryTotal":  "17179869184",
+      "cudaCores":  5120,
+      "architecture":  "Volta",
+      "uuid":  "GPU-fa78a34c-8eeb-40f2-9722-c931b34764cc"
+    }
+  ],
+  "cudaVersion":  "12.8",
+  "writerId":  "ohbytmnebqdssvugmgcvev1lq4n4sdfz"
+}

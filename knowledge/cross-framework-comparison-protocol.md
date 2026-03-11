@@ -1,5 +1,4 @@
 ---
-id: c013c6bf-4d45-447c-ba54-9a1ae9634ac3
 name: cross-framework-comparison-protocol
 description: Detailed comparison of MuJoCo, dismech, and Elastica physics frameworks — architectural differences, parameter matching, and experimental validation protocol
 type: knowledge

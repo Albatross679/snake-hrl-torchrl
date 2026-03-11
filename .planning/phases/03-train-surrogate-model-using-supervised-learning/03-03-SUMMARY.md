@@ -1,0 +1,129 @@
+---
+plan: 03-03
+phase: 03-train-surrogate-model-using-supervised-learning
+status: complete
+completed_at: "2026-03-10T13:05:00Z"
+subsystem: surrogate
+tags: [surrogate, residual-mlp, history-window, rollout-loss, pytorch, tdd]
+
+# Dependency graph
+requires:
+  - phase: 03-train-surrogate-model-using-supervised-learning
+    plan: "03-01"
+    provides: SurrogateModel base class, SurrogateTrainConfig, TrajectoryDataset, train_surrogate.py entry point
+
+provides:
+  - ResidualBlock and ResidualSurrogateModel classes in aprx_model_elastica/model.py
+  - HistorySurrogateModel class in aprx_model_elastica/model.py
+  - HistoryDataset class in aprx_model_elastica/dataset.py
+  - use_residual and history_k fields in SurrogateTrainConfig
+  - --rollout-weight, --rollout-steps, --use-residual, --history-k CLI args in train_surrogate.py
+  - Test scaffold ARCH-01 through ARCH-04 (all passing)
+
+affects:
+  - 03-04 (arch_sweep.py depends on these classes)
+  - 04-validate-surrogate-model
+  - 05-train-rl-agent-using-surrogate-model
+
+# Tech tracking
+tech-stack:
+  added: []
+  patterns:
+    - "ResidualBlock: skip connection with LayerNorm+SiLU, no projection needed (uniform dim)"
+    - "HistorySurrogateModel: extended input dim 131+K*129, same MLP backbone as base model"
+    - "TDD: test scaffold committed as RED before implementation"
+
+key-files:
+  created:
+    - tests/test_surrogate_arch.py
+    - logs/surrogate-arch-variants-implementation.md
+  modified:
+    - aprx_model_elastica/model.py
+    - aprx_model_elastica/dataset.py
+    - aprx_model_elastica/train_config.py
+    - aprx_model_elastica/train_surrogate.py
+
+key-decisions:
+  - "ResidualSurrogateModel asserts uniform hidden_dims — avoids silent dimension mismatch in skip connections"
+  - "floor(n_hidden/2) residual blocks for 3-layer config = 1 block + 1 extra plain layer"
+  - "HistoryDataset history_flat ordering: all K history_states first (K*124), then all K history_actions (K*5)"
+  - "History training loop left as TODO in train_surrogate.py — arch_sweep.py (Plan 04) owns that logic"
+  - "test_train_cli_args uses monkeypatch.setattr sys.argv — avoids subprocess, tests parse_args() directly"
+
+patterns-established:
+  - "All surrogate architecture variants implement predict_next_state() with identical normalizer pattern"
+  - "HistoryDataset extends TrajectoryDataset(rollout_length=history_k+1) — reuses existing window builder"
+
+requirements-completed: [ARCH-01, ARCH-02, ARCH-03, ARCH-04]
+
+# Metrics
+duration: 12min
+completed: "2026-03-10"
+---
+
+# Plan 03-03 Summary: Surrogate Architecture Infrastructure
+
+**ResidualSurrogateModel (skip connections), HistorySurrogateModel (K-step context window), HistoryDataset, and --rollout-weight/--rollout-steps CLI args added as code-only Wave 1 infrastructure for architecture experiments**
+
+## Performance
+
+- **Duration:** ~12 min
+- **Started:** 2026-03-10T12:53:23Z
+- **Completed:** 2026-03-10T13:05:00Z
+- **Tasks:** 3 (TDD: each task has RED test commit + GREEN impl commit)
+- **Files modified:** 5 (1 new test file + 4 modified source files)
+
+## Accomplishments
+
+- Added `ResidualBlock` and `ResidualSurrogateModel` to `model.py`: skip connections with LayerNorm+SiLU, `floor(n_hidden/2)` blocks, zero-initialized output, `predict_next_state()` identical to base model
+- Added `HistorySurrogateModel` to `model.py`: input dim 131+K×129, plain MLP backbone, explicit history_states/history_actions args in forward()
+- Added `HistoryDataset` to `dataset.py`: extends TrajectoryDataset, per-item dict includes K prior transitions + current step + delta target
+- Wired `--rollout-weight`, `--rollout-steps`, `--use-residual`, `--history-k` CLI args in `train_surrogate.py` with model construction branching
+- All 4 ARCH unit tests pass GREEN (ARCH-01 through ARCH-04)
+
+## Task Commits
+
+Each task was committed atomically via TDD:
+
+1. **Task 1: Test scaffold (RED)** - `f2cf1fe` (test)
+2. **Task 2: ResidualBlock + ResidualSurrogateModel + HistorySurrogateModel (GREEN)** - `a6d9727` (feat)
+3. **Task 3: HistoryDataset + train_config fields + CLI args (GREEN)** - `63844ac` (feat)
+
+_Note: TDD tasks have RED test commit followed by GREEN implementation commit_
+
+## Files Created/Modified
+
+- `tests/test_surrogate_arch.py` — 4 unit tests: ARCH-01 (residual forward), ARCH-02 (history forward), ARCH-03 (trajectory windows), ARCH-04 (CLI args)
+- `aprx_model_elastica/model.py` — Added ResidualBlock, ResidualSurrogateModel, HistorySurrogateModel after existing SurrogateModel
+- `aprx_model_elastica/dataset.py` — Added HistoryDataset extending TrajectoryDataset
+- `aprx_model_elastica/train_config.py` — Added use_residual and history_k fields to SurrogateTrainConfig
+- `aprx_model_elastica/train_surrogate.py` — Added 4 new CLI args, config override wiring, model construction branching
+- `logs/surrogate-arch-variants-implementation.md` — Implementation log per CLAUDE.md requirements
+
+## Decisions Made
+
+- `ResidualSurrogateModel` asserts uniform hidden_dims at construction — prevents silent shape mismatches in residual skip connections
+- `floor(n_hidden/2)` blocks for a 3-layer config = 1 residual block + 1 extra plain layer, covering all hidden layers in residual fashion
+- `HistoryDataset.__getitem__()` concatenates all K history_states (K×124) then all K history_actions (K×5) — matches HistorySurrogateModel's `forward()` expected ordering
+- History training loop left as explicit `TODO` in `train_surrogate.py` — Phase 3 Plan 04 (arch_sweep.py) owns the complete training loop for history variants
+- `test_train_cli_args` uses `monkeypatch.setattr(sys, "argv", ...)` to test `parse_args()` directly without subprocess overhead
+
+## Deviations from Plan
+
+None — plan executed exactly as written.
+
+## Issues Encountered
+
+None.
+
+## Next Phase Readiness
+
+- Plan 03-04 (`arch_sweep.py`) can now import all three model classes and HistoryDataset
+- `train_surrogate.py --use-residual` works end-to-end for Experiment B (residual MLP)
+- `train_surrogate.py --rollout-weight X --rollout-steps N` works for Experiment A (rollout loss tuning)
+- History training loop in `train_surrogate.py` is stubbed — Plan 04 should implement `arch_sweep.py` with a dedicated HistoryDataset DataLoader
+- All pre-existing tests (physics, locomotion, run_dir, pipe_geometry) still pass — no regressions
+
+---
+*Phase: 03-train-surrogate-model-using-supervised-learning*
+*Completed: 2026-03-10*

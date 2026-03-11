@@ -1,6 +1,10 @@
 # syntax=docker/dockerfile:1
 
-FROM python:3.12-slim
+# Multi-arch image: works on both Intel and Apple Silicon Macs
+FROM python:3.13-slim
+
+LABEL maintainer="albatross679"
+LABEL description="Snake HRL — Hierarchical RL for snake robot predation (CPU)"
 
 # System dependencies for rendering and building C extensions
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -17,34 +21,45 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-# Install dismech-python from its source directory
+# Install dismech-python first (changes rarely)
 COPY dismech-python-src/ ./dismech-python-src/
-RUN pip install --no-cache-dir -e ./dismech-python-src
+RUN pip install --no-cache-dir ./dismech-python-src
 
-# Install Python dependencies (mujoco is optional, not included)
+# Install Python dependencies with pinned versions matching the dev environment.
+# CPU-only PyTorch (no CUDA) — keeps image ~2 GB smaller.
 RUN pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir \
-       torch>=2.1.0 \
-       torchrl>=0.3.0 \
-       tensordict>=0.3.0 \
-       gymnasium>=0.29.0 \
-       numpy>=1.24.0 \
-       scipy>=1.11.0 \
-       matplotlib>=3.8.0 \
-       tensorboard>=2.15.0 \
-       tqdm>=4.66.0 \
-       pyyaml>=6.0 \
-       numba>=0.58.0 \
-       plotly>=5.18.0 \
-       pyelastica>=0.3.0 \
-       wandb>=0.16.0 \
-       pytest>=7.4.0 \
-       pytest-cov>=4.1.0
+       --index-url https://download.pytorch.org/whl/cpu \
+       torch==2.10.0 \
+    && pip install --no-cache-dir \
+       torchrl==0.11.1 \
+       tensordict==0.11.0 \
+       gymnasium==1.2.3 \
+       numpy==2.4.0 \
+       scipy==1.17.1 \
+       matplotlib==3.10.8 \
+       tqdm==4.67.1 \
+       pyyaml==6.0.3 \
+       numba==0.64.0 \
+       plotly==6.6.0 \
+       pyelastica==0.3.3.post2 \
+       wandb==0.25.0
 
-# Copy everything
-COPY . .
+# Copy project source
+COPY pyproject.toml ./
+COPY src/ ./src/
+COPY locomotion_elastica/ ./locomotion_elastica/
+COPY aprx_model_elastica/ ./aprx_model_elastica/
+COPY bing2019/ ./bing2019/
+COPY snakebot-gym/ ./snakebot-gym/
+COPY tests/ ./tests/
 
-# Install the project in editable mode
+# Install the project
 RUN pip install --no-cache-dir -e .
+
+# Default env vars for parallel worker thread control
+ENV OPENBLAS_NUM_THREADS=1
+ENV OMP_NUM_THREADS=1
+ENV MKL_NUM_THREADS=1
 
 CMD ["bash"]

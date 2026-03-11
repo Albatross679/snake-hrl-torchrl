@@ -1,5 +1,4 @@
 ---
-id: ab677970-8143-43df-b751-a7d97961adb6
 name: genesis-feasibility-analysis
 description: Feasibility analysis of Genesis physics engine for snake locomotion RL
 type: knowledge

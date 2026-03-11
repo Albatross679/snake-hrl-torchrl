@@ -1,0 +1,32 @@
+Loading data from data/surrogate...
+  Train: 733,000 transitions
+  Val:   81,000 transitions
+Computing density-based sample weights...
+  Weight range: [0.01, 10.00]
+Computing normalization statistics...
+Model: 659,580 parameters
+
+Training for 200 epochs on cuda...
+  Single-step loss: epochs 1-20
+  + Rollout loss:   epochs 21+
+Epoch   1/200 | train=3.081830 | val=0.604615 | best=0.604615 | lr=0.000060 | patience=0/30 | 20.2s
+Epoch   5/200 | train=2.026701 | val=0.280379 | best=0.280379 | lr=0.000300 | patience=0/30 | 19.7s
+Epoch  10/200 | train=1.973228 | val=0.251616 | best=0.251616 | lr=0.000300 | patience=0/30 | 19.4s
+Epoch  15/200 | train=2.015469 | val=0.237260 | best=0.237260 | lr=0.000298 | patience=0/30 | 19.2s
+  Loading trajectory dataset (rollout_steps=8)...
+  Trajectory dataset: 721,272 windows
+Epoch  20/200 | train=1.384179 | val=0.236912 | rollout=0.120591 | best=0.235917 | lr=0.000296 | patience=3/30 | 39.8s
+Epoch  25/200 | train=1.351565 | val=0.232877 | rollout=0.112843 | best=0.231348 | lr=0.000292 | patience=2/30 | 21.0s
+Epoch  30/200 | train=0.964531 | val=0.234852 | rollout=0.110727 | best=0.230532 | lr=0.000288 | patience=1/30 | 20.5s
+Epoch  35/200 | train=0.989139 | val=0.230634 | rollout=0.109731 | best=0.227963 | lr=0.000283 | patience=3/30 | 31.6s
+Epoch  40/200 | train=0.683607 | val=0.242258 | rollout=0.109212 | best=0.227963 | lr=0.000277 | patience=8/30 | 21.3s
+Epoch  45/200 | train=0.521922 | val=0.231334 | rollout=0.108216 | best=0.227963 | lr=0.000270 | patience=13/30 | 21.0s
+Epoch  50/200 | train=0.580258 | val=0.231780 | rollout=0.107357 | best=0.227963 | lr=0.000262 | patience=18/30 | 21.2s
+Epoch  55/200 | train=0.445047 | val=0.243786 | rollout=0.107520 | best=0.227963 | lr=0.000254 | patience=23/30 | 20.9s
+Epoch  60/200 | train=0.373699 | val=0.232047 | rollout=0.107770 | best=0.227963 | lr=0.000245 | patience=28/30 | 21.8s
+Early stopping at epoch 62 (patience=30)
+
+Best validation loss: 0.227963
+Model saved to output/surrogate/sweep_lr3e4_h512x3/model.pt
+Normalizer saved to output/surrogate/sweep_lr3e4_h512x3/normalizer.pt
+Metrics saved to output/surrogate/sweep_lr3e4_h512x3/metrics.json

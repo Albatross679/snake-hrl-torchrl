@@ -1,5 +1,4 @@
 ---
-id: 11a5baa4-01e8-46c6-9767-7b405687d414
 name: elastica-rft-python-loop-slow
 description: AnisotropicRFTForce used Python for-loop instead of vectorized NumPy
 type: issue

@@ -1,5 +1,4 @@
 ---
-id: ba1e4898-d70f-4233-8a72-0e14120d485c
 name: cpu-utilization-analysis
 description: Analysis of CPU utilization and parallel env scaling for PyElastica training
 type: knowledge

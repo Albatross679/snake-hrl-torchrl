@@ -26,6 +26,7 @@ snake-hrl/
 ├── issues/            # One file per issue (<topic>.md)
 ├── knowledge/         # Domain knowledge and reference (<topic>.md)
 ├── references/        # One file per reference (<topic>.md)
+├── tasks/             # PRDs and task specs (prd-<feature>.md)
 ├── figures/           # Generated plots and figures
 ├── media/             # Images, videos, and GIFs
 ├── model/             # Saved model weights
@@ -59,7 +60,7 @@ snake-hrl/
 - `tests/` — test files
 - `script/` — standalone scripts
 - `data/` — data files
-- `logs/`, `experiments/`, `issues/`, `knowledge/`, `references/` — documentation files
+- `logs/`, `experiments/`, `issues/`, `knowledge/`, `references/`, `tasks/` — documentation files
 
 ## Architecture
 
@@ -84,15 +85,31 @@ snake-hrl/
 
 ## Documentation (IMPORTANT)
 
-Claude Code MUST document **as it goes** — immediately after each change, not batched at the end of the session. Each entry is a **separate file** in its subdirectory. Follow the `markdown-for-project` skill for formatting, frontmatter, and naming.
+Claude Code MUST document **as it goes** — immediately after each change, not batched at the end of the session. Each entry is a **separate file** in its subdirectory.
 
-| What | Where | Naming | When | File Class |
+Every Markdown documentation file MUST include a `type` property in its frontmatter, set to the file's document type:
+
+| What | Where | Naming | When | Type |
 |---|---|---|---|---|
 | Logs | `logs/` | `<topic>.md` | After any code change that adds, fixes, or modifies functionality | `log` |
 | Experiments | `experiments/` | `<topic>.md` | After running a simulation, test, or investigation | `experiment` |
 | Issues | `issues/` | `<topic>.md` | When encountering a bug or error (before or alongside the fix) | `issue` |
 | Knowledge | `knowledge/` | `<topic>.md` | When capturing domain knowledge or reference material | `knowledge` |
 | References | `references/` | `<topic>.md` | When capturing external references or citations | `reference` |
+| Tasks | `tasks/` | `prd-<feature>.md` | When planning a feature or task (PRDs) | `task` |
+
+### Required properties by type
+
+All types share these **common properties**: `name`, `description`, `type`, `created`, `updated`, `tags`, `aliases`.
+
+In addition, each type has specific properties that MUST be set:
+
+- **`log`**: `status` (draft | complete), `subtype` (fix | training | tuning | research | refactor | setup | feature)
+- **`experiment`**: `status` (planned | running | complete | failed)
+- **`issue`**: `status` (open | investigating | resolved | wontfix), `severity` (low | medium | high | critical), `subtype` (training | physics | compatibility | system | performance)
+- **`knowledge`**: common properties only
+- **`reference`**: `source`, `url`, `authors`
+- **`task`**: `status` (planned | in-progress | complete | cancelled)
 
 **Threshold for logging:** A change warrants a log if it modifies behavior, fixes a bug, or changes configuration. Trivial edits (typos, whitespace, comment-only changes) do not need a log entry.
 

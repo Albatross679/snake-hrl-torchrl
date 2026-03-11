@@ -1,0 +1,15 @@
+Loading data from data/surrogate...
+/home/coder/snake-hrl-torchrl/aprx_model_elastica/train_surrogate.py:266: DeprecationWarning: SurrogateDataset is deprecated. Use OverlappingPairDataset for Phase 2.1 checkpoint-format data.
+  train_dataset = SurrogateDataset(
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/home/coder/snake-hrl-torchrl/aprx_model_elastica/train_surrogate.py", line 475, in <module>
+    main()
+  File "/home/coder/snake-hrl-torchrl/aprx_model_elastica/train_surrogate.py", line 266, in main
+    train_dataset = SurrogateDataset(
+                    ^^^^^^^^^^^^^^^^^
+  File "/home/coder/snake-hrl-torchrl/aprx_model_elastica/dataset.py", line 165, in __init__
+    all_states.append(data["states"])
+                      ~~~~^^^^^^^^^^
+KeyError: 'states'

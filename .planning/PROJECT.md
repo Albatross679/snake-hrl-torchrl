@@ -1,12 +1,12 @@
-# Surrogate Model Data Collection
+# Neural Surrogate & RL for Snake Robot Locomotion
 
 ## What This Is
 
-An autonomous data collection and monitoring system for the neural surrogate model of the PyElastica Cosserat rod snake robot. The collection pipeline (`aprx_model_elastica/collect_data.py`) runs overnight, generating state-action-next_state transitions with Sobol quasi-random action sampling. An autonomous agent periodically checks on the running collection, fixes issues, and documents everything.
+Build a neural surrogate model of PyElastica Cosserat rod snake robot dynamics, then use it to train a reinforcement learning agent for locomotion — with validation against ground-truth Elastica trajectories, architecture experiments, and a LaTeX research report comparing surrogate-based RL against direct Elastica RL baselines.
 
 ## Core Value
 
-Produce a high-quality, well-covered dataset of snake robot dynamics transitions that enables training an accurate neural surrogate model — without manual babysitting.
+Train a neural surrogate model accurate enough to replace Elastica simulation during RL training, enabling faster iteration and producing publishable research comparing surrogate-based and direct-simulation RL.
 
 ## Requirements
 

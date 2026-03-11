@@ -1,5 +1,4 @@
 ---
-id: 4c8c4de7-9983-4179-8eff-5821fac367b6
 name: genesis-physics-engine
 description: Research on Genesis generative physics engine for robotics and embodied AI
 type: knowledge

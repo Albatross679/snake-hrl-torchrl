@@ -1,0 +1,36 @@
+Loading data from data/surrogate...
+  Train: 733,000 transitions
+  Val:   81,000 transitions
+Computing density-based sample weights...
+  Weight range: [0.01, 10.00]
+Computing normalization statistics...
+Model: 923,260 parameters
+
+Training for 200 epochs on cuda...
+  Single-step loss: epochs 1-20
+  + Rollout loss:   epochs 21+
+Epoch   1/200 | train=2.993673 | val=0.558499 | best=0.558499 | lr=0.000060 | patience=0/30 | 20.2s
+Epoch   5/200 | train=2.561255 | val=0.274883 | best=0.274883 | lr=0.000300 | patience=0/30 | 18.5s
+Epoch  10/200 | train=1.934423 | val=0.260824 | best=0.255342 | lr=0.000300 | patience=1/30 | 19.8s
+Epoch  15/200 | train=1.995542 | val=0.230248 | best=0.230248 | lr=0.000298 | patience=0/30 | 19.5s
+  Loading trajectory dataset (rollout_steps=8)...
+  Trajectory dataset: 721,272 windows
+Epoch  20/200 | train=1.503875 | val=0.228271 | rollout=0.117252 | best=0.227036 | lr=0.000296 | patience=1/30 | 40.5s
+Epoch  25/200 | train=1.503211 | val=0.226663 | rollout=0.110603 | best=0.225665 | lr=0.000292 | patience=1/30 | 21.6s
+Epoch  30/200 | train=1.102234 | val=0.235644 | rollout=0.111607 | best=0.222571 | lr=0.000288 | patience=2/30 | 20.9s
+Epoch  35/200 | train=0.930102 | val=0.230891 | rollout=0.107392 | best=0.222571 | lr=0.000283 | patience=7/30 | 32.3s
+Epoch  40/200 | train=0.831930 | val=0.246531 | rollout=0.108245 | best=0.222571 | lr=0.000277 | patience=12/30 | 22.2s
+Epoch  45/200 | train=0.641184 | val=0.234794 | rollout=0.106393 | best=0.222571 | lr=0.000270 | patience=17/30 | 21.2s
+Epoch  50/200 | train=0.496530 | val=0.231490 | rollout=0.105735 | best=0.222571 | lr=0.000262 | patience=22/30 | 21.3s
+Epoch  55/200 | train=0.372829 | val=0.231004 | rollout=0.105132 | best=0.221587 | lr=0.000254 | patience=1/30 | 21.8s
+Epoch  60/200 | train=0.380942 | val=0.233369 | rollout=0.105544 | best=0.221587 | lr=0.000245 | patience=6/30 | 22.3s
+Epoch  65/200 | train=0.318805 | val=0.241022 | rollout=0.103716 | best=0.221587 | lr=0.000235 | patience=11/30 | 21.0s
+Epoch  70/200 | train=0.258106 | val=0.231121 | rollout=0.104049 | best=0.221587 | lr=0.000225 | patience=16/30 | 21.1s
+Epoch  75/200 | train=0.239669 | val=0.235780 | rollout=0.103382 | best=0.221587 | lr=0.000214 | patience=21/30 | 21.9s
+Epoch  80/200 | train=0.234027 | val=0.224336 | rollout=0.102141 | best=0.221587 | lr=0.000203 | patience=26/30 | 21.2s
+Early stopping at epoch 84 (patience=30)
+
+Best validation loss: 0.221587
+Model saved to output/surrogate/sweep_lr3e4_h512x4/model.pt
+Normalizer saved to output/surrogate/sweep_lr3e4_h512x4/normalizer.pt
+Metrics saved to output/surrogate/sweep_lr3e4_h512x4/metrics.json

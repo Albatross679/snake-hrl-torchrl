@@ -1,5 +1,4 @@
 ---
-id: e8c2bcf9-3269-4158-a2b9-80d68bd5798a
 name: elastica-damping-too-high
 description: AnalyticalLinearDamper with damping_constant=0.1 completely freezes the rod
 type: issue

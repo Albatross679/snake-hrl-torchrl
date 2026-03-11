@@ -1,5 +1,4 @@
 ---
-id: b468659f-4218-4416-855b-4455a2b9d69d
 name: velocity-reward-always-negative
 description: Velocity-based reward function (v_g) was noisy and always negative
 type: issue

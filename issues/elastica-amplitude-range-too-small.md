@@ -1,5 +1,4 @@
 ---
-id: 8d2763de-29f5-49b3-8460-0c2bc466c580
 name: elastica-amplitude-range-too-small
 description: Amplitude range (0, 0.15) produced negligible bending with small rod radius
 type: issue

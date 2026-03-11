@@ -1,0 +1,45 @@
+Loading data from data/surrogate...
+  Train: 733,000 transitions
+  Val:   81,000 transitions
+Computing density-based sample weights...
+  Weight range: [0.01, 10.00]
+Computing normalization statistics...
+Model: 198,780 parameters
+
+Training for 200 epochs on cuda...
+  Single-step loss: epochs 1-20
+  + Rollout loss:   epochs 21+
+Traceback (most recent call last):
+  File "/home/coder/.local/lib/python3.12/site-packages/torch/utils/data/dataloader.py", line 1310, in _try_get_data
+    data = self._data_queue.get(timeout=timeout)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/queue.py", line 180, in get
+    self.not_empty.wait(remaining)
+  File "/usr/lib/python3.12/threading.py", line 359, in wait
+    gotit = waiter.acquire(True, timeout)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/coder/.local/lib/python3.12/site-packages/torch/utils/data/_utils/signal_handling.py", line 73, in handler
+    _error_if_any_worker_fails()
+RuntimeError: DataLoader worker (pid 76800) is killed by signal: Interrupt.
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/home/coder/snake-hrl-torchrl/aprx_model_elastica/train_surrogate.py", line 440, in <module>
+    main()
+  File "/home/coder/snake-hrl-torchrl/aprx_model_elastica/train_surrogate.py", line 325, in main
+    for batch in train_loader:
+  File "/home/coder/.local/lib/python3.12/site-packages/torch/utils/data/dataloader.py", line 741, in __next__
+    data = self._next_data()
+           ^^^^^^^^^^^^^^^^^
+  File "/home/coder/.local/lib/python3.12/site-packages/torch/utils/data/dataloader.py", line 1524, in _next_data
+    idx, data = self._get_data()
+                ^^^^^^^^^^^^^^^^
+  File "/home/coder/.local/lib/python3.12/site-packages/torch/utils/data/dataloader.py", line 1473, in _get_data
+    success, data = self._try_get_data()
+                    ^^^^^^^^^^^^^^^^^^^^
+  File "/home/coder/.local/lib/python3.12/site-packages/torch/utils/data/dataloader.py", line 1323, in _try_get_data
+    raise RuntimeError(
+RuntimeError: DataLoader worker (pid(s) 76800) exited unexpectedly

@@ -7,8 +7,12 @@ Hierarchy:
         │   ├── DismechConfig (DisMech Python — no extra fields)
         │   └── DismechRodsConfig (dismech-rods C++ — integrator, adaptive, damping)
         └── CosseratConfig (Cosserat Rod Theory)
-            └── ElasticaConfig (PyElastica — damping, time_stepper, substeps)
+            └── ElasticaConfig (PyElastica — damping, time_stepper, dt_substep)
     MujocoPhysicsConfig(PhysicsConfig) (timestep, substeps, joint_damping, joint_stiffness, friction)
+
+Time stepping convention (two levels):
+    substep:  The smallest integration timestep (dt for DisMech, dt_substep for Elastica)
+    RL step:  substeps_per_action × substep duration (defined in control configs)
 
 Friction models (FrictionModel enum):
     NONE: No ground forces
@@ -259,14 +263,20 @@ class CosseratConfig(RodConfig):
 class ElasticaConfig(CosseratConfig):
     """PyElastica backend config (Cosserat rod dynamics).
 
-    Adds Elastica-specific parameters: damping, time stepper, substeps,
-    and ground contact method.
+    Adds Elastica-specific parameters: damping, time stepper, and ground
+    contact method. Provides dt_substep property for the actual integration
+    timestep (= dt / elastica_substeps).
     """
     solver_framework: SolverFramework = SolverFramework.ELASTICA
     elastica_damping: float = 0.1  # Numerical damping coefficient
     elastica_time_stepper: str = "PositionVerlet"  # "PositionVerlet" or "PEFRL"
-    elastica_substeps: int = 50  # Internal substeps per RL step
+    elastica_substeps: int = 50  # Substeps per dt interval (dt_substep = dt / elastica_substeps)
     elastica_ground_contact: ElasticaGroundContact = ElasticaGroundContact.RFT  # Deprecated
+
+    @property
+    def dt_substep(self) -> float:
+        """Elastica integration timestep (seconds) = dt / elastica_substeps."""
+        return self.dt / self.elastica_substeps
 
     def __post_init__(self):
         """Migrate deprecated elastica_ground_contact to friction config."""

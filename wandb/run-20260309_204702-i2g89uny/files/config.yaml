@@ -1,0 +1,72 @@
+_wandb:
+    value:
+        cli_version: 0.25.0
+        e:
+            gtyrupv4x73s3qdq3cv9n870p8mj7o95:
+                args:
+                    - --num-transitions
+                    - "1000000"
+                    - --num-workers
+                    - "16"
+                    - --save-dir
+                    - data/surrogate
+                    - --skip-disk-check
+                cpu_count: 24
+                cpu_count_logical: 48
+                cudaVersion: "12.8"
+                disk:
+                    /:
+                        total: "64424509440"
+                        used: "16481906688"
+                email: qifan_wen@outlook.com
+                executable: /usr/bin/python3
+                git:
+                    commit: 1fd6e433f135c1398ddc48c4b7f3232168bc65b7
+                    remote: git@github.com:Albatross679/snake-hrl-torchrl.git
+                gpu: Tesla V100-PCIE-16GB
+                gpu_count: 1
+                gpu_nvidia:
+                    - architecture: Volta
+                      cudaCores: 5120
+                      memoryTotal: "17179869184"
+                      name: Tesla V100-PCIE-16GB
+                      uuid: GPU-fa78a34c-8eeb-40f2-9722-c931b34764cc
+                host: 1878b53519e6
+                memory:
+                    total: "270328070144"
+                os: Linux-5.4.0-216-generic-x86_64-with-glibc2.39
+                program: -m aprx_model_elastica.__main__
+                python: CPython 3.12.3
+                root: /home/coder/snake-hrl-torchrl
+                startedAt: "2026-03-09T20:47:02.969169Z"
+                writerId: gtyrupv4x73s3qdq3cv9n870p8mj7o95
+        m: []
+        python_version: 3.12.3
+        t:
+            "1":
+                - 1
+                - 105
+            "2":
+                - 1
+                - 105
+            "3":
+                - 2
+                - 16
+            "4": 3.12.3
+            "5": 0.25.0
+            "12": 0.25.0
+            "13": linux-x86_64
+baseline_fps:
+    value: null
+num_transitions:
+    value: 1000000
+num_workers:
+    value: 16
+perturbation_fraction:
+    value: 0.3
+save_dir:
+    value: data/surrogate
+seed:
+    value: 42
+use_sobol_actions:
+    value: true

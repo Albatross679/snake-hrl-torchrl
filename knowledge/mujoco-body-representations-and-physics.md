@@ -1,5 +1,4 @@
 ---
-id: 5db66785-2ea1-4ef3-80b7-af7ddb1561c3
 name: mujoco-body-representations-and-physics
 description: MuJoCo body representation systems (rigid chain, composite, flex) and elasticity physics frameworks
 type: knowledge

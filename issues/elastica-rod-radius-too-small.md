@@ -1,5 +1,4 @@
 ---
-id: 06971ba8-47e0-4f32-b8fd-f90cc51a89c7
 name: elastica-rod-radius-too-small
 description: Rod radius 0.001m gave extremely small moment of inertia causing instability
 type: issue

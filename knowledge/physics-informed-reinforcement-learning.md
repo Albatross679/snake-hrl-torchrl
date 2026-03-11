@@ -1,5 +1,4 @@
 ---
-id: c0162e79-2b46-469d-b450-8706bbefea62
 name: physics-informed-reinforcement-learning
 description: Survey of physics-informed RL approaches for snake robot locomotion
 type: knowledge

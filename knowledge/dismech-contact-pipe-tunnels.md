@@ -1,5 +1,4 @@
 ---
-id: 0b1ef36c-b909-4243-91d6-e3a8c4c13d92
 name: dismech-contact-pipe-tunnels
 description: Using DisMech rod-to-rod contact for snake robot pipe tunnel navigation
 type: knowledge

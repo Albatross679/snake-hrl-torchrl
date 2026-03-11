@@ -1,5 +1,4 @@
 ---
-id: 1c3267a3-b9ad-43bd-9d8d-84770c10ed68
 name: simulator-comparison-soft-robot-rl
 description: Deep research comparing Genesis, PyElastica, MuJoCo/MJX, SOFA, DiffTaichi, NVIDIA Warp/Newton, and other simulators for soft robot RL training, with hard performance numbers and citations
 type: knowledge

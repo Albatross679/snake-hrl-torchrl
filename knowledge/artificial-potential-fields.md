@@ -1,5 +1,4 @@
 ---
-id: 159d30a7-bad4-4526-9193-45950616c2e8
 name: artificial-potential-fields
 description: Artificial potential fields as RL reward shaping for path planning
 type: knowledge

@@ -1,0 +1,22 @@
+W&B run initialized: https://wandb.ai/qifan_wen-ohio-state-university/surrogate-data-collection/runs/nvq3l2bi
+[monitor] 0/1,000,000 (0.0%) | FPS cur=0 roll=0 | ETA 277.8h | NaN=0 respawns=0 | disk 0.0GB used, 44.6GB free
+[monitor] 0/1,000,000 (0.0%) | FPS cur=0 roll=0 | ETA 277.8h | NaN=0 respawns=0 | disk 0.0GB used, 44.6GB free
+[monitor] 0/1,000,000 (0.0%) | FPS cur=0 roll=0 | ETA 277.8h | NaN=0 respawns=0 | disk 0.0GB used, 44.6GB free
+[monitor] 0/1,000,000 (0.0%) | FPS cur=0 roll=0 | ETA 277.8h | NaN=0 respawns=0 | disk 0.0GB used, 44.6GB free
+[monitor] 1,000/1,000,000 (0.1%) | FPS cur=33 roll=7 | ETA 41.6h | NaN=0 respawns=0 | disk 0.0GB used, 44.6GB free
+[monitor] 7,500/1,000,000 (0.8%) | FPS cur=217 roll=42 | ETA 6.6h | NaN=0 respawns=0 | disk 0.0GB used, 44.6GB free
+[monitor] 8,000/1,000,000 (0.8%) | FPS cur=17 roll=38 | ETA 7.2h | NaN=0 respawns=2 | disk 0.0GB used, 44.6GB free
+[monitor] 8,000/1,000,000 (0.8%) | FPS cur=0 roll=33 | ETA 8.3h | NaN=0 respawns=15 | disk 0.0GB used, 44.6GB free
+[monitor] 8,000/1,000,000 (0.8%) | FPS cur=0 roll=29 | ETA 9.4h | NaN=0 respawns=16 | disk 0.0GB used, 44.6GB free
+[monitor] 8,000/1,000,000 (0.8%) | FPS cur=0 roll=26 | ETA 10.4h | NaN=0 respawns=16 | disk 0.0GB used, 44.6GB free
+[monitor] 8,000/1,000,000 (0.8%) | FPS cur=0 roll=24 | ETA 11.5h | NaN=0 respawns=16 | disk 0.0GB used, 44.6GB free
+[monitor] 8,500/1,000,000 (0.9%) | FPS cur=17 roll=23 | ETA 11.8h | NaN=0 respawns=16 | disk 0.0GB used, 44.6GB free
+[monitor] 9,000/1,000,000 (0.9%) | FPS cur=17 roll=23 | ETA 12.0h | NaN=0 respawns=16 | disk 0.0GB used, 44.6GB free
+[monitor] 15,000/1,000,000 (1.5%) | FPS cur=200 roll=35 | ETA 7.7h | NaN=0 respawns=17 | disk 0.0GB used, 44.6GB free
+[monitor] 16,000/1,000,000 (1.6%) | FPS cur=33 roll=35 | ETA 7.7h | NaN=0 respawns=18 | disk 0.0GB used, 44.7GB free
+[monitor] 16,000/1,000,000 (1.6%) | FPS cur=0 roll=33 | ETA 8.3h | NaN=0 respawns=30 | disk 0.0GB used, 44.7GB free
+[monitor] 16,000/1,000,000 (1.6%) | FPS cur=0 roll=31 | ETA 8.8h | NaN=0 respawns=32 | disk 0.0GB used, 44.7GB free
+[monitor] 16,000/1,000,000 (1.6%) | FPS cur=0 roll=29 | ETA 9.3h | NaN=0 respawns=32 | disk 0.0GB used, 44.7GB free
+[monitor] 16,500/1,000,000 (1.7%) | FPS cur=17 roll=29 | ETA 9.5h | NaN=0 respawns=32 | disk 0.0GB used, 44.6GB free
+
+SIGTERM received, requesting graceful shutdown...

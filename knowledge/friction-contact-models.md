@@ -1,5 +1,4 @@
 ---
-id: e5a1733e-8196-4cd1-821e-36d392983874
 name: friction-contact-models
 description: Friction and contact models in robot simulation across MuJoCo and DisMech
 type: knowledge

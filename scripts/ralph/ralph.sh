@@ -87,12 +87,23 @@ for i in $(seq 1 $MAX_ITERATIONS); do
   echo "  Ralph Iteration $i of $MAX_ITERATIONS ($TOOL)"
   echo "==============================================================="
 
+  # Build prompt with absolute paths so the agent knows where files are
+  PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+  RALPH_PROMPT="$(cat "$SCRIPT_DIR/CLAUDE.md")
+
+---
+RESOLVED PATHS (use these absolute paths):
+- PRD file: $PRD_FILE
+- Progress file: $PROGRESS_FILE
+- Project root: $PROJECT_ROOT
+---"
+
   # Run the selected tool with the ralph prompt
   if [[ "$TOOL" == "amp" ]]; then
-    OUTPUT=$(cat "$SCRIPT_DIR/prompt.md" | amp --dangerously-allow-all 2>&1 | tee /dev/stderr) || true
+    OUTPUT=$(echo "$RALPH_PROMPT" | amp --dangerously-allow-all 2>&1 | tee /dev/stderr) || true
   else
-    # Claude Code: use --dangerously-skip-permissions for autonomous operation, --print for output
-    OUTPUT=$(claude --dangerously-skip-permissions --print < "$SCRIPT_DIR/CLAUDE.md" 2>&1 | tee /dev/stderr) || true
+    # Claude Code: -p for non-interactive, --dangerously-skip-permissions for autonomous operation
+    OUTPUT=$(cd "$PROJECT_ROOT" && claude --dangerously-skip-permissions -p "$RALPH_PROMPT" 2>&1 | tee /dev/stderr) || true
   fi
   
   # Check for completion signal

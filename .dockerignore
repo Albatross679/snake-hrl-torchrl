@@ -5,3 +5,16 @@ __pycache__
 *.pyc
 *.egg-info
 .pytest_cache
+output/
+logs/
+experiments/
+issues/
+knowledge/
+references/
+figures/
+media/
+model/
+data/
+dismech-rods/
+dismech-python/
+.claude/

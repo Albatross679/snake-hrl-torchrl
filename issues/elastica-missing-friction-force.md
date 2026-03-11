@@ -1,5 +1,4 @@
 ---
-id: eda44cee-a650-404e-9853-231526830aad
 name: elastica-missing-friction-force
 description: AnisotropicRFTForce was never added to the PyElastica simulator
 type: issue

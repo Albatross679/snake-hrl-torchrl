@@ -1,0 +1,25 @@
+Loading data from data/surrogate...
+  Train: 733,000 transitions
+  Val:   81,000 transitions
+Computing density-based sample weights...
+  Weight range: [0.01, 10.00]
+Computing normalization statistics...
+Model: 923,260 parameters
+
+Training for 200 epochs on cuda...
+  Single-step loss: epochs 1-20
+  + Rollout loss:   epochs 21+
+Epoch   1/200 | train=3.101361 | val=0.418639 | best=0.418639 | lr=0.000200 | patience=0/30 | 62.9s
+Epoch   5/200 | train=1.945868 | val=0.273573 | best=0.273573 | lr=0.001000 | patience=0/30 | 53.8s
+Epoch  10/200 | train=1.265534 | val=0.247282 | best=0.243352 | lr=0.000998 | patience=3/30 | 54.4s
+Epoch  15/200 | train=0.650583 | val=0.263999 | best=0.243352 | lr=0.000994 | patience=8/30 | 59.6s
+  Loading trajectory dataset (rollout_steps=8)...
+  Trajectory dataset: 721,272 windows
+Epoch  20/200 | train=0.352438 | val=0.247719 | rollout=0.141710 | best=0.243352 | lr=0.000985 | patience=13/30 | 90.3s
+Epoch  25/200 | train=0.231506 | val=0.242445 | rollout=0.108042 | best=0.238154 | lr=0.000974 | patience=1/30 | 70.9s
+Epoch  30/200 | train=0.210903 | val=0.235101 | rollout=0.111382 | best=0.233024 | lr=0.000960 | patience=1/30 | 149.4s
+Epoch  35/200 | train=0.187672 | val=0.228910 | rollout=0.107046 | best=0.225938 | lr=0.000943 | patience=2/30 | 248.2s
+Epoch  40/200 | train=0.175779 | val=0.232933 | rollout=0.106161 | best=0.225938 | lr=0.000923 | patience=7/30 | 151.6s
+Epoch  45/200 | train=0.168380 | val=0.233010 | rollout=0.102186 | best=0.225938 | lr=0.000900 | patience=12/30 | 175.4s
+Epoch  50/200 | train=0.163365 | val=0.236074 | rollout=0.103335 | best=0.225938 | lr=0.000874 | patience=17/30 | 33.9s
+Epoch  55/200 | train=0.175705 | val=0.243639 | rollout=0.104266 | best=0.225938 | lr=0.000846 | patience=22/30 | 64.2s

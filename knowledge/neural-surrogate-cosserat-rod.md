@@ -1,5 +1,4 @@
 ---
-id: 7d4cb2d4-fe7a-41e5-92f4-a344f97e19e9
 name: neural-surrogate-cosserat-rod
 description: Feasibility analysis of neural network surrogates for Cosserat rod dynamics in snake locomotion RL
 type: knowledge

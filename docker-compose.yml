@@ -1,0 +1,14 @@
+services:
+  snake-hrl:
+    build: .
+    container_name: snake-hrl
+    stdin_open: true
+    tty: true
+    volumes:
+      - ./output:/app/output
+      - ./data:/app/data
+    environment:
+      - WANDB_API_KEY
+      - OPENBLAS_NUM_THREADS=1
+      - OMP_NUM_THREADS=1
+      - MKL_NUM_THREADS=1

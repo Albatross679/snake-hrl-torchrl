@@ -297,11 +297,10 @@ class ElasticaSnakeRobot:
 
         # Add numerical damping
         if self.config.elastica_damping > 0:
-            dt_substep = self.config.dt / self.config.elastica_substeps
             self._simulator.dampen(self._rod).using(
                 AnalyticalLinearDamper,
                 damping_constant=self.config.elastica_damping,
-                time_step=dt_substep,
+                time_step=self.config.dt_substep,
             )
 
         # Finalize simulator
@@ -408,15 +407,13 @@ class ElasticaSnakeRobot:
         if dt is None:
             dt = self.config.dt
 
-        # Apply curvature control before stepping
-        self._apply_curvature_to_elastica()
-
-        # PyElastica uses smaller internal timesteps
-        dt_substep = dt / self.config.elastica_substeps
+        # Integrate with substeps, updating curvature at each substep
+        dt_substep = self.config.dt_substep
         total_steps = self.config.elastica_substeps
-
-        # Integrate with substeps using manual stepping
         for _ in range(total_steps):
+            # Apply curvature control at every substep
+            self._apply_curvature_to_elastica()
+
             # Apply custom forcing if enabled (RFT, Coulomb, or Stribeck)
             if self._custom_forcing is not None:
                 self._custom_forcing.apply_forces(self._rod, self.time)
