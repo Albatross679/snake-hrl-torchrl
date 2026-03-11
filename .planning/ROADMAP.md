@@ -66,19 +66,20 @@ Plans:
 - [ ] 02.2-01-PLAN.md — Test dataset compatibility with steps_per_run=1, write launch script, smoke test, launch 16-worker collection to data/surrogate_rl_step/
 
 ### Phase 3: Train surrogate model using supervised learning
-**Goal**: Train an MLP surrogate model on the Phase 02.2 dataset (data/surrogate_rl_step/) via LR x model-size x architecture sweep, select best model by val_loss with human review, and produce a confirmed checkpoint at output/surrogate/best/ for Phase 4.
+**Goal**: Train surrogate models (MLP, Residual MLP, Wide/Deep MLP, FT-Transformer) on Phase 02.2 dataset via 15-config architecture sweep, select best model by val_loss with human review, and produce confirmed checkpoint at output/surrogate/best/ for Phase 4.
 **Depends on**: Phase 02.2
 **Requirements**: SURR-01, SURR-02, SURR-03, SURR-04, SURR-05, ARCH-01, ARCH-02, ARCH-03, ARCH-04, ARCH-05
 **Success Criteria** (what must be TRUE):
-  1. 6 sweep configurations (5 LR x model-size + 1 residual MLP) trained to convergence with W&B logging
+  1. 15 sweep configurations (5 MLP + 3 Residual + 3 Wide/Deep + 4 FT-Transformer) trained to convergence with W&B logging
   2. Diagnostic plots saved: error histograms, predicted-vs-actual, sweep comparison, per-component RMSE
   3. Best model selected by human review of val_loss and per-component RMSE in physical units
   4. Best model checkpoint confirmed at output/surrogate/best/ with selection.json for Phase 4
-**Plans:** 2 plans
+**Plans:** 3 plans
 
 Plans:
-- [ ] 03-01-PLAN.md — Wire FlatStepDataset into training pipeline, launch 6-config sweep on Phase 02.2 data
-- [ ] 03-02-PLAN.md — Analyze sweep results, generate diagnostic plots, human model selection, copy best to output/surrogate/best/
+- [ ] 03-01-PLAN.md — Implement TransformerSurrogateModel, wire FlatStepDataset, add --arch CLI, expand W&B logging, update sweep.py with 15 configs
+- [ ] 03-02-PLAN.md — Smoke test all architectures, launch full 15-config sweep in tmux
+- [ ] 03-03-PLAN.md — Build analysis script, generate diagnostic plots, human review, promote best model to output/surrogate/best/
 
 ### Phase 4: Validate surrogate model against Elastica solver trajectories
 
@@ -146,7 +147,7 @@ Phase 8 (Elastica baseline) can run in parallel with Phases 3-5 after Phase 2.
 | 2. Data Validation | 0/2 | Not started | - |
 | 02.1. Re-collect with Per-Node Phase | 3/3 | Complete    | 2026-03-10 |
 | 02.2. Collect RL-step-only (min change) | 1/1 | Complete    | 2026-03-10 |
-| 3. Surrogate Training (Phase 02.2 data) | 0/2 | Replanned | - |
+| 3. Surrogate Training (Phase 02.2 data) | 0/3 | Planned | - |
 | 4. Surrogate Validation | 0/0 | Not planned | - |
 | 5. RL Training | 0/0 | Not planned | - |
 | 6. LaTeX Report | 0/4 | Planned | - |
