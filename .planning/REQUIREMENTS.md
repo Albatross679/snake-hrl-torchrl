@@ -1,7 +1,7 @@
 # Requirements: Surrogate Data Collection & Validation
 
 **Defined:** 2026-03-09
-**Updated:** 2026-03-10
+**Updated:** 2026-03-11
 **Core Value:** Produce a high-quality, well-covered dataset of snake robot dynamics transitions ready for surrogate model training
 
 ## v1 Requirements
@@ -45,6 +45,15 @@ Requirements for initial release. Each maps to roadmap phases.
 - [ ] **SURR-04**: Per-component error analysis in physical units — compute RMSE/MAE per state component (pos mm, vel mm/s, yaw rad, omega rad/s)
 - [ ] **SURR-05**: Diagnostic plots — error histograms per component, predicted-vs-actual overlays, sweep comparison chart saved to figures/surrogate_training/
 
+### Surrogate Model Validation (Phase 4)
+
+- [ ] **SVAL-01**: Architecture-aware model loading — dispatch model class (MLP/Residual/Transformer) from config.json arch field; error on missing arch
+- [ ] **SVAL-02**: Dynamic checkpoint discovery — scan directory for subdirectories with valid config.json; model-count agnostic
+- [ ] **SVAL-03**: Four validation scenarios — random actions (10 ep), forward crawl (10 ep), slow/fast gaits (5+5 ep), trained PPO policy (10 ep), each up to 500 steps
+- [ ] **SVAL-04**: Per-scenario PASS/WARN/FAIL verdicts — RMSE@50 and CoM drift@50 thresholds with FAIL-SOFT/FAIL-HARD tiers, NaN detection, flagged components (>2x average)
+- [ ] **SVAL-05**: Validation figures — trajectory overlays (best/median/worst per scenario), per-component error heatmap, scenario comparison bars, RMSE/CoM drift over time
+- [ ] **SVAL-06**: Structured validation report — markdown report at output/surrogate/validation_report.md with summary table, per-scenario details, diagnosis section, threshold documentation
+
 ## v2 Requirements
 
 Deferred to future release. Tracked but not in current roadmap.
@@ -63,7 +72,6 @@ Deferred to future release. Tracked but not in current roadmap.
 | Automatic recollection | Validate first, then decide manually |
 | Distributed multi-machine | Single machine with 48 CPUs sufficient |
 | Architecture alternatives (1D-CNN, GNN) | Only if MLP fails after expanded sweep |
-| Multi-step trajectory validation | Phase 4 |
 
 ## Traceability
 
@@ -79,24 +87,30 @@ Deferred to future release. Tracked but not in current roadmap.
 | DVAL-03 | Phase 2 | Complete |
 | DVAL-04 | Phase 2 | Complete |
 | DVAL-05 | Phase 2 | Complete |
-| RCOL-01 | Phase 02.1 | Planned |
-| RCOL-02 | Phase 02.1 | Planned |
-| RCOL-03 | Phase 02.1 | Planned |
-| RCOL-04 | Phase 02.1 | Planned |
-| RLDC-01 | Phase 02.2 | Planned |
-| RLDC-02 | Phase 02.2 | Planned |
-| RLDC-03 | Phase 02.2 | Planned |
+| RCOL-01 | Phase 02.1 | Complete |
+| RCOL-02 | Phase 02.1 | Complete |
+| RCOL-03 | Phase 02.1 | Complete |
+| RCOL-04 | Phase 02.1 | Complete |
+| RLDC-01 | Phase 02.2 | Complete |
+| RLDC-02 | Phase 02.2 | Complete |
+| RLDC-03 | Phase 02.2 | Complete |
 | SURR-01 | Phase 3 | Planned |
 | SURR-02 | Phase 3 | Planned |
 | SURR-03 | Phase 3 | Planned |
 | SURR-04 | Phase 3 | Planned |
 | SURR-05 | Phase 3 | Planned |
+| SVAL-01 | Phase 4 | Planned |
+| SVAL-02 | Phase 4 | Planned |
+| SVAL-03 | Phase 4 | Planned |
+| SVAL-04 | Phase 4 | Planned |
+| SVAL-05 | Phase 4 | Planned |
+| SVAL-06 | Phase 4 | Planned |
 
 **Coverage:**
-- v1 requirements: 22 total
-- Mapped to phases: 22
+- v1 requirements: 28 total
+- Mapped to phases: 28
 - Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-09*
-*Last updated: 2026-03-10 — added Phase 02.1 re-collection requirements (RCOL-01 through RCOL-04); added Phase 02.2 RL-step data collection requirements (RLDC-01 through RLDC-03)*
+*Last updated: 2026-03-11 — added Phase 4 surrogate validation requirements (SVAL-01 through SVAL-06)*
