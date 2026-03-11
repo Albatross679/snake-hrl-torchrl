@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: Collection running in tmux gsd-collect-rl → data/surrogate_rl_step/ (flat format + forces); stop manually at 10 GB
-stopped_at: Phase 6 writing/maths style context updated
-last_updated: "2026-03-11T14:28:30.386Z"
-last_activity: "2026-03-11 - Completed quick task 3: add structured notation explanations after equations"
+stopped_at: Completed quick-4-PLAN.md
+last_updated: "2026-03-11T22:45:32.620Z"
+last_activity: "2026-03-11 - Completed quick task 4: restructure section 2.1 with upfront I/O framing"
 progress:
-  total_phases: 13
+  total_phases: 14
   completed_phases: 3
   total_plans: 15
-  completed_plans: 9
+  completed_plans: 10
   percent: 53
 ---
 
@@ -103,12 +103,12 @@ Progress: [█████░░░░░] 53%
 - [Phase 06-write-research-report-in-latex]: [Phase 06, Plan 03]: Discussion challenges use textbf{} labels within subsection paragraphs rather than nested subsubsections
 - [Phase 06]: Human approved PDF despite DreamerV3/Janner attribution error — deferred to future content revision
 - [Phase quick-2]: Introduction uses \\Cref for sentence-initial section references; 4-paragraph structure (problem, physics detail, contribution, roadmap)
+- [Phase quick-4]: Added Governing PDEs subsubsection and paragraph-level I/O summary to section 2.1
 
 ### Pending Todos
 
-- Update Dockerfile for advisor macOS deployment (area: tooling)
-- Establish mathematical formulation of surrogate model approximation (area: general)
 - Optimize PyElastica inner substep loop to reduce Python overhead (area: general)
+- Update Dockerfile for advisor macOS deployment (area: tooling)
 - Explore pure ODE data generation as alternative to Elastica (area: general)
 
 ### Roadmap Evolution
@@ -137,8 +137,9 @@ None currently.
 | 1 | add verification for Phase 2.2 and document worker respawn investigation needs | 2026-03-11 | 4facf4a | [1-add-verification-for-phase-2-2-and-docum](./quick/1-add-verification-for-phase-2-2-and-docum/) |
 | 2 | write introduction section for research report | 2026-03-11 | 96ff13b | [2-write-the-introduction-section-for-the-p](./quick/2-write-the-introduction-section-for-the-p/) |
 | 3 | add structured notation explanations after equations | 2026-03-11 | c705001 | [3-add-structured-notation-explanations-aft](./quick/3-add-structured-notation-explanations-aft/) |
+| 4 | restructure section 2.1 with upfront I/O framing | 2026-03-11 | 6239b38 | [4-restructure-section-2-1-to-clearly-prese](./quick/4-restructure-section-2-1-to-clearly-prese/) |
 
 ## Session Continuity
 
-Last session: 2026-03-11T14:53:29Z
-Stopped at: Completed quick task 3: add structured notation explanations after equations
+Last session: 2026-03-11T22:45:32.616Z
+Stopped at: Completed quick-4-PLAN.md
