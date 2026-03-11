@@ -5,7 +5,7 @@ milestone_name: milestone
 status: Collection running in tmux gsd-collect-rl → data/surrogate_rl_step/ (flat format + forces); stop manually at 10 GB
 stopped_at: Phase 6 writing/maths style context updated
 last_updated: "2026-03-11T14:28:30.386Z"
-last_activity: "2026-03-11 - Completed quick task 2: Write the introduction section for the phase 6 report"
+last_activity: "2026-03-11 - Completed quick task 3: add structured notation explanations after equations"
 progress:
   total_phases: 13
   completed_phases: 3
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-03-09)
 Phase: 02.2 (Collect RL-Step-Only Data) — COMPLETE (1/1 plans done)
 Next Phase: Phase 3 surrogate training (FlatStepDataset ready; wait for ≥10 GB in data/surrogate_rl_step/)
 Status: Collection running in tmux gsd-collect-rl → data/surrogate_rl_step/ (flat format + forces); stop manually at 10 GB
-Last activity: 2026-03-11 - Completed quick task 2: Write the introduction section for the phase 6 report
+Last activity: 2026-03-11 - Completed quick task 3: add structured notation explanations after equations
 
 Progress: [█████░░░░░] 53%
 
@@ -124,6 +124,7 @@ Progress: [█████░░░░░] 53%
 - Phase 9 added: Physics framework comparison experiment — DisMech, Genesis, FEM vs Elastica
 - Phase 10 added: Train RL agent for tunnel and pipe navigation — snake traverses building infrastructure
 - Phase 11 added: Explore model-based RL using surrogate as world model for planning and policy optimization
+- Phase 12 added: Explore Hamiltonian or Lagrangian neural networks for snake dynamics
 
 ### Blockers/Concerns
 
@@ -135,8 +136,9 @@ None currently.
 |---|-------------|------|--------|-----------|
 | 1 | add verification for Phase 2.2 and document worker respawn investigation needs | 2026-03-11 | 4facf4a | [1-add-verification-for-phase-2-2-and-docum](./quick/1-add-verification-for-phase-2-2-and-docum/) |
 | 2 | write introduction section for research report | 2026-03-11 | 96ff13b | [2-write-the-introduction-section-for-the-p](./quick/2-write-the-introduction-section-for-the-p/) |
+| 3 | add structured notation explanations after equations | 2026-03-11 | c705001 | [3-add-structured-notation-explanations-aft](./quick/3-add-structured-notation-explanations-aft/) |
 
 ## Session Continuity
 
-Last session: 2026-03-11T14:28:30.382Z
-Stopped at: Phase 6 writing/maths style context updated
+Last session: 2026-03-11T14:53:29Z
+Stopped at: Completed quick task 3: add structured notation explanations after equations
