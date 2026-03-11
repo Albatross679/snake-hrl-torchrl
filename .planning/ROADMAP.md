@@ -66,23 +66,19 @@ Plans:
 - [ ] 02.2-01-PLAN.md — Test dataset compatibility with steps_per_run=1, write launch script, smoke test, launch 16-worker collection to data/surrogate_rl_step/
 
 ### Phase 3: Train surrogate model using supervised learning
-**Goal**: Train an MLP surrogate model on the Phase 02.1 dataset via hyperparameter sweep, then run architecture experiments (rollout loss tuning, residual connections, history window) to select the best model for Phase 4. Produces a confirmed checkpoint at output/surrogate/best/.
-**Depends on**: Phase 02.1
+**Goal**: Train an MLP surrogate model on the Phase 02.2 dataset (data/surrogate_rl_step/) via LR x model-size x architecture sweep, select best model by val_loss with human review, and produce a confirmed checkpoint at output/surrogate/best/ for Phase 4.
+**Depends on**: Phase 02.2
 **Requirements**: SURR-01, SURR-02, SURR-03, SURR-04, SURR-05, ARCH-01, ARCH-02, ARCH-03, ARCH-04, ARCH-05
 **Success Criteria** (what must be TRUE):
-  1. 5 LR×model-size sweep configurations trained to convergence with W&B logging
-  2. Architecture experiments A (rollout loss tuning) and B (residual MLP) completed; C (history window) if needed
-  3. Best model selected by human review of val_loss, rollout_loss, and omega_z R²
-  4. Diagnostic plots saved: error histograms, predicted-vs-actual, sweep comparison
-  5. Best model checkpoint confirmed at output/surrogate/best/ with selection.json for Phase 4
-**Plans:** 4/5 complete
+  1. 6 sweep configurations (5 LR x model-size + 1 residual MLP) trained to convergence with W&B logging
+  2. Diagnostic plots saved: error histograms, predicted-vs-actual, sweep comparison, per-component RMSE
+  3. Best model selected by human review of val_loss and per-component RMSE in physical units
+  4. Best model checkpoint confirmed at output/surrogate/best/ with selection.json for Phase 4
+**Plans:** 2 plans
 
 Plans:
-- [x] 03-01-PLAN.md — Sweep infrastructure and execute hyperparameter sweep (5 configs)
-- [x] 03-02-PLAN.md — Analyze sweep results, select best model, generate diagnostic plots
-- [x] 03-03-PLAN.md — Add architectural variants (ResidualSurrogateModel, HistorySurrogateModel, HistoryDataset, CLI args) with unit tests
-- [x] 03-04-PLAN.md — Create arch_sweep.py and run Experiments A+B (rollout loss variants + residual)
-- [ ] 03-05-PLAN.md — Analyze arch sweep results, human selection gate, copy winner to output/surrogate/best/
+- [ ] 03-01-PLAN.md — Wire FlatStepDataset into training pipeline, launch 6-config sweep on Phase 02.2 data
+- [ ] 03-02-PLAN.md — Analyze sweep results, generate diagnostic plots, human model selection, copy best to output/surrogate/best/
 
 ### Phase 4: Validate surrogate model against Elastica solver trajectories
 
@@ -150,7 +146,7 @@ Phase 8 (Elastica baseline) can run in parallel with Phases 3-5 after Phase 2.
 | 2. Data Validation | 0/2 | Not started | - |
 | 02.1. Re-collect with Per-Node Phase | 3/3 | Complete    | 2026-03-10 |
 | 02.2. Collect RL-step-only (min change) | 1/1 | Complete    | 2026-03-10 |
-| 3. Surrogate Training + Arch Experiments | 4/5 | In Progress | - |
+| 3. Surrogate Training (Phase 02.2 data) | 0/2 | Replanned | - |
 | 4. Surrogate Validation | 0/0 | Not planned | - |
 | 5. RL Training | 0/0 | Not planned | - |
 | 6. LaTeX Report | 0/4 | Planned | - |
