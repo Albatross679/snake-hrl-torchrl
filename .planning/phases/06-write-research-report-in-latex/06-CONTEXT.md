@@ -1,6 +1,6 @@
 # Phase 6: Write Research Report in LaTeX - Context
 
-**Gathered:** 2026-03-10
+**Gathered:** 2026-03-10 (updated 2026-03-11 — writing & maths style)
 **Status:** Ready for planning
 
 <domain>
@@ -56,6 +56,31 @@ Does NOT cover: rerunning experiments, new data collection, new model training, 
 - **Surrogate model:** Full formulation — define ground-truth transition operator T: (s_t, a_t) → s_{t+1}, surrogate approximation f_θ, delta prediction formulation, training loss (single-step MSE + multi-step rollout), and per-element CPG phase encoding φ_i
 - **CPG actuation:** Equations — κ_i^target = A sin(k·s_i − ω·t + φ_0), ω derived from action frequency parameter, per-element encoding φ_i = (sin(ω·t_i), cos(ω·t_i), κ_i)
 
+### Math notation conventions
+- **Vectors/matrices:** Bold lowercase/uppercase — `\mathbf{x}` for vectors, `\mathbf{M}` for matrices
+- **Time derivatives:** Leibniz notation throughout — `\frac{dx}{dt}`, `\frac{\partial}{\partial s}` for spatial derivatives
+- **Subscripts:** Both time and node index as subscripts with comma separation — `\mathbf{x}_{t,i}` for position of node i at time t
+- **Network parameters:** Single `\theta` for all learnable parameters — `f_\theta(\mathbf{s}_t, \mathbf{a}_t)`
+- **Notation table:** Include a notation/glossary table near the beginning of the document so terms can be used freely after definition
+
+### Equation presentation
+- **Display generously:** Most equations get their own displayed line (`\begin{equation}`), including definitions and intermediate expressions — not just key results
+- **Number all displayed equations:** Every displayed equation gets a number, not just cross-referenced ones
+- **Cosserat rod derivation:** State the final PDEs directly, cite Antman/Gazzola for derivation — no step-by-step derivation in main text
+- **Surrogate formulation:** Full formulation including per-element CPG encoding — define ground-truth operator T, surrogate f_θ, delta prediction, single-step MSE loss, rollout loss, and per-element phase encoding φ_{t,i} = (sin(ω·t_i), cos(ω·t_i), κ_i)
+
+### Writing voice & tone
+- **Voice:** Passive voice throughout — "A surrogate model is trained...", "The dataset was collected..."
+- **Formality:** Readable academic — formal but not stiff, no jargon without definition, plain-language explanations where helpful, approachable to non-specialists
+- **Audience assumption:** Reader knows ML (RL, PPO, neural nets) but not Cosserat rods or soft robotics — explain physics foundations, skip ML basics
+- **Paragraphs:** Short (3-5 sentences), varied sentence length — modern, scannable style
+- **Figure/table references:** Casual inline — "(see Fig. 3)" or "the results (Table 2) show..." — abbreviated, parenthetical when possible
+- **Section numbering:** All numbered with deep hierarchy (1.1.1-level) for maximum navigability
+- **Algorithm descriptions:** Use `\begin{algorithm}` pseudocode environment with numbered steps, inputs/outputs for key algorithms (data collection pipeline, training loop)
+- **Numerical results:** Scientific notation for small/large values — "MSE of $1.7 \times 10^{-4}$"; include units with physical quantities
+- **Code in report:** None — pure math and prose, no code snippets or `\texttt{}` references
+- **Discussion style:** Brief bullet-style lessons learned — enumerated items with 1-2 sentence explanations each, scannable and compact
+
 ### Claude's Discretion
 - Exact LaTeX package selection (NeurIPS vs TMLR template file)
 - Figure selection and layout within each section
@@ -63,6 +88,7 @@ Does NOT cover: rerunning experiments, new data collection, new model training, 
 - Whether to include a Limitations subsection inside Discussion or as standalone
 - Appendix content (full derivation, hyperparameter tables, extended figures)
 - Precise placeholder macro definition
+- Exact notation table content and placement (after abstract or after introduction)
 
 </decisions>
 
