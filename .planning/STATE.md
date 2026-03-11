@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-03-09)
 Phase: 02.2 (Collect RL-Step-Only Data) — COMPLETE (1/1 plans done)
 Next Phase: Phase 3 surrogate training (FlatStepDataset ready; wait for ≥10 GB in data/surrogate_rl_step/)
 Status: Collection running in tmux gsd-collect-rl → data/surrogate_rl_step/ (flat format + forces); stop manually at 10 GB
-Last activity: 2026-03-10 -- Completed 02.2-01: flat collection pipeline, FlatStepDataset TDD, W&B logging
+Last activity: 2026-03-11 - Completed quick task 1: add verification for Phase 2.2 and document worker respawn investigation needs
 
 Progress: [█████░░░░░] 53%
 
@@ -126,6 +126,12 @@ Progress: [█████░░░░░] 53%
 ### Blockers/Concerns
 
 None currently.
+
+### Quick Tasks Completed
+
+| # | Description | Date | Commit | Directory |
+|---|-------------|------|--------|-----------|
+| 1 | add verification for Phase 2.2 and document worker respawn investigation needs | 2026-03-11 | 4facf4a | [1-add-verification-for-phase-2-2-and-docum](./quick/1-add-verification-for-phase-2-2-and-docum/) |
 
 ## Session Continuity
 
