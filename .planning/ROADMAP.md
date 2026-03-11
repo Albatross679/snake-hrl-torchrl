@@ -68,7 +68,7 @@ Plans:
 ### Phase 3: Train surrogate model using supervised learning
 **Goal**: Train surrogate models (MLP, Residual MLP, Wide/Deep MLP, FT-Transformer) on Phase 02.2 dataset via 15-config architecture sweep, select best model by val_loss with human review, and produce confirmed checkpoint at output/surrogate/best/ for Phase 4.
 **Depends on**: Phase 02.2
-**Requirements**: SURR-01, SURR-02, SURR-03, SURR-04, SURR-05, ARCH-01, ARCH-02, ARCH-03, ARCH-04, ARCH-05
+**Requirements**: SURR-01, SURR-02, SURR-03, SURR-04, SURR-05
 **Success Criteria** (what must be TRUE):
   1. 15 sweep configurations (5 MLP + 3 Residual + 3 Wide/Deep + 4 FT-Transformer) trained to convergence with W&B logging
   2. Diagnostic plots saved: error histograms, predicted-vs-actual, sweep comparison, per-component RMSE
