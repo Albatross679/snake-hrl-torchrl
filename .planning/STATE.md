@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: Collection running in tmux gsd-collect-rl → data/surrogate_rl_step/ (flat format + forces); stop manually at 10 GB
-stopped_at: "Completed quick-1: Phase 02.2 verification confirmed, worker respawn investigation issue created"
-last_updated: "2026-03-11T00:43:18.671Z"
-last_activity: "2026-03-10 -- Completed 02.2-01: flat collection pipeline, FlatStepDataset TDD, W&B logging"
+stopped_at: "Completed quick-2: Introduction section written for research report"
+last_updated: "2026-03-11T13:43:03.501Z"
+last_activity: "2026-03-11 - Completed quick task 1: add verification for Phase 2.2 and document worker respawn investigation needs"
 progress:
   total_phases: 13
   completed_phases: 3
-  total_plans: 17
+  total_plans: 14
   completed_plans: 10
   percent: 53
 ---
@@ -102,6 +102,7 @@ Progress: [█████░░░░░] 53%
 - [Phase 06-write-research-report-in-latex]: [Phase 06, Plan 03]: Methods section uses two-phase training narrative (single-step MSE then combined rollout loss) with xrightarrow architecture pipeline in equation environment
 - [Phase 06-write-research-report-in-latex]: [Phase 06, Plan 03]: Discussion challenges use textbf{} labels within subsection paragraphs rather than nested subsubsections
 - [Phase 06]: Human approved PDF despite DreamerV3/Janner attribution error — deferred to future content revision
+- [Phase quick-2]: Introduction uses \\Cref for sentence-initial section references; 4-paragraph structure (problem, physics detail, contribution, roadmap)
 
 ### Pending Todos
 
@@ -133,8 +134,9 @@ None currently.
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
 | 1 | add verification for Phase 2.2 and document worker respawn investigation needs | 2026-03-11 | 4facf4a | [1-add-verification-for-phase-2-2-and-docum](./quick/1-add-verification-for-phase-2-2-and-docum/) |
+| 2 | write introduction section for research report | 2026-03-11 | 96ff13b | [2-write-the-introduction-section-for-the-p](./quick/2-write-the-introduction-section-for-the-p/) |
 
 ## Session Continuity
 
-Last session: 2026-03-11T00:43:18.664Z
-Stopped at: Completed quick-1: Phase 02.2 verification confirmed, worker respawn investigation issue created
+Last session: 2026-03-11T13:43:02.098Z
+Stopped at: Completed quick-2: Introduction section written for research report
