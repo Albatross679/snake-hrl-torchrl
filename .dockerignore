@@ -1,11 +1,22 @@
+# Version control
 .git
+.gitmodules
+
+# Python artifacts
 .venv
 venv
 __pycache__
 *.pyc
 *.egg-info
 .pytest_cache
+
+# Training outputs (mount these as volumes instead)
 output/
+model/
+data/
+wandb/
+
+# Documentation (not needed in image)
 logs/
 experiments/
 issues/
@@ -13,8 +24,18 @@ knowledge/
 references/
 figures/
 media/
-model/
-data/
+doc/
+doc-db/
+report/
+tasks/
+
+# External dependencies (handled separately)
 dismech-rods/
 dismech-python/
+
+# IDE / tool config
 .claude/
+.planning/
+.vscode/
+*.md
+!pyproject.toml
