@@ -1,0 +1,43 @@
+Loading data from data/surrogate_rl_step...
+WARNING: rollout loss not supported with FlatStepDataset (no trajectories). Setting rollout_loss_weight=0.0
+  Train: 3,903,214 transitions
+  Val:   433,386 transitions
+Computing density-based sample weights...
+  Weight range: [0.00, 10.00]
+Computing normalization statistics...
+Model: mlp — 198,780 parameters
+[auto-batch] Searching max batch size in [1024, 131072]...
+[auto-batch] Max working batch: 131072
+[auto-batch] Recommended (headroom=0.9): 117760
+[auto-batch] GPU memory: 16.9 GB
+  Using auto-detected batch size: 117760
+
+Training for 200 epochs on cuda...
+  Single-step loss: epochs 1-20
+  + Rollout loss:   epochs 21+
+Epoch   1/200 | train=1.609292 | val=0.990680 | best=0.990680 | lr=0.000020 | patience=0/30 | 151.8s
+Epoch   5/200 | train=1.493115 | val=0.911704 | best=0.911704 | lr=0.000100 | patience=0/30 | 131.3s
+Epoch  10/200 | train=1.271761 | val=0.881624 | best=0.881624 | lr=0.000100 | patience=0/30 | 130.5s
+Epoch  15/200 | train=1.214131 | val=0.814962 | best=0.814962 | lr=0.000099 | patience=0/30 | 131.6s
+Epoch  20/200 | train=1.209003 | val=0.790939 | rollout=0.000000 | best=0.790939 | lr=0.000099 | patience=0/30 | 130.7s
+Epoch  25/200 | train=1.200469 | val=0.781866 | rollout=0.000000 | best=0.781866 | lr=0.000097 | patience=0/30 | 131.2s
+Epoch  30/200 | train=1.170456 | val=0.777408 | rollout=0.000000 | best=0.777408 | lr=0.000096 | patience=0/30 | 155.0s
+Epoch  35/200 | train=1.172433 | val=0.775067 | rollout=0.000000 | best=0.775067 | lr=0.000094 | patience=0/30 | 130.9s
+Epoch  40/200 | train=1.162614 | val=0.772627 | rollout=0.000000 | best=0.772627 | lr=0.000092 | patience=0/30 | 138.1s
+Epoch  45/200 | train=1.148508 | val=0.770730 | rollout=0.000000 | best=0.770730 | lr=0.000090 | patience=0/30 | 141.8s
+Epoch  50/200 | train=1.177902 | val=0.769035 | rollout=0.000000 | best=0.769035 | lr=0.000087 | patience=0/30 | 136.5s
+Epoch  55/200 | train=1.147174 | val=0.768022 | rollout=0.000000 | best=0.768022 | lr=0.000085 | patience=0/30 | 136.7s
+Epoch  60/200 | train=1.173191 | val=0.767741 | rollout=0.000000 | best=0.767345 | lr=0.000082 | patience=3/30 | 142.2s
+Epoch  65/200 | train=1.156300 | val=0.766892 | rollout=0.000000 | best=0.766844 | lr=0.000078 | patience=1/30 | 142.2s
+Epoch  70/200 | train=1.167437 | val=0.767071 | rollout=0.000000 | best=0.766784 | lr=0.000075 | patience=4/30 | 145.6s
+Epoch  75/200 | train=1.122280 | val=0.767528 | rollout=0.000000 | best=0.766784 | lr=0.000071 | patience=9/30 | 144.6s
+Epoch  80/200 | train=1.150782 | val=0.768419 | rollout=0.000000 | best=0.766784 | lr=0.000068 | patience=14/30 | 145.8s
+Epoch  85/200 | train=1.127282 | val=0.769045 | rollout=0.000000 | best=0.766784 | lr=0.000064 | patience=19/30 | 139.2s
+Epoch  90/200 | train=1.132008 | val=0.770334 | rollout=0.000000 | best=0.766784 | lr=0.000060 | patience=24/30 | 151.2s
+Epoch  95/200 | train=1.131633 | val=0.771070 | rollout=0.000000 | best=0.766784 | lr=0.000056 | patience=29/30 | 158.9s
+Early stopping at epoch 96 (patience=30)
+
+Best validation loss: 0.766784
+Model saved to output/surrogate/M1/model.pt
+Normalizer saved to output/surrogate/M1/normalizer.pt
+Metrics saved to output/surrogate/M1/metrics.json

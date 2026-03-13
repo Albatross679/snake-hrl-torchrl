@@ -1,5 +1,5 @@
 ---
-name: pkm-guide
+name: doc-db-guide
 description: Guide for the Doc Database VSCode extension. Use when the user asks to modify, extend, debug, or understand the doc-db extension, add new commands or features, change the webview UI, update the database schema, or fix extension bugs. Also use when asked about "doc-db", "doc database", or "doc plugin" development.
 ---
 

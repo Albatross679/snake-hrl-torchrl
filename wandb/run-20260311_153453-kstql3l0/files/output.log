@@ -1,0 +1,21 @@
+Loading data from data/surrogate_rl_step...
+WARNING: rollout loss not supported with FlatStepDataset (no trajectories). Setting rollout_loss_weight=0.0
+  Train: 3,903,214 transitions
+  Val:   433,386 transitions
+Computing density-based sample weights...
+  Weight range: [0.00, 10.00]
+Computing normalization statistics...
+Model: mlp — 198,780 parameters
+[auto-batch] Searching max batch size in [1024, 131072]...
+[auto-batch] Max working batch: 131072
+[auto-batch] Recommended (headroom=0.9): 117760
+[auto-batch] GPU memory: 16.9 GB
+  Using auto-detected batch size: 117760
+
+Training for 200 epochs on cuda...
+  Single-step loss: epochs 1-20
+  + Rollout loss:   epochs 21+
+Epoch   1/200 | train=1.614799 | val=0.990561 | best=0.990561 | lr=0.000020 | patience=0/30 | 146.7s
+Epoch   5/200 | train=1.543823 | val=0.914668 | best=0.914668 | lr=0.000100 | patience=0/30 | 156.4s
+Epoch  10/200 | train=1.263659 | val=0.886125 | best=0.886125 | lr=0.000100 | patience=0/30 | 144.8s
+Epoch  15/200 | train=1.214903 | val=0.813152 | best=0.813152 | lr=0.000099 | patience=0/30 | 148.3s

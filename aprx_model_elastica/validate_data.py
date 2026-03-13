@@ -88,8 +88,12 @@ def load_all_batches(data_dir: str) -> dict:
         all_actions.append(data["actions"])
         all_next_states.append(data["next_states"])
         all_episode_ids.append(data["episode_ids"] + episode_offset)
-        all_step_indices.append(data["step_indices"])
-        all_serp_times.append(data["serpenoid_times"])
+        # Phase 2.2 flat format uses "step_ids"; Phase 1 uses "step_indices"
+        step_key = "step_ids" if "step_ids" in data else "step_indices"
+        all_step_indices.append(data[step_key])
+        # Phase 2.2 flat format uses "t_start"; Phase 1 uses "serpenoid_times"
+        time_key = "t_start" if "t_start" in data else "serpenoid_times"
+        all_serp_times.append(data[time_key])
         episode_offset = all_episode_ids[-1].max().item() + 1
 
     return {

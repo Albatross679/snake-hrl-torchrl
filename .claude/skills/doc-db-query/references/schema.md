@@ -41,6 +41,7 @@ Folder: `experiments/`
 | _file_path | TEXT PK |
 | id, name, description, created, updated | TEXT |
 | status | Select: planned, running, complete, failed |
+| subtype | Select: training, architecture, hyperparameter, physics, data, ablation |
 Junction: `experiment_tags`, `experiment_aliases`
 
 ### issue
@@ -60,6 +61,7 @@ Folder: `knowledge/`
 |--------|------|
 | _file_path | TEXT PK |
 | id, name, description, created, updated | TEXT |
+| subtype | Select: domain, implementation, infrastructure, physics, ml |
 Junction: `knowledge_tags`, `knowledge_aliases`
 
 ### reference
@@ -70,6 +72,7 @@ Folder: `references/`
 | id, name, description, created, updated | TEXT |
 | source | TEXT |
 | url | TEXT |
+| subtype | Select: paper, blog, documentation, tutorial, library |
 Junction: `reference_tags`, `reference_aliases`, `reference_authors`
 
 ### idea
@@ -80,6 +83,7 @@ Folder: `ideas/`
 | id, name, description, created, updated | TEXT |
 | status | Select: draft, exploring, implemented, abandoned |
 | priority | Select: low, medium, high |
+| subtype | Select: feature, optimization, research, infrastructure, experiment |
 Junction: `idea_tags`, `idea_aliases`
 
 ## Meta Tables

@@ -62,6 +62,11 @@ snake-hrl/
 - `data/` — data files
 - `logs/`, `experiments/`, `issues/`, `knowledge/`, `references/`, `tasks/` — documentation files
 
+## LaTeX
+
+- The research report lives in `report/report.tex`
+- Always use the **LaTeX Workshop** VS Code extension to compile — do not invoke `pdflatex`, `tectonic`, or other CLI compilers directly
+
 ## Architecture
 
 - **Configs** (`src/configs/`): Dataclass-based hierarchical config for env, network, and training parameters
@@ -75,6 +80,7 @@ snake-hrl/
 
 ## Credentials
 
+- GitHub: `Albatross679`, email `qifan_wen@outlook.com`
 - HuggingFace access token: set `HF_TOKEN` env var
 - WandB API key: set `WANDB_API_KEY` env var
 - Docker Hub (user `albatross679`): set `DOCKER_TOKEN` env var
@@ -105,10 +111,10 @@ All types share these **common properties**: `name`, `description`, `type`, `cre
 In addition, each type has specific properties that MUST be set:
 
 - **`log`**: `status` (draft | complete), `subtype` (fix | training | tuning | research | refactor | setup | feature)
-- **`experiment`**: `status` (planned | running | complete | failed)
+- **`experiment`**: `status` (planned | running | complete | failed), `subtype` (training | architecture | hyperparameter | physics | data | ablation)
 - **`issue`**: `status` (open | investigating | resolved | wontfix), `severity` (low | medium | high | critical), `subtype` (training | physics | compatibility | system | performance)
-- **`knowledge`**: common properties only
-- **`reference`**: `source`, `url`, `authors`
+- **`knowledge`**: `subtype` (domain | implementation | infrastructure | physics | ml)
+- **`reference`**: `source`, `url`, `authors`, `subtype` (paper | blog | documentation | tutorial | library)
 - **`task`**: `status` (planned | in-progress | complete | cancelled)
 
 **Threshold for logging:** A change warrants a log if it modifies behavior, fixes a bug, or changes configuration. Trivial edits (typos, whitespace, comment-only changes) do not need a log entry.

@@ -142,20 +142,65 @@
     \toprule
     Symbol & Dimension & Meaning \\
     \midrule
+    \multicolumn{3}{l}{\textit{State vectors and operators}} \\[2pt]
     $\mathbf{s}_t$ & $\mathbb{R}^{124}$ & Rod state vector at time step $t$ \\
     $\mathbf{a}_t$ & $[-1,1]^5$ & Normalized CPG action vector \\
     $T$ & $\mathbb{R}^{124} \times \mathbb{R}^5 \to \mathbb{R}^{124}$ & Ground-truth transition operator (PyElastica) \\
     $f_\theta$ & $\mathbb{R}^{189} \to \mathbb{R}^{124}$ & Neural surrogate model with parameters $\theta$ \\
     $\mathbf{z}_t$ & $\mathbb{R}^{189}$ & Surrogate input (state $\|$ action $\|$ phase encoding) \\
-    $\boldsymbol{\phi}_e$ & $\mathbb{R}^3$ & Per-element CPG phase triplet for element $e$ \\
+    $\mathbf{g}$ & $\mathbb{R}^{124} \times \mathbb{R}^5 \to \mathbb{R}^{124}$ & ODE right-hand side assembling all 124 scalar ODEs \\
+    \midrule
+    \multicolumn{3}{l}{\textit{State components (node quantities, $i \in \{1, \ldots, N\}$)}} \\[2pt]
+    $x_{t,i},\; y_{t,i}$ & $\mathbb{R}$ & Node $x$- and $y$-positions (m) \\
+    $\dot{x}_{t,i},\; \dot{y}_{t,i}$ & $\mathbb{R}$ & Node $x$- and $y$-velocities (m\,s$^{-1}$) \\
+    $m_i$ & $\mathbb{R}$ & Lumped mass at node $i$ (kg) \\
+    \midrule
+    \multicolumn{3}{l}{\textit{State components (element quantities, $e \in \{1, \ldots, N_e\}$)}} \\[2pt]
+    $\psi_{t,e}$ & $\mathbb{R}$ & Element yaw angle (rad) \\
+    $\omega_{z,t,e}$ & $\mathbb{R}$ & Element angular velocity about $z$-axis (rad\,s$^{-1}$) \\
+    $\kappa_{t,e}$ & $\mathbb{R}$ & Current curvature at element $e$ (rad\,m$^{-1}$) \\
+    $\kappa_{t,e}^{\text{target}}$ & $\mathbb{R}$ & Target curvature set by CPG (rad\,m$^{-1}$) \\
+    $J_e$ & $\mathbb{R}$ & Rotational inertia of element $e$ about $z$-axis \\
+    $\boldsymbol{\phi}_{t,e}$ & $\mathbb{R}^3$ & Per-element CPG phase triplet \\
+    \midrule
+    \multicolumn{3}{l}{\textit{Continuous Cosserat rod fields}} \\[2pt]
     $\mathbf{x}(s,t)$ & $\mathbb{R}^3$ & Rod centerline position at arc length $s$ \\
     $\mathbf{d}(s,t)$ & $\mathbb{R}^3$ & Material director frame (orientation) \\
-    $\mathbf{F}$ & $\mathbb{R}^3$ & Internal force (shear and tension) \\
-    $\mathbf{M}$ & $\mathbb{R}^3$ & Internal moment (bending and torsion) \\
-    $\kappa_e^{\text{target}}$ & $\mathbb{R}$ & Target curvature at element $e$ \\
-    $\mu_\Delta, \sigma_\Delta$ & $\mathbb{R}^{124}$ & Training-set mean and std of state deltas \\
+    $\mathbf{F}(s,t)$ & $\mathbb{R}^3$ & Internal force (shear and tension) \\
+    $\mathbf{M}(s,t)$ & $\mathbb{R}^3$ & Internal moment (bending and torsion) \\
+    $\rho A$ & $\mathbb{R}$ & Linear mass density (kg\,m$^{-1}$) \\
+    $\rho \mathbf{I}$ & $\mathbb{R}$ & Rotational inertia per unit length \\
+    \midrule
+    \multicolumn{3}{l}{\textit{CPG actuation parameters}} \\[2pt]
+    $A$ & $\mathbb{R}$ & Curvature amplitude (rad\,m$^{-1}$) \\
+    $f$ & $\mathbb{R}$ & Oscillation frequency (Hz) \\
+    $k$ & $\mathbb{R}$ & Wave number (wavelengths per body length) \\
+    $\phi_0$ & $\mathbb{R}$ & Initial phase offset (rad) \\
+    $b$ & $\mathbb{R}$ & Constant turn bias (rad\,m$^{-1}$) \\
+    \midrule
+    \multicolumn{3}{l}{\textit{RFT contact model}} \\[2pt]
+    $c_{\text{tangential}}$ & $\mathbb{R}$ & Tangential drag coefficient \\
+    $c_{\text{normal}}$ & $\mathbb{R}$ & Normal drag coefficient \\
+    $v_{\text{tangential}},\; v_{\text{normal}}$ & $\mathbb{R}$ & Velocity components tangential and normal to element \\
+    \midrule
+    \multicolumn{3}{l}{\textit{Integration and discretization}} \\[2pt]
     $N$ & 21 & Number of discretization nodes \\
     $N_e$ & 20 & Number of discretization elements \\
+    $\mathbf{q}_t,\; \dot{\mathbf{q}}_t$ & $\mathbb{R}^{62}$ & Generalized positions and velocities \\
+    $V_{\Delta t}$ & --- & One Position Verlet substep \\
+    $\Delta t$ & $0.001$\,s & Verlet substep duration \\
+    $\Delta t_{\text{ctrl}}$ & $0.5$\,s & RL control step duration \\
+    $n_{\text{sub}}$ & 500 & Number of substeps per control step \\
+    $E$ & $10^5$\,Pa & Young's modulus \\
+    $I$ & $\mathbb{R}$ & Second moment of area ($\pi r^4 / 4$) \\
+    \midrule
+    \multicolumn{3}{l}{\textit{Surrogate training}} \\[2pt]
+    $\overline{\Delta\mathbf{s}}$ & $\mathbb{R}^{124}$ & Normalized state delta prediction \\
+    $\boldsymbol{\mu}_\Delta,\; \boldsymbol{\sigma}_\Delta$ & $\mathbb{R}^{124}$ & Training-set mean and std of state deltas \\
+    $\bar{\mathbf{s}}_t$ & $\mathbb{R}^{124}$ & Z-score normalized state \\
+    $\mathcal{L}_{\text{single}}$ & $\mathbb{R}$ & Single-step MSE loss \\
+    $\mathcal{L}_{\text{rollout}}$ & $\mathbb{R}$ & Multi-step rollout loss \\
+    $\lambda_r$ & $0.1$ & Rollout loss weight \\
     \bottomrule
   \end{tabular}
 \end{table}
@@ -202,163 +247,141 @@ The remainder of this report is organized as follows.
 \label{sec:background:cosserat}
 
 The snake robot body is modeled as a Cosserat rod --- a one-dimensional elastic continuum that supports shear, extension, bending, and torsion along its arc length \citep{Till2019}.
-The Cosserat formulation captures the distributed compliance of the rod body, making it appropriate for soft and continuum robots whose deformation is governed by material elasticity rather than joint constraints.
-The governing equations define a transition operator $T$ that maps the current rod state $\mathbf{s}_t \in \mathbb{R}^{124}$ and a control action $\mathbf{a}_t \in \mathbb{R}^5$ to the next state $\mathbf{s}_{t+1} \in \mathbb{R}^{124}$.
-This operator is the target of the neural surrogate approximation $f_\theta \approx T$.
-The remainder of this subsection derives the transition operator in three stages: the continuous PDEs that govern rod mechanics, the semi-discrete ODE system obtained by spatial discretization, and the numerical time integration that produces the ground-truth state transitions.
+The neural surrogate $f_\theta$ approximates the rod's transition operator $T : (\mathbf{s}_t, \mathbf{a}_t) \mapsto \mathbf{s}_{t+1}$, which maps the current 124-dimensional rod state and 5-dimensional CPG action to the next state.
+The governing equations that define $T$ are presented below.
 
-\subsubsection{Governing PDEs}
-\label{sec:background:cosserat:pdes}
-
-The continuous Cosserat rod PDEs, expressed per unit arc length $s$, enforce the conservation of linear and angular momentum:
+The continuous Cosserat rod PDEs enforce conservation of linear and angular momentum per unit arc length $s$:
 
 \begin{equation}
-  \rho A \frac{\partial^2 \mathbf{x}}{\partial t^2}
-    = \frac{\partial \mathbf{F}}{\partial s} + \mathbf{f}_{\text{ext}}
+  \rho A \frac{\partial^2 \mathbf{x}(s,t)}{\partial t^2}
+    = \frac{\partial \mathbf{F}(s,t)}{\partial s} + \mathbf{f}_{\text{ext}}(s,t)
   \label{eq:linear-momentum}
 \end{equation}
 
 \begin{equation}
-  \rho \mathbf{I} \frac{\partial^2 \mathbf{d}}{\partial t^2}
-    = \frac{\partial \mathbf{M}}{\partial s}
-      + \mathbf{m}_{\text{ext}}
-      + \frac{\partial \mathbf{x}}{\partial s} \times \mathbf{F}
+  \rho \mathbf{I} \frac{\partial^2 \mathbf{d}(s,t)}{\partial t^2}
+    = \frac{\partial \mathbf{M}(s,t)}{\partial s}
+      + \mathbf{m}_{\text{ext}}(s,t)
+      + \frac{\partial \mathbf{x}(s,t)}{\partial s} \times \mathbf{F}(s,t)
   \label{eq:angular-momentum}
 \end{equation}
 
 \begin{itemize}
   \item $\mathbf{x}(s,t) \in \mathbb{R}^3$ --- rod centerline position along arc length $s$
   \item $\mathbf{d}(s,t)$ --- material director frame encoding local orientation
-  \item $\mathbf{F}$ --- internal force from shear and tension (constitutive law)
-  \item $\mathbf{M}$ --- internal moment from bending and torsion (constitutive law)
-  \item $\mathbf{f}_{\text{ext}}$ --- ground contact forces from RFT (\cref{sec:background:rft})
-  \item $\mathbf{m}_{\text{ext}}$ --- muscle moments from CPG actuator (\cref{sec:background:cpg})
+  \item $\mathbf{F}(s,t)$ --- internal force from shear and tension (constitutive law)
+  \item $\mathbf{M}(s,t)$ --- internal moment from bending and torsion (constitutive law)
+  \item $\mathbf{f}_{\text{ext}}(s,t)$ --- ground contact forces from RFT (\cref{sec:background:rft})
+  \item $\mathbf{m}_{\text{ext}}(s,t)$ --- muscle moments from CPG actuator (\cref{sec:background:cpg})
   \item $\rho A$ --- linear mass density
   \item $\rho \mathbf{I}$ --- rotational inertia per unit length
 \end{itemize}
 
 Although the full Cosserat model operates in three dimensions, snake locomotion in this work is constrained to the horizontal plane.
-All $z$-components of position and velocity are verified to be identically zero, so the system reduces to a two-dimensional projection without loss of physical content.
+All $z$-components of position and velocity are identically zero, so the system reduces to a two-dimensional projection without loss of physical content.
 
-\subsubsection{Spatial Discretization and the Semi-Discrete ODE System}
-\label{sec:background:cosserat:ode}
-
-The continuous PDEs (\cref{eq:linear-momentum,eq:angular-momentum}) are discretized spatially into $N = 21$ nodes and $N_e = 20$ elements using a staggered-grid scheme: positions and velocities are defined at nodes, while orientations, angular velocities, and curvatures are defined at elements.
-After restricting to the 2D horizontal plane, the resulting semi-discrete ODE system governs the evolution of 124 scalar state variables.
-
+These PDEs are discretized spatially into $N = 21$ nodes and $N_e = 20$ elements using a staggered-grid scheme: positions and velocities are defined at nodes, while orientations, angular velocities, and curvatures are defined at elements.
 For each node $i \in \{1, \ldots, N\}$, the translational dynamics are:
 
 \begin{equation}
-  \frac{d x_i}{d t} = \dot{x}_i, \qquad
-  \frac{d y_i}{d t} = \dot{y}_i
+  \frac{d x_{t,i}}{d t} = \dot{x}_{t,i}, \qquad
+  \frac{d y_{t,i}}{d t} = \dot{y}_{t,i}
   \label{eq:node-position}
 \end{equation}
 
 \begin{equation}
-  m_i \frac{d \dot{x}_i}{d t}
-    = \Delta_s F_{x,i} + f_{x,i}^{\text{ext}}, \qquad
-  m_i \frac{d \dot{y}_i}{d t}
-    = \Delta_s F_{y,i} + f_{y,i}^{\text{ext}}
+  m_i \frac{d \dot{x}_{t,i}}{d t}
+    = \Delta_s F_{x,t,i} + f_{x,t,i}^{\text{ext}}, \qquad
+  m_i \frac{d \dot{y}_{t,i}}{d t}
+    = \Delta_s F_{y,t,i} + f_{y,t,i}^{\text{ext}}
   \label{eq:node-velocity}
 \end{equation}
 
 \begin{itemize}
   \item $m_i$ --- lumped mass at node $i$
-  \item $\Delta_s F_{x,i}$, $\Delta_s F_{y,i}$ --- discrete spatial derivatives of the internal force
-  \item $f_{x,i}^{\text{ext}}$, $f_{y,i}^{\text{ext}}$ --- external (RFT contact) force components
+  \item $\Delta_s F_{x,t,i}$, $\Delta_s F_{y,t,i}$ --- discrete spatial derivatives of the internal force
+  \item $f_{x,t,i}^{\text{ext}}$, $f_{y,t,i}^{\text{ext}}$ --- external (RFT contact) force components
 \end{itemize}
-The internal forces arise from the constitutive law relating strain to stress: shear force is proportional to the shear strain $(\partial \mathbf{x}/\partial s - \mathbf{d}_3)$ scaled by the shear modulus $GA$, and axial tension is proportional to axial stretch scaled by $EA$.
 
 For each element $e \in \{1, \ldots, N_e\}$, the rotational dynamics are:
 
 \begin{equation}
-  \frac{d \psi_e}{d t} = \omega_{z,e}
+  \frac{d \psi_{t,e}}{d t} = \omega_{z,t,e}
   \label{eq:element-yaw}
 \end{equation}
 
 \begin{equation}
-  J_e \frac{d \omega_{z,e}}{d t}
-    = \Delta_s M_{z,e}
-      + m_{z,e}^{\text{ext}}
-      + \bigl(\Delta_s \mathbf{x}_e \times \mathbf{F}_e\bigr)_z
+  J_e \frac{d \omega_{z,t,e}}{d t}
+    = \Delta_s M_{z,t,e}
+      + m_{z,t,e}^{\text{ext}}
+      + \bigl(\Delta_s \mathbf{x}_{t,e} \times \mathbf{F}_{t,e}\bigr)_z
   \label{eq:element-angular-velocity}
 \end{equation}
 
 \begin{itemize}
   \item $J_e$ --- rotational inertia of element $e$ about the $z$-axis
-  \item $\Delta_s M_{z,e}$ --- discrete spatial derivative of the internal bending moment
-  \item $m_{z,e}^{\text{ext}}$ --- external muscle moment from the CPG actuator
-  \item $\psi_e = \arctan2(\text{tang}_{y,e},\, \text{tang}_{x,e})$ --- element yaw angle
+  \item $\Delta_s M_{z,t,e}$ --- discrete spatial derivative of the internal bending moment
+  \item $m_{z,t,e}^{\text{ext}}$ --- external muscle moment from the CPG actuator
+  \item $\psi_{t,e} = \arctan2(\text{tang}_{y,t,e},\, \text{tang}_{x,t,e})$ --- element yaw angle
 \end{itemize}
 
-The internal bending moment at element $e$ is given by the constitutive law:
+The internal bending moment couples the CPG control action to the rod motion through the constitutive law:
 
 \begin{equation}
-  M_{z,e} = EI \bigl(\kappa_e - \kappa_e^{\text{rest}}\bigr)
+  M_{z,t,e} = EI \bigl(\kappa_{t,e} - \kappa_{t,e}^{\text{rest}}\bigr)
   \label{eq:bending-moment}
 \end{equation}
 
 \begin{itemize}
   \item $E = 1 \times 10^5$\,Pa --- Young's modulus
   \item $I = \pi r^4/4$ --- second moment of area
-  \item $\kappa_e$ --- current curvature at element $e$, computed from the rod shape
-  \item $\kappa_e^{\text{rest}}$ --- rest curvature set by the CPG target (\cref{eq:cpg-curvature})
+  \item $\kappa_{t,e}$ --- current curvature at element $e$, computed from the rod shape
+  \item $\kappa_{t,e}^{\text{rest}}$ --- rest curvature set by the CPG target (\cref{eq:cpg-curvature})
 \end{itemize}
-This elastic restoring force is the mechanism by which the CPG action is transduced into rod motion: the CPG prescribes $\kappa_e^{\text{rest}}$, and the bending moment drives the rod toward that target curvature.
 
-\Cref{eq:node-position,eq:node-velocity,eq:element-yaw,eq:element-angular-velocity} together define a first-order ODE system of 124 scalar equations.
+The CPG prescribes $\kappa_{t,e}^{\text{rest}}$, and the elastic restoring force drives the rod toward that target curvature.
+The internal forces arise from the constitutive law: shear force is proportional to the shear strain $(\partial \mathbf{x}(s,t)/\partial s - \mathbf{d}_3(s,t))$ scaled by the shear modulus $GA$, and axial tension is proportional to axial stretch scaled by $EA$.
 
-\paragraph{Surrogate input--output summary.}
-This ODE system is the exact system that the neural surrogate approximates.
-The transition operator $T$ integrates these 124 coupled ODEs forward by one control step of $\Delta t_{\text{ctrl}} = 0.5$\,s:
+Together, \cref{eq:node-position,eq:node-velocity,eq:element-yaw,eq:element-angular-velocity} define a total of 124 coupled first-order ODEs: 42 for node positions ($x_{t,i}, y_{t,i}$), 42 for node velocities ($\dot{x}_{t,i}, \dot{y}_{t,i}$), 20 for element yaw angles ($\psi_{t,e}$), and 20 for element angular velocities ($\omega_{z,t,e}$).
+This is the system that the neural surrogate approximates --- it learns the map $T : (\mathbf{s}_t, \mathbf{a}_t) \mapsto \mathbf{s}_{t+1}$ that results from integrating these 124 ODEs forward by one control step of 500 Verlet substeps.
+In compact form:
 
 \begin{equation}
-  \mathbf{s}_{t+1} = T(\mathbf{s}_t,\, \mathbf{a}_t), \qquad
+  \dot{\mathbf{s}}_t = \mathbf{g}(\mathbf{s}_t,\, \mathbf{a}_t), \qquad
   \mathbf{s}_t \in \mathbb{R}^{124},\;
-  \mathbf{a}_t \in \mathbb{R}^{5},\;
-  \mathbf{s}_{t+1} \in \mathbb{R}^{124}
-  \label{eq:transition-io}
+  \mathbf{a}_t \in \mathbb{R}^{5}
+  \label{eq:ode-system}
 \end{equation}
 
 \begin{itemize}
-  \item $\mathbf{s}_t \in \mathbb{R}^{124}$ --- rod state vector: node positions, node velocities, element yaw angles, and element angular velocities (\cref{tab:state-vector})
-  \item $\mathbf{a}_t \in \mathbb{R}^{5}$ --- CPG action: amplitude, frequency, wave number, phase offset, and direction bias (\cref{sec:methods:training})
-  \item $\mathbf{s}_{t+1} \in \mathbb{R}^{124}$ --- next rod state after one control step
+  \item $\mathbf{s}_t$ --- the 124-dimensional state vector (\cref{tab:state-vector})
+  \item $\mathbf{a}_t$ --- the 5-dimensional CPG action (amplitude, frequency, wave number, phase offset, direction bias)
+  \item $\mathbf{g}$ --- the right-hand side assembling all 124 scalar ODEs
 \end{itemize}
 
-The surrogate $f_\theta$ learns to approximate $T$ from data, replacing the expensive numerical integration described in the following subsubsection.
-
-\subsubsection{Time Integration}
-\label{sec:background:cosserat:integration}
-
-The semi-discrete ODE system is integrated using a Position Verlet scheme \citep{Naughton2021}, a second-order symplectic integrator.
-Each RL control step of duration $\Delta t_{\text{ctrl}} = 0.5$\,s is subdivided into $n_{\text{sub}} = 500$ substeps of $\Delta t = 0.001$\,s.
-The Position Verlet update for one substep proceeds in three stages:
+This ODE system is integrated using a Position Verlet scheme \citep{Naughton2021}, a second-order symplectic integrator that preserves the Hamiltonian structure, providing long-term energy stability without numerical damping.
+Each RL control step of duration $\Delta t_{\text{ctrl}} = 0.5$\,s is subdivided into $n_{\text{sub}} = 500$ substeps of $\Delta t = 0.001$\,s:
 
 \begin{align}
-  \mathbf{q}^{n+\tfrac{1}{2}}
-    &= \mathbf{q}^{n} + \tfrac{1}{2}\,\Delta t \;\dot{\mathbf{q}}^{n}
+  \mathbf{q}_t^{n+\tfrac{1}{2}}
+    &= \mathbf{q}_t^{n} + \tfrac{1}{2}\,\Delta t \;\dot{\mathbf{q}}_t^{n}
   \label{eq:verlet-half-position} \\[4pt]
-  \dot{\mathbf{q}}^{n+1}
-    &= \dot{\mathbf{q}}^{n} + \Delta t \;\mathbf{a}(\mathbf{q}^{n+\tfrac{1}{2}})
+  \dot{\mathbf{q}}_t^{n+1}
+    &= \dot{\mathbf{q}}_t^{n} + \Delta t \;\mathbf{a}(\mathbf{q}_t^{n+\tfrac{1}{2}})
   \label{eq:verlet-velocity} \\[4pt]
-  \mathbf{q}^{n+1}
-    &= \mathbf{q}^{n+\tfrac{1}{2}} + \tfrac{1}{2}\,\Delta t \;\dot{\mathbf{q}}^{n+1}
+  \mathbf{q}_t^{n+1}
+    &= \mathbf{q}_t^{n+\tfrac{1}{2}} + \tfrac{1}{2}\,\Delta t \;\dot{\mathbf{q}}_t^{n+1}
   \label{eq:verlet-full-position}
 \end{align}
 
 \begin{itemize}
-  \item $\mathbf{q}$ --- generalized positions (node $x_i, y_i$ and element $\psi_e$)
-  \item $\dot{\mathbf{q}}$ --- generalized velocities (node $\dot{x}_i, \dot{y}_i$ and element $\omega_{z,e}$)
-  \item $\mathbf{a}(\mathbf{q})$ --- generalized accelerations from internal, external, and contact forces
-  \item $n$ --- substep index
+  \item $\mathbf{q}_t$ --- generalized positions (node $x_{t,i}, y_{t,i}$ and element $\psi_{t,e}$)
+  \item $\dot{\mathbf{q}}_t$ --- generalized velocities (node $\dot{x}_{t,i}, \dot{y}_{t,i}$ and element $\omega_{z,t,e}$)
+  \item $\mathbf{a}(\mathbf{q}_t)$ --- generalized accelerations from internal, external, and contact forces
   \item $\Delta t = 0.001$\,s --- substep duration
 \end{itemize}
 
-The half-step position update (\cref{eq:verlet-half-position}) advances positions using the current velocities, forces and moments are then evaluated at the half-step configuration, the velocity update (\cref{eq:verlet-velocity}) applies the resulting accelerations over a full substep, and the second half-step (\cref{eq:verlet-full-position}) completes the position update using the new velocities.
-This leap-frog structure preserves the symplectic character of the Hamiltonian flow, providing long-term energy stability without numerical damping.
-
-After all $n_{\text{sub}} = 500$ substeps, the rod state at the end of the control step defines the ground-truth transition:
+After all 500 substeps, the ground-truth transition operator is the composition:
 
 \begin{equation}
   \mathbf{s}_{t+1} = T(\mathbf{s}_t, \mathbf{a}_t)
@@ -367,11 +390,11 @@ After all $n_{\text{sub}} = 500$ substeps, the rod state at the end of the contr
 \end{equation}
 
 \begin{itemize}
-  \item $V_{\Delta t}$ --- one Position Verlet substep (\cref{eq:verlet-half-position,eq:verlet-velocity,eq:verlet-full-position})
-  \item $T$ --- ground-truth transition operator for one RL control step
+  \item $V_{\Delta t}$ --- one Position Verlet substep
+  \item $T$ --- ground-truth transition operator for one RL control step ($\Delta t_{\text{ctrl}} = 0.5$\,s)
 \end{itemize}
-The neural surrogate $f_\theta$ replaces this composition of 500 Verlet substeps with a single forward pass through the network.
-The resulting state vector $\mathbf{s}_t \in \mathbb{R}^{124}$ is defined in \cref{tab:state-vector}.
+
+The state vector $\mathbf{s}_t \in \mathbb{R}^{124}$ is defined in \cref{tab:state-vector}.
 
 \begin{table}[H]
   \centering
@@ -382,68 +405,17 @@ The resulting state vector $\mathbf{s}_t \in \mathbb{R}^{124}$ is defined in \cr
     \toprule
     Index slice & Variable & Count & Physical meaning \\
     \midrule
-    \texttt{[0:21]}    & $x_i$          & 21 & Node $x$-positions (m)                         \\
-    \texttt{[21:42]}   & $y_i$          & 21 & Node $y$-positions (m)                         \\
-    \texttt{[42:63]}   & $\dot{x}_i$    & 21 & Node $x$-velocities (m\,s$^{-1}$)             \\
-    \texttt{[63:84]}   & $\dot{y}_i$    & 21 & Node $y$-velocities (m\,s$^{-1}$)             \\
-    \texttt{[84:104]}  & $\psi_e$       & 20 & Element yaw angle (rad)                        \\
-    \texttt{[104:124]} & $\omega_{z,e}$ & 20 & Element angular velocity about $z$-axis (rad\,s$^{-1}$) \\
+    \texttt{[0:21]}    & $x_{t,i}$          & 21 & Node $x$-positions (m)                         \\
+    \texttt{[21:42]}   & $y_{t,i}$          & 21 & Node $y$-positions (m)                         \\
+    \texttt{[42:63]}   & $\dot{x}_{t,i}$    & 21 & Node $x$-velocities (m\,s$^{-1}$)             \\
+    \texttt{[63:84]}   & $\dot{y}_{t,i}$    & 21 & Node $y$-velocities (m\,s$^{-1}$)             \\
+    \texttt{[84:104]}  & $\psi_{t,e}$       & 20 & Element yaw angle (rad)                        \\
+    \texttt{[104:124]} & $\omega_{z,t,e}$ & 20 & Element angular velocity about $z$-axis (rad\,s$^{-1}$) \\
     \bottomrule
   \end{tabular}
 \end{table}
 
-This 124-dimensional vector is the Markov state used for both surrogate training and RL policy input.
-The lower-dimensional observation space (14 floats derived from FFT compression of node positions) that the RL policy receives is not Markov: identical observations can correspond to different underlying rod configurations and velocity profiles.
-As a consequence, the surrogate must operate on the full 124-dimensional state to produce correct multi-step rollouts.
-
-\subsubsection{The Approximation Chain}
-\label{sec:background:cosserat:chain}
-
-The surrogate model $f_\theta$ sits at the end of a chain of approximations that begins with the continuous Cosserat rod PDEs.
-
-\textbf{The continuous flow map.}
-The Cosserat rod PDEs (\cref{eq:linear-momentum,eq:angular-momentum}) define a continuous dynamical system.
-Given an initial rod state $\mathbf{s}(0)$ and a constant action $\mathbf{a}$, the exact solution at time $\Delta t_{\text{ctrl}}$ is the flow map:
-
-\begin{equation}
-  \Phi_{\Delta t_{\text{ctrl}}} : (\mathbf{s}(0),\, \mathbf{a}) \;\mapsto\; \mathbf{s}(\Delta t_{\text{ctrl}})
-  \label{eq:flow-map}
-\end{equation}
-
-This map is not available in closed form because the PDEs are nonlinear (the constitutive law couples shear, bending, and contact forces to the deformed configuration) and the RFT contact forces depend on the instantaneous velocity field.
-
-\textbf{Spatial discretization.}
-Discretizing in space with $N = 21$ nodes and $N_e = 20$ elements (\cref{sec:background:cosserat:ode}) replaces the infinite-dimensional PDE with a finite-dimensional ODE system of 124 scalar equations.
-This introduces a spatial discretization error $\epsilon_{\text{space}}$:
-
-\begin{equation}
-  \dot{\mathbf{s}} = \mathbf{g}(\mathbf{s},\, \mathbf{a}), \qquad
-  \mathbf{s} \in \mathbb{R}^{124}
-  \label{eq:ode-system}
-\end{equation}
-
-\begin{itemize}
-  \item $\mathbf{g}$ --- the right-hand side assembling all 124 scalar ODEs from \cref{eq:node-position,eq:node-velocity,eq:element-yaw,eq:element-angular-velocity}
-  \item $\mathbf{s}$ --- the 124-dimensional state vector (\cref{tab:state-vector})
-\end{itemize}
-The exact flow of this ODE system defines a semi-discrete flow map $\Phi_{\Delta t_{\text{ctrl}}}^{h}$ that approximates the continuous flow map up to the spatial truncation error.
-
-\textbf{Time integration.}
-The Position Verlet integrator (\cref{sec:background:cosserat:integration}) advances \cref{eq:ode-system} by composing $n_{\text{sub}} = 500$ substeps of size $\Delta t = 0.001$\,s.
-Each substep applies the three-stage update $V_{\Delta t}$ from \cref{eq:verlet-half-position,eq:verlet-velocity,eq:verlet-full-position}, yielding the numerical transition operator:
-
-\begin{equation}
-  T(\mathbf{s}_t,\, \mathbf{a}_t)
-    = \underbrace{V_{\Delta t} \circ \cdots \circ V_{\Delta t}}_{500}(\mathbf{s}_t;\, \mathbf{a}_t)
-    \approx \Phi_{\Delta t_{\text{ctrl}}}^{h}(\mathbf{s}_t,\, \mathbf{a}_t)
-  \label{eq:numerical-transition}
-\end{equation}
-
-As a second-order symplectic integrator, the Position Verlet scheme introduces a temporal discretization error $\epsilon_{\text{time}} = \mathcal{O}(\Delta t^2)$ per substep.
-Over $n_{\text{sub}}$ substeps the global error is $\mathcal{O}(\Delta t^2)$, while the symplectic structure ensures that no secular energy drift accumulates over long trajectories.
-
-\textbf{Neural approximation.}
-The neural surrogate $f_\theta$ replaces the composition of 500 Verlet substeps with a single forward pass:
+The neural surrogate $f_\theta$ replaces the composition of 500 Verlet substeps with a single forward pass, approximating the state delta:
 
 \begin{equation}
   f_\theta(\mathbf{z}_t) \approx T(\mathbf{s}_t,\, \mathbf{a}_t) - \mathbf{s}_t
@@ -451,13 +423,11 @@ The neural surrogate $f_\theta$ replaces the composition of 500 Verlet substeps 
 \end{equation}
 
 \begin{itemize}
-  \item $f_\theta(\mathbf{z}_t)$ --- predicted state delta (after denormalization via $\boldsymbol{\mu}_\Delta, \boldsymbol{\sigma}_\Delta$)
-  \item $\mathbf{z}_t \in \mathbb{R}^{189}$ --- surrogate input (\cref{eq:surrogate-input}), encoding state, action, and per-element CPG phase
+  \item $f_\theta$ --- neural surrogate with parameters $\theta$
+  \item $\mathbf{z}_t \in \mathbb{R}^{189}$ --- surrogate input encoding state, action, and per-element CPG phase (\cref{eq:surrogate-input})
 \end{itemize}
-This introduces a learned approximation error $\epsilon_{\text{nn}}$ that depends on network capacity, training data coverage, and the optimization procedure.
 
-\textbf{Error decomposition.}
-The full chain from continuous physics to neural prediction is:
+The full approximation chain from continuous physics to neural prediction is:
 
 \begin{equation}
   \underbrace{\text{Cosserat PDE}}_{\text{continuous}}
@@ -470,23 +440,8 @@ The full chain from continuous physics to neural prediction is:
   \label{eq:approximation-chain}
 \end{equation}
 
-The total prediction error of the surrogate, relative to the true physics, decomposes as:
-
-\begin{equation}
-  \|\hat{\mathbf{s}}_{t+1} - \mathbf{s}^{\text{true}}_{t+1}\|
-    \;\leq\;
-    \underbrace{\epsilon_{\text{space}}}_{\text{21 nodes}}
-    + \underbrace{\epsilon_{\text{time}}}_{\mathcal{O}(\Delta t^2)}
-    + \underbrace{\epsilon_{\text{nn}}}_{\text{learned}}
-  \label{eq:error-decomposition}
-\end{equation}
-
-The first two terms are fixed by the simulator design and are shared with any policy trained directly on PyElastica.
-Only the third term --- the neural approximation error --- is specific to the surrogate approach.
-The surrogate training procedure (\cref{sec:methods:training}) minimizes $\epsilon_{\text{nn}}$ on the training distribution; the multi-step rollout loss (\cref{eq:rollout-loss}) explicitly targets the autoregressive accumulation of $\epsilon_{\text{nn}}$ over consecutive predictions, which is the dominant failure mode when the surrogate serves as an RL environment.
-
-The key computational trade-off is that evaluating $T$ requires 500 sequential Verlet substeps (each assembling forces, computing accelerations, and updating 124 state variables), while evaluating $f_\theta$ requires a single matrix-multiply chain through three hidden layers.
-On GPU, the surrogate forward pass costs ${\sim}0.001$\,ms compared to ${\sim}46$\,ms for the Verlet composition on CPU, yielding a projected speedup of four to five orders of magnitude.
+Only $\epsilon_{\text{nn}}$ --- the neural approximation error --- is specific to the surrogate approach; the spatial and temporal discretization errors are shared with any policy trained directly on PyElastica.
+Evaluating $T$ requires 500 sequential Verlet substeps at ${\sim}46$\,ms per RL step on CPU, while evaluating $f_\theta$ requires a single GPU forward pass at ${\sim}0.001$\,ms, yielding a projected speedup of four to five orders of magnitude.
 
 \subsection{Resistive Force Theory Contact Model}
 \label{sec:background:rft}
@@ -497,21 +452,21 @@ This formulation avoids the computational expense of a full contact optimization
 The drag forces per unit length on element $e$ are given by:
 
 \begin{equation}
-  f_t = -c_t \, v_t
+  f_{\text{tangential}} = -c_{\text{tangential}} \, v_{\text{tangential}}
   \label{eq:rft-tangential}
 \end{equation}
 
 \begin{equation}
-  f_n = -c_n \, v_n
+  f_{\text{normal}} = -c_{\text{normal}} \, v_{\text{normal}}
   \label{eq:rft-normal}
 \end{equation}
 
 \begin{itemize}
-  \item $v_t$, $v_n$ --- velocity components tangent and normal to the element
-  \item $c_t$, $c_n$ --- corresponding drag coefficients
+  \item $v_{\text{tangential}}$, $v_{\text{normal}}$ --- velocity components tangential and normal to the element centerline
+  \item $c_{\text{tangential}}$, $c_{\text{normal}}$ --- corresponding drag coefficients
 \end{itemize}
-The values used in this work are $c_t = 0.01$ and $c_n = 0.05$, giving a normal-to-tangential ratio of five.
-The anisotropy $c_n > c_t$ is the physical mechanism enabling net forward motion: lateral slip is resisted more strongly than axial slip, so the reaction forces from a traveling curvature wave produce a net thrust in the direction of wave propagation.
+The values used in this work are $c_{\text{tangential}} = 0.01$ and $c_{\text{normal}} = 0.05$, giving a normal-to-tangential ratio of five.
+The anisotropy $c_{\text{normal}} > c_{\text{tangential}}$ is the physical mechanism enabling net forward motion: lateral slip is resisted more strongly than axial slip, so the reaction forces from a traveling curvature wave produce a net thrust in the direction of wave propagation.
 
 \subsection{Central Pattern Generator Actuation}
 \label{sec:background:cpg}
@@ -521,7 +476,7 @@ A Central Pattern Generator (CPG) controller prescribes a target curvature at ea
 The target curvature at element $i$ is:
 
 \begin{equation}
-  \kappa_i^{\text{target}}
+  \kappa_{t,i}^{\text{target}}
     = A \sin\!\bigl(2\pi k \cdot s_i + 2\pi f \cdot t + \phi_0\bigr) + b
   \label{eq:cpg-curvature}
 \end{equation}
@@ -537,18 +492,18 @@ The target curvature at element $i$ is:
 Together, these form the five-dimensional action vector:
 
 \begin{equation}
-  \mathbf{a} = (A,\; f,\; k,\; \phi_0,\; b) \in \mathbb{R}^5
+  \mathbf{a}_t = (A,\; f,\; k,\; \phi_0,\; b) \in \mathbb{R}^5
   \label{eq:action-vector}
 \end{equation}
 
 The physical ranges are $A \in [0, 5]$, $f \in [0.5, 3.0]$\,Hz, $k \in [0.5, 3.5]$, $\phi_0 \in [0, 2\pi]$, and $b \in [-2, 2]$.
-The RL policy outputs a normalized action $\mathbf{a} \in [-1,1]^5$ that is linearly mapped to these physical ranges at each control step.
+The RL policy outputs a normalized action $\mathbf{a}_t \in [-1,1]^5$ that is linearly mapped to these physical ranges at each control step.
 
 \subsection{PyElastica Simulator}
 \label{sec:background:elastica}
 
 PyElastica \citep{Naughton2021} is an open-source Python framework for compliant mechanics simulation based on Cosserat rod theory.
-The discretized ODE system from \cref{sec:background:cosserat:ode} is integrated using the Position Verlet scheme described in \cref{sec:background:cosserat:integration}, a second-order symplectic integrator that provides long-term energy stability for stiff elastic dynamics without the cost of implicit methods.
+The discretized ODE system (\cref{sec:background:cosserat}) is integrated using the Position Verlet scheme, a second-order symplectic integrator that provides long-term energy stability for stiff elastic dynamics without the cost of implicit methods.
 Each RL control step of duration $\Delta t_{\text{ctrl}} = 0.5$\,s executes $n_{\text{sub}} = 500$ Position Verlet substeps of $\Delta t = 0.001$\,s, defining the ground-truth transition operator $T$ (\cref{eq:transition-composed}).
 
 A single evaluation of $T$ requires approximately 46\,ms when 16 parallel workers are active on a 48-core CPU server.
@@ -608,7 +563,7 @@ Within each episode, 50\% of actions are drawn uniformly at random and the remai
   \FOR{each worker $w = 1, \ldots, W$ in parallel}
     \LOOP
       \STATE Initialize rod; with probability $p$, perturb state
-      \STATE Sample action $\mathbf{a}$ from $\mathcal{S}$ (50\%) or uniform (50\%)
+      \STATE Sample action $\mathbf{a}_t$ from $\mathcal{S}$ (50\%) or uniform (50\%)
       \STATE Execute one RL step: $\mathbf{s}_{t+1} \leftarrow T(\mathbf{s}_t, \mathbf{a}_t)$
       \STATE Store $(\mathbf{s}_t, \mathbf{a}_t, \mathbf{s}_{t+1}, t_{\text{start}})$ to batch file
     \ENDLOOP
@@ -659,17 +614,17 @@ For element $e \in \{1, \ldots, N_e\}$, an effective time is computed as:
 From this, a phase triplet is constructed:
 
 \begin{equation}
-  \boldsymbol{\phi}_e
+  \boldsymbol{\phi}_{t,e}
     = \bigl(\sin(2\pi f \cdot t_e),\;
             \cos(2\pi f \cdot t_e),\;
-            \kappa_e^{\text{actual}}\bigr)
+            \kappa_{t,e}^{\text{actual}}\bigr)
   \label{eq:per-element-phase}
 \end{equation}
 
 The effective time $t_e = k \cdot s_e / f$ incorporates the spatial phase offset at element $e$, where $k$ is the wave number and $s_e$ is the normalized arc-length position.
-The sine and cosine terms give the model the exact phase of the serpenoid wave at each element's location, and $\kappa_e^{\text{actual}}$ is the instantaneous curvature providing the control error that drives the elastic restoring force.
+The sine and cosine terms give the model the exact phase of the serpenoid wave at each element's location, and $\kappa_{t,e}^{\text{actual}}$ is the instantaneous curvature providing the control error that drives the elastic restoring force.
 
-Stacking $\boldsymbol{\phi}_e$ for all $N_e = 20$ elements yields a 60-dimensional phase feature vector.
+Stacking $\boldsymbol{\phi}_{t,e}$ for all $N_e = 20$ elements yields a 60-dimensional phase feature vector.
 These features are computed on-the-fly during dataset loading from the stored action and episode start time $t_{\text{start}}$, so batch files contain only rod states, actions, and $t_{\text{start}}$ without pre-computed phase data.
 
 The full surrogate input concatenates the z-score normalized rod state $\bar{\mathbf{s}}_t$, the normalized action $\mathbf{a}_t$, and the per-element phase features:
@@ -677,7 +632,7 @@ The full surrogate input concatenates the z-score normalized rod state $\bar{\ma
 \begin{equation}
   \mathbf{z}_t
     = \bigl[\bar{\mathbf{s}}_t \;\|\; \mathbf{a}_t \;\|\;
-            \boldsymbol{\phi}_1, \ldots, \boldsymbol{\phi}_{N_e}\bigr]
+            \boldsymbol{\phi}_{t,1}, \ldots, \boldsymbol{\phi}_{t,N_e}\bigr]
     \in \mathbb{R}^{189}
   \label{eq:surrogate-input}
 \end{equation}
@@ -685,7 +640,7 @@ The full surrogate input concatenates the z-score normalized rod state $\bar{\ma
 \begin{itemize}
   \item $\bar{\mathbf{s}}_t = (\mathbf{s}_t - \boldsymbol{\mu}_s)/\boldsymbol{\sigma}_s$ --- z-score normalized state using training-set per-feature mean $\boldsymbol{\mu}_s$ and standard deviation $\boldsymbol{\sigma}_s$
   \item $\mathbf{a}_t \in [-1,1]^5$ --- normalized CPG action
-  \item $\boldsymbol{\phi}_1, \ldots, \boldsymbol{\phi}_{N_e}$ --- per-element phase triplets (60 dimensions total)
+  \item $\boldsymbol{\phi}_{t,1}, \ldots, \boldsymbol{\phi}_{t,N_e}$ --- per-element phase triplets (60 dimensions total)
 \end{itemize}
 The 189 dimensions decompose as $124 + 5 + 60$.
 
@@ -815,6 +770,63 @@ All experiments were logged to Weights \& Biases for tracking and comparison.
 \label{sec:experiments}
 % ---------------------------------------------------------------------------
 
+\subsection{Dataset Validation}
+\label{sec:experiments:dataset}
+
+Before surrogate training, the collected dataset was subjected to a systematic quality and coverage analysis.
+The dataset comprises $4{,}336{,}600$ single-step transitions collected by 16 parallel PyElastica workers using Sobol quasi-random action sampling with state perturbation (\cref{sec:methods:datacollection}).
+Each transition is stored as an independent $({\mathbf{s}_t, \mathbf{a}_t, \mathbf{s}_{t+1}})$ tuple --- there are no multi-step episodes in this dataset, as each transition was collected from a fresh or perturbed rod state.
+
+Eight metrics were evaluated against predefined thresholds to produce a structured pass/fail assessment (\cref{tab:data-validation}).
+The metrics are organized into three categories:
+\begin{itemize}
+  \item \textbf{Data integrity} --- \emph{NaN/Inf rate}: fraction of non-finite values from simulation divergence; \emph{Duplicate rate}: fraction of identical $(\mathbf{s}_t, \mathbf{a}_t)$ pairs that bias the training distribution; \emph{Constant features}: state dimensions with near-zero variance ($\sigma < 10^{-6}$) that carry no information; \emph{Outlier rate}: fraction of values exceeding $5\sigma$ from the per-dimension mean, indicating rare extreme states.
+  \item \textbf{Temporal balance} --- \emph{Episode length CV}: coefficient of variation of episode lengths (a high CV indicates inconsistent trajectory durations); \emph{Step index bias}: ratio of transitions from the first temporal quartile to the last, where 1.0 indicates uniform coverage and values far from 1.0 indicate the dataset over-represents early or late dynamics.
+  \item \textbf{Action coverage} --- \emph{Per-dim action fill}: fraction of 20 equal-width bins in $[-1,1]$ containing at least one sample, measured independently per action dimension; \emph{5D joint fill fraction}: proportion of all $20^5 = 3{,}200{,}000$ joint action-space bins that are occupied, measuring combinatorial coverage across all five CPG parameters simultaneously.
+\end{itemize}
+
+\begin{table}[H]
+  \centering
+  \small
+  \caption{Dataset validation rubric.  Seven of eight metrics pass; the duplicate rate of 3.84\% exceeds the 1\% threshold.}
+  \label{tab:data-validation}
+  \begin{tabular}{lrll}
+    \toprule
+    Metric & Value & Threshold & Status \\
+    \midrule
+    NaN/Inf rate           & 0.00\%  & $< 0.1\%$      & PASS \\
+    Duplicate rate         & 3.84\%  & $< 1\%$        & FAIL \\
+    Constant features      & 0       & $= 0$          & PASS \\
+    Outlier rate ($>5\sigma$) & 0.10\% & $< 0.5\%$    & PASS \\
+    Episode length CV      & 0.00    & $< 0.5$        & PASS \\
+    Step index bias (Q1/Q4)& 0.98    & $0.7$--$1.3$   & PASS \\
+    Action 5D fill fraction& 74.5\%  & $> 5\%$        & PASS \\
+    Per-dim action fill    & 100\%   & all $> 90\%$   & PASS \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\textbf{Data quality.}
+No NaN or Inf values were detected in any of the 124 state dimensions, 5 action dimensions, or 124 next-state dimensions across all $4.3 \times 10^6$ transitions.
+No constant or near-constant features (standard deviation $< 10^{-6}$) were found, confirming that all state dimensions carry information.
+The outlier rate (values exceeding $5\sigma$ from the per-dimension mean) was 0.10\%, concentrated in the velocity components: $\dot{x}_{t,i}$ (169{,}721 outliers), $\dot{y}_{t,i}$ (169{,}275), and $\omega_{z,t,e}$ (160{,}620).
+These correspond to high-speed or high-rotation states that arise from large-amplitude CPG actions and are physically valid extremes of the dynamics.
+
+\textbf{Action space coverage.}
+All five action dimensions achieve 100\% marginal fill (every bin in a 20-bin partition of $[-1, 1]$ contains at least one sample), confirming that the Sobol quasi-random sampling covered the full CPG parameter range.
+The 5D joint fill fraction --- the proportion of all $20^5 = 3{,}200{,}000$ possible action-space bins that contain at least one sample --- was 74.5\%, indicating dense coverage of the joint action space.
+No under-sampled regions were detected (all occupied bins exceeded the threshold of one-third of the mean count).
+
+\textbf{Temporal coverage.}
+The step index bias ratio (first-quartile to last-quartile transition count) was 0.98, indicating near-uniform temporal coverage across the collection period.
+Since each transition is an independent single-step sample, episode length analysis is trivial (all episodes have length 1).
+
+\textbf{Duplicate transitions.}
+The only failing metric was the duplicate rate of 3.84\% ($166{,}518$ transitions).
+Duplicates arise when independent workers sample identical Sobol grid points and encounter similar rod states.
+For surrogate training, duplicates introduce a mild bias toward over-represented state-action regions but do not corrupt predictions.
+Given the dataset size ($4.17 \times 10^6$ unique transitions remain after deduplication), this was judged acceptable and training proceeded without deduplication.
+
 \subsection{Surrogate Accuracy}
 \label{sec:experiments:accuracy}
 
@@ -863,8 +875,8 @@ It was identified only after observing consistent negative forward-velocity rewa
 The experience motivates explicit unit tests that verify wave propagation direction for a known CPG configuration, rather than relying on training metrics to surface physics errors.
 
 \textbf{RFT friction coefficient tuning.}
-Anisotropic drag coefficients derived from published values for soil-crawling snakes ($c_n/c_t \approx 10$) produced excessive lateral drift on the flat-surface simulation substrate.
-A grid search over the ratio $c_n/c_t$ found that $c_t = 0.01$ and $c_n = 0.05$ (ratio 5:1) yielded stable forward propulsion with a 94:1 forward-to-lateral velocity ratio across the full CPG parameter range.
+Anisotropic drag coefficients derived from published values for soil-crawling snakes ($c_{\text{normal}}/c_{\text{tangential}} \approx 10$) produced excessive lateral drift on the flat-surface simulation substrate.
+A grid search over the ratio $c_{\text{normal}}/c_{\text{tangential}}$ found that $c_{\text{tangential}} = 0.01$ and $c_{\text{normal}} = 0.05$ (ratio 5:1) yielded stable forward propulsion with a 94:1 forward-to-lateral velocity ratio across the full CPG parameter range.
 The discrepancy from published values reflects the different contact mechanics of dry-surface locomotion (no soil deformation, no granular interlocking), confirming that substrate-specific friction calibration is necessary when transferring the contact model across physical regimes.
 
 \subsection{Surrogate Architecture Experiments}
@@ -898,8 +910,8 @@ The optimal configuration was 16 workers (${\sim}8$ per socket), achieving near-
 The surrogate ultimately sidesteps this bottleneck entirely: once the dataset is collected, RL training runs on GPU at throughputs orders of magnitude higher than any CPU-bound simulation.
 
 \textbf{Angular velocity coverage gap.}
-Analysis of the V1 dataset revealed poor surrogate predictions for element angular velocity ($\omega_z$), with mean R$^2 = 0.23$ and individual elements below zero.
-The state perturbation standard deviation of $\sigma_\omega = 0.05$\,rad/s was far below the operational CPG range of 1--10\,rad/s, leaving large-$|\omega_z|$ regions severely underrepresented.
+Analysis of the V1 dataset revealed poor surrogate predictions for element angular velocity ($\omega_{z,t,e}$), with mean R$^2 = 0.23$ and individual elements below zero.
+The state perturbation standard deviation of $\sigma_\omega = 0.05$\,rad/s was far below the operational CPG range of 1--10\,rad/s, leaving large-$|\omega_{z,t,e}|$ regions severely underrepresented.
 For the V2 dataset, $\sigma_\omega$ was increased to 1.5\,rad/s, covering the full operational range.
 This case illustrates a general issue: if the collection distribution does not cover the state-space regions that the downstream RL policy will visit, the surrogate will be inaccurate precisely where accuracy is most needed.
 

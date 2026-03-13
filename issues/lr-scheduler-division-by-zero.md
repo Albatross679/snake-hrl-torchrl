@@ -1,6 +1,7 @@
 ---
 created: 2026-03-05T00:00:00
 updated: 2026-03-05T00:00:00
+description: LR scheduler computation divides by zero when total_frames is less than frames_per_batch
 tags: [bug, ppo, lr-scheduler, training]
 type: issue
 status: resolved

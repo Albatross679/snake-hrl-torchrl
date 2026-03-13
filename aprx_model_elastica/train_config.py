@@ -33,6 +33,14 @@ class SurrogateModelConfig:
     dropout: float = 0.0
     predict_delta: bool = True       # next_state = current + model(input)
 
+    # Architecture selection: "mlp", "residual", or "transformer"
+    arch: str = "mlp"
+
+    # Transformer-specific (only used when arch="transformer")
+    n_layers: int = 6
+    n_heads: int = 8
+    d_model: int = 256
+
 
 # ---------------------------------------------------------------------------
 # Surrogate training

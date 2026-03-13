@@ -1,6 +1,7 @@
 ---
 created: 2026-03-05T00:00:00
 updated: 2026-03-05T00:00:00
+description: SyncDataCollector silently drops custom diagnostic keys not declared in observation_spec
 tags: [torchrl, compatibility, v0.11, bug, collector, diagnostics]
 type: issue
 status: resolved

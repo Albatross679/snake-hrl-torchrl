@@ -259,6 +259,151 @@ class ResidualSurrogateModel(nn.Module):
         return state + delta
 
 
+class RMSNorm(nn.Module):
+    """Root Mean Square Layer Normalization (Ba et al., 2016 variant).
+
+    Unlike LayerNorm, RMSNorm does not re-center (no bias subtraction),
+    only re-scales by the RMS of the input. Slightly faster and often
+    performs comparably or better in transformers.
+    """
+
+    def __init__(self, dim: int, eps: float = 1e-6):
+        super().__init__()
+        self.scale = nn.Parameter(torch.ones(dim))
+        self.eps = eps
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        rms = x.float().pow(2).mean(-1, keepdim=True).add(self.eps).rsqrt()
+        return (x.float() * rms).to(x.dtype) * self.scale
+
+
+class TransformerSurrogateModel(nn.Module):
+    """FT-Transformer surrogate for one RL step of Cosserat rod dynamics.
+
+    Architecture (Feature Tokenizer Transformer):
+        - Each of 131 input scalars → learned Linear(1, d_model) embedding
+        - [CLS] token prepended (132 tokens total)
+        - Pre-Norm transformer encoder blocks with RMSNorm
+        - CLS output → Linear(d_model, 124), zero-initialized
+    """
+
+    def __init__(self, config: "SurrogateModelConfig" = None):
+        super().__init__()
+        if config is None:
+            from aprx_model_elastica.train_config import SurrogateModelConfig
+            config = SurrogateModelConfig(arch="transformer")
+        self.config = config
+
+        d_model = config.d_model
+        n_layers = config.n_layers
+        n_heads = config.n_heads
+        input_dim = config.input_dim  # 131
+
+        # Feature tokenizer: one linear per input scalar
+        self.feature_embeds = nn.ModuleList([
+            nn.Linear(1, d_model) for _ in range(input_dim)
+        ])
+        for emb in self.feature_embeds:
+            nn.init.xavier_uniform_(emb.weight)
+            nn.init.zeros_(emb.bias)
+
+        # [CLS] token
+        self.cls_token = nn.Parameter(torch.randn(1, 1, d_model) * 0.02)
+
+        # Transformer encoder blocks (Pre-Norm)
+        self.blocks = nn.ModuleList([
+            _TransformerBlock(d_model, n_heads) for _ in range(n_layers)
+        ])
+
+        # Final norm + output head
+        self.final_norm = RMSNorm(d_model)
+        self.output_head = nn.Linear(d_model, config.output_dim)
+        nn.init.zeros_(self.output_head.weight)
+        nn.init.zeros_(self.output_head.bias)
+
+    def forward(
+        self,
+        state: torch.Tensor,
+        action: torch.Tensor,
+        time_encoding: torch.Tensor,
+    ) -> torch.Tensor:
+        """Predict state delta.
+
+        Args:
+            state: (B, 124) normalized rod state.
+            action: (B, 5) raw action.
+            time_encoding: (B, 2) [sin(t), cos(t)].
+
+        Returns:
+            (B, 124) predicted state delta.
+        """
+        x = torch.cat([state, action, time_encoding], dim=-1)  # (B, 131)
+        B = x.shape[0]
+
+        # Feature tokenize: each scalar → d_model embedding
+        tokens = torch.stack([
+            emb(x[:, i:i+1]) for i, emb in enumerate(self.feature_embeds)
+        ], dim=1)  # (B, 131, d_model)
+
+        # Prepend [CLS] token
+        cls = self.cls_token.expand(B, -1, -1)  # (B, 1, d_model)
+        tokens = torch.cat([cls, tokens], dim=1)  # (B, 132, d_model)
+
+        # Transformer blocks
+        for block in self.blocks:
+            tokens = block(tokens)
+
+        # CLS output → prediction
+        cls_out = self.final_norm(tokens[:, 0])  # (B, d_model)
+        return self.output_head(cls_out)  # (B, 124)
+
+    def predict_next_state(
+        self,
+        state: torch.Tensor,
+        action: torch.Tensor,
+        time_encoding: torch.Tensor,
+        normalizer=None,
+    ) -> torch.Tensor:
+        if normalizer is not None:
+            state_norm = normalizer.normalize_state(state)
+        else:
+            state_norm = state
+        delta_norm = self.forward(state_norm, action, time_encoding)
+        if normalizer is not None:
+            delta = normalizer.denormalize_delta(delta_norm)
+        else:
+            delta = delta_norm
+        return state + delta
+
+
+class _TransformerBlock(nn.Module):
+    """Pre-Norm transformer block with RMSNorm."""
+
+    def __init__(self, d_model: int, n_heads: int):
+        super().__init__()
+        self.norm1 = RMSNorm(d_model)
+        self.attn = nn.MultiheadAttention(d_model, n_heads, batch_first=True)
+        self.norm2 = RMSNorm(d_model)
+        self.ffn = nn.Sequential(
+            nn.Linear(d_model, 4 * d_model),
+            nn.GELU(),
+            nn.Linear(4 * d_model, d_model),
+        )
+        # Init FFN
+        nn.init.xavier_uniform_(self.ffn[0].weight)
+        nn.init.zeros_(self.ffn[0].bias)
+        nn.init.xavier_uniform_(self.ffn[2].weight)
+        nn.init.zeros_(self.ffn[2].bias)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # Pre-Norm attention
+        normed = self.norm1(x)
+        x = x + self.attn(normed, normed, normed, need_weights=False)[0]
+        # Pre-Norm FFN
+        x = x + self.ffn(self.norm2(x))
+        return x
+
+
 class HistorySurrogateModel(nn.Module):
     """Surrogate model with a history window of K prior transitions.
 

@@ -66,11 +66,10 @@ class LocomotionElasticaPhysicsConfig(ElasticaConfig):
         )
     )
 
-    # Time stepping (two-level: substep and RL step)
-    # dt_substep = 0.001s (Elastica integration), substeps_per_action = 500 per RL step
-    # dt and elastica_substeps kept consistent for backward compat with base class
-    dt: float = 0.05
-    elastica_substeps: int = 50  # dt / elastica_substeps = 0.001s = dt_substep
+    # Time stepping: one RL step = 500 substeps × 0.001s = 0.5s
+    # dt = RL step duration, elastica_substeps = total substeps per RL step
+    dt: float = 0.5
+    elastica_substeps: int = 500  # dt / elastica_substeps = 0.001s = dt_substep
 
     # Material (E=1e5 with r=0.02 gives stable serpentine locomotion)
     youngs_modulus: float = 1e5

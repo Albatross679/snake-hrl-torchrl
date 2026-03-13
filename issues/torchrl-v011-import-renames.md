@@ -1,6 +1,7 @@
 ---
 created: 2026-03-05T00:00:00
 updated: 2026-03-05T00:00:00
+description: TorchRL v0.11 renamed spec classes BoundedTensorSpec to Bounded and CompositeSpec to Composite
 tags: [torchrl, compatibility, v0.11, bug, imports]
 type: issue
 status: resolved

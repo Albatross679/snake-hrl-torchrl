@@ -1,5 +1,5 @@
 ---
-name: pkm-query
+name: doc-db-query
 description: Generate SQLite queries for the Doc Database VSCode extension. Use when the user asks to query, search, filter, or list documentation entries using SQL, mentions "doc-db query", "run query", "sqlite", or wants to find/filter docs by frontmatter properties. Also use when the user asks "show me all X" or "find docs where Y" about their project documentation.
 ---
 
@@ -49,11 +49,11 @@ Read [references/schema.md](references/schema.md) for the full table/column refe
 | Table | Folder | Extra Columns |
 |---|---|---|
 | `log` | `logs/` | `status` (draft, complete), `subtype` (fix, training, tuning, research, refactor, setup, feature) |
-| `experiment` | `experiments/` | `status` (planned, running, complete, failed) |
+| `experiment` | `experiments/` | `status` (planned, running, complete, failed), `subtype` (training, architecture, hyperparameter, physics, data, ablation) |
 | `issue` | `issues/` | `status` (open, investigating, resolved, wontfix), `severity` (low, medium, high, critical), `subtype` (training, physics, compatibility, system, performance) |
-| `knowledge` | `knowledge/` | — |
-| `reference` | `references/` | `source`, `url` + junction: `reference_authors` |
-| `idea` | `ideas/` | `status` (draft, exploring, implemented, abandoned), `priority` (low, medium, high) |
+| `knowledge` | `knowledge/` | `subtype` (domain, implementation, infrastructure, physics, ml) |
+| `reference` | `references/` | `source`, `url`, `subtype` (paper, blog, documentation, tutorial, library) + junction: `reference_authors` |
+| `idea` | `ideas/` | `status` (draft, exploring, implemented, abandoned), `priority` (low, medium, high), `subtype` (feature, optimization, research, infrastructure, experiment) |
 
 All tables share: `_file_path` (PK), `id`, `name`, `description`, `created`, `updated` + junctions `{table}_tags`, `{table}_aliases`.
 

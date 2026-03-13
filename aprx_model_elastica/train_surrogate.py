@@ -19,7 +19,7 @@ import torch.nn as nn
 from torch.utils.data import DataLoader, WeightedRandomSampler
 
 from aprx_model_elastica.train_config import SurrogateModelConfig, SurrogateTrainConfig
-from aprx_model_elastica.dataset import SurrogateDataset, TrajectoryDataset
+from aprx_model_elastica.dataset import FlatStepDataset
 from aprx_model_elastica.model import SurrogateModel
 from aprx_model_elastica.state import (
     StateNormalizer,
@@ -27,6 +27,105 @@ from aprx_model_elastica.state import (
     encode_phase_batch,
     POS_X, POS_Y, VEL_X, VEL_Y, YAW, OMEGA_Z,
 )
+
+
+def find_max_batch_size(
+    model: nn.Module,
+    normalizer,
+    device: str,
+    state_dim: int = 124,
+    action_dim: int = 5,
+    min_batch: int = 1024,
+    max_batch: int = 131072,
+    headroom: float = 0.9,
+) -> int:
+    """Binary search for the largest batch size that fits in GPU VRAM.
+
+    Runs a dummy forward+backward pass at each candidate size. Returns the
+    largest power-of-2-aligned batch size that completes without OOM, scaled
+    down by `headroom` to leave room for optimizer state and gradients during
+    real training.
+
+    Args:
+        model: The surrogate model (already on device).
+        normalizer: StateNormalizer (or None).
+        device: CUDA device string.
+        state_dim: State vector dimension.
+        action_dim: Action vector dimension.
+        min_batch: Smallest batch size to try.
+        max_batch: Largest batch size to try.
+        headroom: Fraction of max working batch to use (0.9 = keep 90%).
+
+    Returns:
+        The recommended batch size (always >= min_batch).
+    """
+    if not torch.cuda.is_available() or "cpu" in device:
+        print("[auto-batch] No CUDA device — using default batch size")
+        return min_batch
+
+    from aprx_model_elastica.state import action_to_omega_batch, encode_phase_batch
+
+    model.train()
+
+    def _try_batch(bs: int) -> bool:
+        """Try a forward+backward pass with batch size bs. Returns True if OK."""
+        try:
+            torch.cuda.empty_cache()
+            state = torch.randn(bs, state_dim, device=device)
+            action = torch.randn(bs, action_dim, device=device)
+            omega = action_to_omega_batch(action)
+            time_enc = encode_phase_batch(omega * torch.rand(bs, device=device))
+
+            state_norm = normalizer.normalize_state(state) if normalizer else state
+            pred = model(state_norm, action, time_enc)
+            target = torch.randn_like(pred)
+            loss = nn.functional.mse_loss(pred, target)
+            loss.backward()
+
+            # Clean up
+            model.zero_grad(set_to_none=True)
+            del state, action, time_enc, state_norm, pred, target, loss, omega
+            torch.cuda.empty_cache()
+            return True
+        except torch.cuda.OutOfMemoryError:
+            model.zero_grad(set_to_none=True)
+            torch.cuda.empty_cache()
+            return False
+
+    # Binary search between min_batch and max_batch
+    lo, hi = min_batch, max_batch
+    best = min_batch
+
+    # Quick check: can we even run min_batch?
+    if not _try_batch(min_batch):
+        print(f"[auto-batch] WARNING: even min_batch={min_batch} causes OOM!")
+        return min_batch
+
+    print(f"[auto-batch] Searching max batch size in [{min_batch}, {max_batch}]...")
+    while lo <= hi:
+        mid = (lo + hi) // 2
+        # Align to 256 for GPU efficiency
+        mid = max(min_batch, (mid // 256) * 256)
+        if mid <= best and lo < hi:
+            lo = mid + 256
+            continue
+        if _try_batch(mid):
+            best = mid
+            lo = mid + 256
+        else:
+            hi = mid - 256
+
+    # Apply headroom factor and align to 256
+    recommended = max(min_batch, int(best * headroom))
+    recommended = (recommended // 256) * 256
+    recommended = max(min_batch, recommended)
+
+    total_mem = torch.cuda.get_device_properties(0).total_memory / 1e9
+    print(f"[auto-batch] Max working batch: {best}")
+    print(f"[auto-batch] Recommended (headroom={headroom}): {recommended}")
+    print(f"[auto-batch] GPU memory: {total_mem:.1f} GB")
+
+    return recommended
 
 
 def parse_args() -> argparse.Namespace:
@@ -66,6 +165,26 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--history-k", type=int, default=None,
         help="History window size K for HistorySurrogateModel (0=disabled)",
+    )
+    parser.add_argument(
+        "--auto-batch", action="store_true", default=False,
+        help="Auto-find max batch size that fits in GPU VRAM",
+    )
+    parser.add_argument(
+        "--arch", type=str, default="mlp", choices=["mlp", "residual", "transformer"],
+        help="Model architecture: mlp, residual, or transformer",
+    )
+    parser.add_argument(
+        "--n-layers", type=int, default=None,
+        help="Transformer encoder layers (only used with --arch transformer)",
+    )
+    parser.add_argument(
+        "--n-heads", type=int, default=None,
+        help="Transformer attention heads (only used with --arch transformer)",
+    )
+    parser.add_argument(
+        "--d-model", type=int, default=None,
+        help="Transformer embedding dimension (only used with --arch transformer)",
     )
     return parser.parse_args()
 
@@ -110,7 +229,7 @@ def compute_single_step_loss(
     """
     state = batch["state"].to(device)
     action = batch["action"].to(device)
-    serp_time = batch["serpenoid_time"].to(device)
+    serp_time = batch.get("serpenoid_time", batch.get("t_start")).to(device)
     delta = batch["delta"].to(device)
 
     # Add noise to input state for robustness
@@ -240,6 +359,16 @@ def main():
     config.use_residual = args.use_residual
     if args.history_k is not None:
         config.history_k = args.history_k
+    # Architecture selection (--arch overrides --use-residual)
+    config.model.arch = args.arch
+    if args.arch == "residual":
+        config.use_residual = True
+    if args.n_layers is not None:
+        config.model.n_layers = args.n_layers
+    if args.n_heads is not None:
+        config.model.n_heads = args.n_heads
+    if args.d_model is not None:
+        config.model.d_model = args.d_model
 
     # Output directory
     save_dir = Path(config.save_dir)
@@ -263,16 +392,22 @@ def main():
 
     # Load data
     print(f"Loading data from {config.data_dir}...")
-    train_dataset = SurrogateDataset(
+    train_dataset = FlatStepDataset(
         config.data_dir, split="train", val_fraction=config.val_fraction
     )
-    val_dataset = SurrogateDataset(
+    val_dataset = FlatStepDataset(
         config.data_dir, split="val", val_fraction=config.val_fraction
     )
+
+    # Guard: rollout loss not supported with FlatStepDataset
+    if config.rollout_loss_weight > 0:
+        print("WARNING: rollout loss not supported with FlatStepDataset (no trajectories). Setting rollout_loss_weight=0.0")
+        config.rollout_loss_weight = 0.0
     print(f"  Train: {len(train_dataset):,} transitions")
     print(f"  Val:   {len(val_dataset):,} transitions")
 
     # Density-based sample weighting (upweight rare states)
+    sampler = None
     if config.use_density_weighting:
         print("Computing density-based sample weights...")
         sample_weights = train_dataset.get_sample_weights(
@@ -283,19 +418,6 @@ def main():
             sample_weights, num_samples=len(train_dataset), replacement=True
         )
         print(f"  Weight range: [{sample_weights.min():.2f}, {sample_weights.max():.2f}]")
-        train_loader = DataLoader(
-            train_dataset, batch_size=config.batch_size, sampler=sampler,
-            num_workers=2, pin_memory=True, drop_last=True,
-        )
-    else:
-        train_loader = DataLoader(
-            train_dataset, batch_size=config.batch_size, shuffle=True,
-            num_workers=2, pin_memory=True, drop_last=True,
-        )
-    val_loader = DataLoader(
-        val_dataset, batch_size=config.batch_size, shuffle=False,
-        num_workers=2, pin_memory=True,
-    )
 
     # Trajectory dataset for multi-step loss (loaded lazily)
     traj_loader = None
@@ -304,7 +426,8 @@ def main():
     if config.normalize_inputs or config.normalize_targets:
         print("Computing normalization statistics...")
         normalizer = StateNormalizer(device=device)
-        normalizer.fit(train_dataset.states, train_dataset.deltas)
+        train_deltas = train_dataset.next_states - train_dataset.states
+        normalizer.fit(train_dataset.states, train_deltas)
         if not config.normalize_inputs:
             normalizer.state_mean.zero_()
             normalizer.state_std.fill_(1.0)
@@ -315,20 +438,57 @@ def main():
     else:
         normalizer = None
 
-    # Build model (Phase 3.1: branch on architecture variant)
-    if config.use_residual:
+    # Build model based on --arch
+    if config.model.arch == "transformer":
+        from aprx_model_elastica.model import TransformerSurrogateModel
+        model = TransformerSurrogateModel(config.model).to(device)
+    elif config.model.arch == "residual" or config.use_residual:
         from aprx_model_elastica.model import ResidualSurrogateModel
         model = ResidualSurrogateModel(config.model).to(device)
     elif config.history_k > 0:
         from aprx_model_elastica.model import HistorySurrogateModel
         model = HistorySurrogateModel(config.model, history_k=config.history_k).to(device)
-        # TODO Phase 3.1: history training loop not yet implemented — use arch_sweep.py
-        # which sets up the HistoryDataset loader. Training with history_k>0 via this
-        # script will use the single-step loader (no history context in batches).
     else:
         model = SurrogateModel(config.model).to(device)
     n_params = sum(p.numel() for p in model.parameters())
-    print(f"Model: {n_params:,} parameters")
+    print(f"Model: {config.model.arch} — {n_params:,} parameters")
+
+    # Log param_count to W&B at init
+    if wandb_run is not None:
+        import wandb
+        wandb.config.update({"param_count": n_params})
+
+    # Auto batch size: find max batch that fits in GPU VRAM
+    if args.auto_batch and args.batch_size is None:
+        config.batch_size = find_max_batch_size(
+            model, normalizer, device,
+            state_dim=config.model.state_dim,
+            action_dim=config.model.action_dim,
+        )
+        print(f"  Using auto-detected batch size: {config.batch_size}")
+    elif args.auto_batch and args.batch_size is not None:
+        print("[auto-batch] --batch-size explicitly set, skipping auto-detection")
+
+    # Log batch_size to W&B
+    if wandb_run is not None:
+        import wandb
+        wandb.config.update({"batch_size": config.batch_size})
+
+    # Create DataLoaders (after batch size is finalized)
+    if sampler is not None:
+        train_loader = DataLoader(
+            train_dataset, batch_size=config.batch_size, sampler=sampler,
+            num_workers=2, pin_memory=True, drop_last=True, persistent_workers=True,
+        )
+    else:
+        train_loader = DataLoader(
+            train_dataset, batch_size=config.batch_size, shuffle=True,
+            num_workers=2, pin_memory=True, drop_last=True, persistent_workers=True,
+        )
+    val_loader = DataLoader(
+        val_dataset, batch_size=config.batch_size, shuffle=False,
+        num_workers=2, pin_memory=True, persistent_workers=True,
+    )
 
     # Optimizer and scheduler
     optimizer = torch.optim.AdamW(
@@ -376,7 +536,7 @@ def main():
                     )
                     traj_loader = DataLoader(
                         traj_dataset, batch_size=min(256, config.batch_size),
-                        shuffle=True, num_workers=2, pin_memory=True, drop_last=True,
+                        shuffle=True, num_workers=2, pin_memory=True, drop_last=True, persistent_workers=True,
                     )
                     traj_iter = iter(traj_loader)
                     print(f"  Trajectory dataset: {len(traj_dataset):,} windows")
@@ -393,7 +553,7 @@ def main():
 
             optimizer.zero_grad()
             total_loss.backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+            grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0).item()
             optimizer.step()
             scheduler.step()
 
@@ -440,6 +600,7 @@ def main():
             )
 
         if wandb_run is not None:
+            gpu_mem_mb = torch.cuda.max_memory_allocated() / 1e6 if torch.cuda.is_available() else 0.0
             log_dict = {
                 "epoch": epoch,
                 "train_loss": epoch_loss,
@@ -447,6 +608,10 @@ def main():
                 "rollout_loss": epoch_rollout_loss,
                 "lr": lr,
                 "best_val_loss": best_val_loss,
+                "grad_norm": grad_norm,
+                "epoch_time": elapsed,
+                "train_val_gap": epoch_loss - val_loss,
+                "gpu_memory_mb": gpu_mem_mb,
             }
             log_dict.update({f"component/{k}": v for k, v in all_component_losses.items()})
             wandb_run.log(log_dict)

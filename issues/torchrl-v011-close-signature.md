@@ -1,6 +1,7 @@
 ---
 created: 2026-03-05T00:00:00
 updated: 2026-03-05T00:00:00
+description: TorchRL v0.11 environment close() method now requires **kwargs parameter
 tags: [torchrl, compatibility, v0.11, bug, env]
 type: issue
 status: resolved

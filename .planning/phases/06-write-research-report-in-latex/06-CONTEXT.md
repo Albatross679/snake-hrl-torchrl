@@ -1,6 +1,6 @@
 # Phase 6: Write Research Report in LaTeX - Context
 
-**Gathered:** 2026-03-10 (updated 2026-03-11 — writing & maths style)
+**Gathered:** 2026-03-10 (updated 2026-03-11 — writing & maths style, itemized list notation, execution monitoring & ODE placement prefs)
 **Status:** Ready for planning
 
 <domain>
@@ -60,12 +60,15 @@ Does NOT cover: rerunning experiments, new data collection, new model training, 
 - **Vectors/matrices:** Bold lowercase/uppercase — `\mathbf{x}` for vectors, `\mathbf{M}` for matrices
 - **Time derivatives:** Leibniz notation throughout — `\frac{dx}{dt}`, `\frac{\partial}{\partial s}` for spatial derivatives
 - **Subscripts:** Both time and node index as subscripts with comma separation — `\mathbf{x}_{t,i}` for position of node i at time t
+- **Time-dependent variables:** If a variable is time dependent, it **always** has subscript $t$ — e.g. `x_{t,i}` not `x_i`, `\psi_{t,e}` not `\psi_e`, `\kappa_{t,e}` not `\kappa_e`
+- **RFT velocity/force components:** Use full words `\text{tangential}` and `\text{normal}` (NOT `\text{tan}`, `\text{nor}`, or single-letter subscripts like `t`, `n`) to avoid confusion with the time subscript $t$ — e.g. `v_{\text{tangential}}`, `c_{\text{normal}}`
 - **Network parameters:** Single `\theta` for all learnable parameters — `f_\theta(\mathbf{s}_t, \mathbf{a}_t)`
-- **Notation table:** Include a notation/glossary table near the beginning of the document so terms can be used freely after definition
+- **Notation table:** Include a comprehensive notation/glossary table near the beginning of the document, organized by category (state vectors, node/element quantities, continuous fields, CPG, RFT, integration, training)
 
 ### Equation presentation
 - **Display generously:** Most equations get their own displayed line (`\begin{equation}`), including definitions and intermediate expressions — not just key results
 - **Number all displayed equations:** Every displayed equation gets a number, not just cross-referenced ones
+- **Itemized list notation explanations:** After each equation, explain symbols using a `\begin{itemize}` list with one item per symbol — e.g. `\item $m_i$ --- lumped mass at node $i$`. Do NOT use tabular where-blocks or inline prose run-on sentences.
 - **Cosserat rod derivation:** State the final PDEs directly, cite Antman/Gazzola for derivation — no step-by-step derivation in main text
 - **Surrogate formulation:** Full formulation including per-element CPG encoding — define ground-truth operator T, surrogate f_θ, delta prediction, single-step MSE loss, rollout loss, and per-element phase encoding φ_{t,i} = (sin(ω·t_i), cos(ω·t_i), κ_i)
 
@@ -126,6 +129,20 @@ Does NOT cover: rerunning experiments, new data collection, new model training, 
 - Compiled PDF: `report/report.pdf` (or at root)
 
 </code_context>
+
+<user_preferences>
+## User Preferences (added 2026-03-11)
+
+### Execution monitoring
+- When launching data collection or training runs, use the **loop skill** to check process health periodically (every 15–20 minutes)
+- If issues are found, report them in `issues/` and `logs/` immediately
+- Specifically: "loop: 20mins when the train has been launched, check on the training status, make sure it is running healthily. solve and document any issues you encounter."
+
+### ODE formulation placement
+- The mathematical formulation of the ODEs that the neural surrogate approximates should be included in the report — user wants explicit placement decision
+- Current candidate: Background section (Cosserat rod PDEs) and/or Methods section (surrogate approximation of the transition operator)
+
+</user_preferences>
 
 <deferred>
 ## Deferred Ideas

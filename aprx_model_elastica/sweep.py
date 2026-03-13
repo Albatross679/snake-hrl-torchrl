@@ -1,22 +1,11 @@
-"""Combined hyperparameter + architecture sweep for the surrogate model.
+"""15-config architecture sweep for the surrogate model.
 
-All 10 runs launched in parallel, covering two orthogonal dimensions:
+Covers 4 architecture families (all rollout_weight=0.0, single-step MSE):
 
-  LR / model-size sweep (rollout_weight=0.1, rollout_steps=8, base MLP):
-    sweep_lr1e4_h256x3  : lr=1e-4, 256×3
-    sweep_lr3e4_h256x3  : lr=3e-4, 256×3
-    sweep_lr3e4_h512x3  : lr=3e-4, 512×3
-    sweep_lr3e4_h512x4  : lr=3e-4, 512×4
-    sweep_lr1e3_h512x3  : lr=1e-3, 512×3  ← shared baseline
-
-  Rollout loss ablation (lr=1e-3, 512×3, base MLP):
-    arch_A1_rw0.0       : rollout_weight=0.0, rollout_steps=8  (single-step only)
-    arch_A3_rw0.3       : rollout_weight=0.3, rollout_steps=8
-    arch_A4_rw0.5       : rollout_weight=0.5, rollout_steps=8
-    arch_A5_rw0.3_s16   : rollout_weight=0.3, rollout_steps=16
-
-  Architecture (lr=1e-3, 512×3, rollout_weight=0.1, rollout_steps=8):
-    arch_B1_residual    : ResidualSurrogateModel
+  MLP (5 configs): M1-M5 — varying LR and hidden dims
+  Residual MLP (3 configs): R1-R3 — skip connections, varying LR/width
+  Wide/Deep MLP (3 configs): W1-W3 — larger hidden dims
+  FT-Transformer (4 configs): T1-T4 — varying layers/heads/d_model
 
 Usage:
     python -m aprx_model_elastica.sweep --dry-run
@@ -35,89 +24,9 @@ from pathlib import Path
 
 
 SWEEP_CONFIGS = [
-    # --- LR / model-size sweep ---
-    {
-        "name": "sweep_lr1e4_h256x3",
-        "lr": 1e-4,
-        "hidden_dims": "256,256,256",
-        "rollout_weight": 0.1,
-        "rollout_steps": 8,
-        "use_residual": False,
-    },
-    {
-        "name": "sweep_lr3e4_h256x3",
-        "lr": 3e-4,
-        "hidden_dims": "256,256,256",
-        "rollout_weight": 0.1,
-        "rollout_steps": 8,
-        "use_residual": False,
-    },
-    {
-        "name": "sweep_lr3e4_h512x3",
-        "lr": 3e-4,
-        "hidden_dims": "512,512,512",
-        "rollout_weight": 0.1,
-        "rollout_steps": 8,
-        "use_residual": False,
-    },
-    {
-        "name": "sweep_lr3e4_h512x4",
-        "lr": 3e-4,
-        "hidden_dims": "512,512,512,512",
-        "rollout_weight": 0.1,
-        "rollout_steps": 8,
-        "use_residual": False,
-    },
-    {
-        "name": "sweep_lr1e3_h512x3",
-        "lr": 1e-3,
-        "hidden_dims": "512,512,512",
-        "rollout_weight": 0.1,
-        "rollout_steps": 8,
-        "use_residual": False,
-    },
-    # --- Rollout loss ablation (lr=1e-3, 512×3, base MLP) ---
-    {
-        "name": "arch_A1_rw0.0",
-        "lr": 1e-3,
-        "hidden_dims": "512,512,512",
-        "rollout_weight": 0.0,
-        "rollout_steps": 8,
-        "use_residual": False,
-    },
-    {
-        "name": "arch_A3_rw0.3",
-        "lr": 1e-3,
-        "hidden_dims": "512,512,512",
-        "rollout_weight": 0.3,
-        "rollout_steps": 8,
-        "use_residual": False,
-    },
-    {
-        "name": "arch_A4_rw0.5",
-        "lr": 1e-3,
-        "hidden_dims": "512,512,512",
-        "rollout_weight": 0.5,
-        "rollout_steps": 8,
-        "use_residual": False,
-    },
-    {
-        "name": "arch_A5_rw0.3_s16",
-        "lr": 1e-3,
-        "hidden_dims": "512,512,512",
-        "rollout_weight": 0.3,
-        "rollout_steps": 16,
-        "use_residual": False,
-    },
-    # --- Architecture variant (lr=1e-3, 512×3, rollout_weight=0.1) ---
-    {
-        "name": "arch_B1_residual",
-        "lr": 1e-3,
-        "hidden_dims": "512,512,512",
-        "rollout_weight": 0.1,
-        "rollout_steps": 8,
-        "use_residual": True,
-    },
+    # --- Wide/Deep MLP (2 configs: W1-W2) ---
+    {"name": "W1", "arch": "mlp", "lr": 3e-4, "hidden_dims": "512,512,512,512", "rollout_weight": 0.0},
+    {"name": "W2", "arch": "mlp", "lr": 3e-4, "hidden_dims": "1024,1024,1024", "rollout_weight": 0.0},
 ]
 
 
@@ -149,14 +58,14 @@ def parse_args() -> argparse.Namespace:
 
 
 def _arch_label(cfg: dict) -> str:
-    return "residual" if cfg.get("use_residual") else "base MLP"
+    return cfg.get("arch", "mlp")
 
 
 def _print_config_table(configs: list[dict], output_base: str) -> None:
     print()
-    print(f"{'Run':<28s} {'LR':<8s} {'Hidden':<14s} {'RW':<6s} {'Steps':<6s} {'Arch':<10s} {'Val Loss':<12s} {'Status'}")
-    print("-" * 98)
-    for cfg in configs:
+    print(f"{'#':<4s} {'Run':<8s} {'Arch':<14s} {'LR':<8s} {'Hidden':<18s} {'Val Loss':<12s} {'Status'}")
+    print("-" * 80)
+    for i, cfg in enumerate(configs, 1):
         run_dir = Path(output_base) / cfg["name"]
         metrics_path = run_dir / "metrics.json"
         val_loss_str = "pending"
@@ -172,12 +81,14 @@ def _print_config_table(configs: list[dict], output_base: str) -> None:
         elif (run_dir / "model.pt").exists():
             status_str = "in progress"
         hidden_str = cfg["hidden_dims"].replace(",", "×")
+        arch_str = _arch_label(cfg)
+        if cfg.get("n_layers"):
+            arch_str += f" L{cfg['n_layers']}H{cfg['n_heads']}d{cfg['d_model']}"
         print(
-            f"{cfg['name']:<28s} {cfg['lr']:<8.0e} {hidden_str:<14s} "
-            f"{cfg['rollout_weight']:<6.2f} {cfg['rollout_steps']:<6d} "
-            f"{_arch_label(cfg):<10s} {val_loss_str:<12s} {status_str}"
+            f"{i:<4d} {cfg['name']:<8s} {arch_str:<14s} {cfg['lr']:<8.0e} "
+            f"{hidden_str:<18s} {val_loss_str:<12s} {status_str}"
         )
-    print("-" * 98)
+    print("-" * 80)
 
 
 def run_sweep(args: argparse.Namespace) -> None:
@@ -185,7 +96,7 @@ def run_sweep(args: argparse.Namespace) -> None:
     output_base = Path(args.output_base)
 
     print("=" * 70)
-    print("SURROGATE MODEL COMBINED SWEEP (parallel)")
+    print("SURROGATE MODEL 15-CONFIG SWEEP (sequential)")
     print("=" * 70)
     print(f"  Configurations: {len(SWEEP_CONFIGS)}")
     print(f"  Data dir:       {args.data_dir}")
@@ -209,10 +120,9 @@ def run_sweep(args: argparse.Namespace) -> None:
     env["MKL_NUM_THREADS"] = "1"
 
     total_start = time.monotonic()
-    procs = []
-    log_files = []
+    results_list = []
 
-    for cfg in SWEEP_CONFIGS:
+    for i, cfg in enumerate(SWEEP_CONFIGS, 1):
         save_dir = str(output_base / cfg["name"])
         log_path = output_base / f"{cfg['name']}.log"
 
@@ -227,26 +137,26 @@ def run_sweep(args: argparse.Namespace) -> None:
             "--save-best-val-loss",
             "--data-dir", args.data_dir,
             "--device", args.device,
-            "--rollout-weight", str(cfg["rollout_weight"]),
-            "--rollout-steps", str(cfg["rollout_steps"]),
+            "--arch", cfg.get("arch", "mlp"),
+            "--auto-batch",
         ]
-        if cfg.get("use_residual"):
-            cmd.append("--use-residual")
+        # Transformer-specific args
+        if cfg.get("n_layers"):
+            cmd.extend(["--n-layers", str(cfg["n_layers"])])
+        if cfg.get("n_heads"):
+            cmd.extend(["--n-heads", str(cfg["n_heads"])])
+        if cfg.get("d_model"):
+            cmd.extend(["--d-model", str(cfg["d_model"])])
 
-        log_f = open(log_path, "w")
-        proc = subprocess.Popen(cmd, cwd=str(repo_root), env=env, stdout=log_f, stderr=log_f)
-        procs.append(proc)
-        log_files.append((log_path, log_f))
-        print(f"  Launched {cfg['name']} (pid={proc.pid}) → {log_path.name}")
+        print(f"\n[{i}/{len(SWEEP_CONFIGS)}] Running {cfg['name']} ({cfg.get('arch', 'mlp')})...")
+        run_start = time.monotonic()
+        with open(log_path, "w") as log_f:
+            result = subprocess.run(cmd, cwd=str(repo_root), env=env, stdout=log_f, stderr=log_f)
+        run_elapsed = time.monotonic() - run_start
 
-    print(f"\nAll {len(procs)} runs launched. Waiting for completion...")
-    print(f"Monitor: tail -f {args.output_base}/*.log\n")
-
-    for proc, (log_path, log_f), cfg in zip(procs, log_files, SWEEP_CONFIGS):
-        proc.wait()
-        log_f.close()
-        status = "OK" if proc.returncode == 0 else f"FAILED (rc={proc.returncode})"
-        print(f"  [{cfg['name']}] {status}")
+        status = "OK" if result.returncode == 0 else f"FAILED (rc={result.returncode})"
+        results_list.append({"name": cfg["name"], "status": status, "elapsed_s": run_elapsed, "returncode": result.returncode})
+        print(f"  [{cfg['name']}] {status} in {run_elapsed/60:.1f} min")
 
     total_elapsed = time.monotonic() - total_start
 
@@ -260,7 +170,7 @@ def run_sweep(args: argparse.Namespace) -> None:
     best_name = None
     best_val_loss = float("inf")
     results = []
-    for cfg in SWEEP_CONFIGS:
+    for cfg, run_info in zip(SWEEP_CONFIGS, results_list):
         metrics_path = output_base / cfg["name"] / "metrics.json"
         val_loss = float("inf")
         if metrics_path.exists():
@@ -269,7 +179,7 @@ def run_sweep(args: argparse.Namespace) -> None:
                     val_loss = json.load(f).get("best_val_loss", float("inf"))
             except (json.JSONDecodeError, IOError):
                 pass
-        results.append({**cfg, "val_loss": val_loss})
+        results.append({**cfg, "val_loss": val_loss, **run_info})
         if val_loss < best_val_loss:
             best_val_loss = val_loss
             best_name = cfg["name"]
