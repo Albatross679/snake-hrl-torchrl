@@ -4,8 +4,8 @@ milestone: v1.0
 milestone_name: milestone
 status: Collection running in tmux gsd-collect-rl → data/surrogate_rl_step/ (flat format + forces); stop manually at 10 GB
 stopped_at: Phase 4 context updated
-last_updated: "2026-03-11T23:35:14.254Z"
-last_activity: "2026-03-11 - Completed quick task 3: add structured notation explanations after equations"
+last_updated: "2026-03-16T15:16:01Z"
+last_activity: "2026-03-16 - Completed quick task 260316-l3z: organize ROADMAP.md for cleaner formatting"
 progress:
   total_phases: 14
   completed_phases: 3
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-03-09)
 Phase: 02.2 (Collect RL-Step-Only Data) — COMPLETE (1/1 plans done)
 Next Phase: Phase 3 surrogate training (FlatStepDataset ready; wait for ≥10 GB in data/surrogate_rl_step/)
 Status: Collection running in tmux gsd-collect-rl → data/surrogate_rl_step/ (flat format + forces); stop manually at 10 GB
-Last activity: 2026-03-11 - Completed quick task 3: add structured notation explanations after equations
+Last activity: 2026-03-16 - Completed quick task 260316-l3z: organize ROADMAP.md for cleaner formatting
 
 Progress: [█████░░░░░] 53%
 
@@ -138,8 +138,9 @@ None currently.
 | 2 | write introduction section for research report | 2026-03-11 | 96ff13b | [2-write-the-introduction-section-for-the-p](./quick/2-write-the-introduction-section-for-the-p/) |
 | 3 | add structured notation explanations after equations | 2026-03-11 | c705001 | [3-add-structured-notation-explanations-aft](./quick/3-add-structured-notation-explanations-aft/) |
 | 4 | restructure section 2.1 with upfront I/O framing | 2026-03-11 | 6239b38 | [4-restructure-section-2-1-to-clearly-prese](./quick/4-restructure-section-2-1-to-clearly-prese/) |
+| 260316-l3z | organize ROADMAP.md for cleaner formatting | 2026-03-16 | fac3a02 | [260316-l3z-organize-roadmap-md-for-cleaner-formatti](./quick/260316-l3z-organize-roadmap-md-for-cleaner-formatti/) |
 
 ## Session Continuity
 
-Last session: 2026-03-11T23:35:14.250Z
-Stopped at: Phase 4 context updated
+Last session: 2026-03-16T15:16:01Z
+Stopped at: Completed quick task 260316-l3z

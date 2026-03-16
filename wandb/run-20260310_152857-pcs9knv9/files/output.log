@@ -1,3 +1,0 @@
-[wandb] Run initialized: https://wandb.ai/qifan_wen-ohio-state-university/snake-surrogate-data/runs/pcs9knv9
-  Saved 10 flat transitions to /tmp/surrogate_rl_step_smoke/batch_0000.pt
-Done: 10 transitions from 10 runs in 1s (10 FPS)

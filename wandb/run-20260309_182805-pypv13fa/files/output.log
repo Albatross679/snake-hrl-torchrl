@@ -1,4 +1,0 @@
-W&B run initialized: https://wandb.ai/qifan_wen-ohio-state-university/surrogate-data-collection/runs/pypv13fa
-[monitor] 0/1,000 (0.0%) | FPS cur=0 roll=0 | ETA 0.3h | disk 0.0GB used, 44.7GB free
-[monitor] 1,000/1,000 (100.0%) | FPS cur=33 roll=17 | ETA 0.0h | disk 0.0GB used, 44.7GB free
-[monitor] 1,500/1,000 (150.0%) | FPS cur=17 roll=17 | ETA -0.0h | disk 0.0GB used, 44.7GB free

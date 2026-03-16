@@ -1,7 +1,0 @@
-W&B run initialized: https://wandb.ai/qifan_wen-ohio-state-university/surrogate-data-collection/runs/wj1ey3qf
-[monitor] 0/1,000,000 (0.0%) | FPS cur=0 roll=0 | ETA 277.8h | NaN=0 respawns=0 | disk 0.0GB used, 44.6GB free
-[monitor] 0/1,000,000 (0.0%) | FPS cur=0 roll=0 | ETA 277.8h | NaN=0 respawns=16 | disk 0.0GB used, 44.7GB free
-[monitor] 0/1,000,000 (0.0%) | FPS cur=0 roll=0 | ETA 277.8h | NaN=0 respawns=16 | disk 0.0GB used, 44.7GB free
-[monitor] 0/1,000,000 (0.0%) | FPS cur=0 roll=0 | ETA 277.8h | NaN=0 respawns=32 | disk 0.0GB used, 44.6GB free
-[monitor] 0/1,000,000 (0.0%) | FPS cur=0 roll=0 | ETA 277.8h | NaN=0 respawns=32 | disk 0.0GB used, 44.6GB free
-[monitor] 0/1,000,000 (0.0%) | FPS cur=0 roll=0 | ETA 277.8h | NaN=0 respawns=48 | disk 0.0GB used, 44.6GB free
