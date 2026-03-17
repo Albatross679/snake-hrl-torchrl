@@ -26,6 +26,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [ ] **Phase 10: Tunnel/pipe navigation** - Train RL agent for snake traversal of building infrastructure
 - [ ] **Phase 11: Model-based RL** - Explore surrogate as world model for planning and policy optimization
 - [ ] **Phase 12: Hamiltonian/Lagrangian NNs** - Explore physics-informed neural networks for snake dynamics
+- [ ] **Phase 13: PINN and DD-PINN surrogates** - Implement physics-informed neural network surrogates with physics regularizer, DD-PINN ansatz, and full Cosserat rod physics residual
 
 ## Phase Details
 
@@ -205,12 +206,28 @@ Plans:
 Plans:
 - [ ] TBD (run /gsd:plan-phase 12 to break down)
 
+### Phase 13: Implement PINN and DD-PINN surrogate models
+
+**Goal:** Implement physics-informed neural network approaches as alternative surrogate models for snake robot Cosserat rod dynamics. Three stages: (1) physics regularizer on existing MLP surrogates, (2) DD-PINN prototype with damped sinusoidal ansatz and full RFT friction, (3) full DD-PINN with adaptive collocation, loss balancing, and comprehensive comparison. Human checkpoints gate each stage.
+**Requirements**: PINN-01, PINN-02, PINN-03, PINN-04, PINN-05, PINN-07, PINN-08, PINN-09, PINN-10, PINN-11
+**Depends on:** Phase 3 (uses Phase 3 best model as baseline for comparison)
+**Plans:** 6 plans
+
+Plans:
+- [ ] 13-01-PLAN.md — Create src/pinn/ package: physics regularizer, ReLoBRaLo loss balancing, nondimensionalization, unit tests
+- [ ] 13-02-PLAN.md — Differentiable Cosserat rod physics residual (f_SSM) with RFT friction, Sobol collocation sampling
+- [ ] 13-03-PLAN.md — Physics regularizer training with lambda sweep, per-component RMSE evaluation, Stage 1 human checkpoint
+- [ ] 13-04-PLAN.md — DD-PINN damped sinusoidal ansatz, Fourier features, DDPINNModel with same forward() interface
+- [ ] 13-05-PLAN.md — DD-PINN training script with data + physics loss, n_g sweep, Stage 2 human checkpoint
+- [ ] 13-06-PLAN.md — Full DD-PINN with scaled collocation (500K-1M), L-BFGS refinement, comprehensive comparison, Stage 3 human checkpoint
+
 ## Progress
 
 **Execution Order:**
 Phases execute in numeric order: 1 -> 2 -> 2.1 -> 2.2 -> 3 -> 4 -> 5 -> 6
 Phase 7 is exploratory and can run in parallel after Phase 3.
 Phase 8 (Elastica baseline) can run in parallel with Phases 3-5 after Phase 2.
+Phase 13 can run in parallel with Phases 4-5 after Phase 3 (uses Phase 3 baseline).
 Phases 9-12 are future research directions.
 
 | Phase | Plans Complete | Status | Completed |
@@ -229,3 +246,4 @@ Phases 9-12 are future research directions.
 | 10. Tunnel/Pipe Navigation | 0/0 | Not planned | - |
 | 11. Model-Based RL | 0/0 | Not planned | - |
 | 12. Hamiltonian/Lagrangian NNs | 0/0 | Researched | - |
+| 13. PINN/DD-PINN Surrogates | 0/6 | **PLANNED** | - |
