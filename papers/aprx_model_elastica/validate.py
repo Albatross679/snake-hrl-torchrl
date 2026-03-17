@@ -29,6 +29,10 @@ from aprx_model_elastica.state import (
     StateNormalizer,
     action_to_omega,
     encode_phase,
+    encode_n_cycles,
+    raw_to_relative,
+    relative_to_raw,
+    REL_STATE_DIM,
     POS_X, POS_Y, VEL_X, VEL_Y, YAW, OMEGA_Z,
 )
 
@@ -84,29 +88,42 @@ def rollout_surrogate(
 ) -> np.ndarray:
     """Autoregressively unroll surrogate for the given action sequence.
 
+    Converts raw 124-dim initial state to 130-dim relative representation,
+    unrolls in that space, then converts each predicted state back to 124-dim
+    for comparison with ground truth.
+
     Returns predicted states (T+1, 124) including initial state.
     """
     model.eval()
-    states = [initial_state.copy()]
-    state = torch.tensor(initial_state, dtype=torch.float32, device=device).unsqueeze(0)
+    states_raw = [initial_state.copy()]
+
+    # Convert initial state to 130-dim relative representation
+    state_raw_t = torch.tensor(initial_state, dtype=torch.float32, device=device).unsqueeze(0)
+    state = raw_to_relative(state_raw_t)  # (1, 130)
 
     with torch.no_grad():
         for t in range(len(actions)):
             action_np = actions[t]
             action = torch.tensor(action_np, dtype=torch.float32, device=device).unsqueeze(0)
 
-            # Encode oscillation phase omega*t (not raw t)
+            # Encode oscillation phase omega*t + n_cycles
             omega = action_to_omega(action_np)
             phase = omega * serpenoid_times[t]
+            phase_enc = encode_phase(phase)              # (2,)
+            ncycles_enc = encode_n_cycles(action_np)     # (2,)
             time_enc = torch.tensor(
-                encode_phase(phase),
+                np.concatenate([phase_enc, ncycles_enc]),
                 dtype=torch.float32, device=device,
             ).unsqueeze(0)
 
+            # Predict next state in 130-dim space
             state = model.predict_next_state(state, action, time_enc, normalizer)
-            states.append(state.squeeze(0).cpu().numpy())
 
-    return np.stack(states)
+            # Convert back to 124-dim for comparison
+            state_raw = relative_to_raw(state)
+            states_raw.append(state_raw.squeeze(0).cpu().numpy())
+
+    return np.stack(states_raw)
 
 
 def compute_errors(real_states: np.ndarray, pred_states: np.ndarray) -> dict:

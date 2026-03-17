@@ -82,16 +82,16 @@ class SurrogateModel(nn.Module):
         """Predict state delta.
 
         Args:
-            state: (B, 124) normalized rod state.
+            state: (B, state_dim) normalized rod state.
             action: (B, 5) raw action in [-1, 1].
-            time_encoding: (B, 2) [sin(t), cos(t)].
+            time_encoding: (B, 4) [sin(phase), cos(phase), sin(n_cycles), cos(n_cycles)].
 
         Returns:
-            (B, 124) predicted state delta (in normalized space if trained
+            (B, output_dim) predicted state delta (in normalized space if trained
             with normalized targets).
         """
-        x = torch.cat([state, action, time_encoding], dim=-1)  # (B, 131)
-        return self.mlp(x)  # (B, 124)
+        x = torch.cat([state, action, time_encoding], dim=-1)  # (B, input_dim)
+        return self.mlp(x)  # (B, output_dim)
 
     def predict_next_state(
         self,
@@ -103,13 +103,13 @@ class SurrogateModel(nn.Module):
         """Predict next state with optional normalization handling.
 
         Args:
-            state: (B, 124) raw (unnormalized) rod state.
+            state: (B, state_dim) raw (unnormalized) rod state.
             action: (B, 5) raw action in [-1, 1].
-            time_encoding: (B, 2) [sin(t), cos(t)].
+            time_encoding: (B, 4) [sin(phase), cos(phase), sin(n_cycles), cos(n_cycles)].
             normalizer: StateNormalizer instance (or None to skip normalization).
 
         Returns:
-            (B, 124) predicted next rod state (unnormalized).
+            (B, state_dim) predicted next rod state (unnormalized).
         """
         if normalizer is not None:
             state_norm = normalizer.normalize_state(state)
@@ -155,10 +155,10 @@ class ResidualSurrogateModel(nn.Module):
     """Surrogate model using residual MLP blocks.
 
     Architecture:
-        Input projection: Linear(131, hidden_dim) + LayerNorm + SiLU
+        Input projection: Linear(input_dim, hidden_dim) + LayerNorm + SiLU
         Residual blocks:  floor(n_hidden/2) x ResidualBlock(hidden_dim)
         Extra layer:      (if n_hidden is odd) Linear + LayerNorm + SiLU
-        Output:           Linear(hidden_dim, 124), zero-initialized
+        Output:           Linear(hidden_dim, output_dim), zero-initialized
 
     Requires uniform hidden dims (all elements in hidden_dims must be equal).
     """
@@ -216,14 +216,14 @@ class ResidualSurrogateModel(nn.Module):
         """Predict state delta.
 
         Args:
-            state: (B, 124) normalized rod state.
+            state: (B, state_dim) normalized rod state.
             action: (B, 5) raw action in [-1, 1].
-            time_encoding: (B, 2) [sin(t), cos(t)].
+            time_encoding: (B, 4) [sin(phase), cos(phase), sin(n_cycles), cos(n_cycles)].
 
         Returns:
-            (B, 124) predicted state delta.
+            (B, output_dim) predicted state delta.
         """
-        x = torch.cat([state, action, time_encoding], dim=-1)  # (B, 131)
+        x = torch.cat([state, action, time_encoding], dim=-1)  # (B, input_dim)
         x = self.input_act(self.input_norm(self.input_proj(x)))
         for block in self.blocks:
             x = block(x)
@@ -241,13 +241,13 @@ class ResidualSurrogateModel(nn.Module):
         """Predict next state with optional normalization handling.
 
         Args:
-            state: (B, 124) raw (unnormalized) rod state.
+            state: (B, state_dim) raw (unnormalized) rod state.
             action: (B, 5) raw action in [-1, 1].
-            time_encoding: (B, 2) [sin(t), cos(t)].
+            time_encoding: (B, 4) [sin(phase), cos(phase), sin(n_cycles), cos(n_cycles)].
             normalizer: StateNormalizer instance (or None to skip normalization).
 
         Returns:
-            (B, 124) predicted next rod state (unnormalized).
+            (B, state_dim) predicted next rod state (unnormalized).
         """
         if normalizer is not None:
             state_norm = normalizer.normalize_state(state)
@@ -447,9 +447,9 @@ class HistorySurrogateModel(nn.Module):
 
     Architecture:
         Input: cat([state, action, time_enc, history_flat])
-               = 131 + K * (state_dim + action_dim) = 131 + K*129
+               = input_dim + K * (state_dim + action_dim)
         MLP:   same hidden_dims/activation/layernorm as SurrogateModel
-        Output: (B, 124) state delta, zero-initialized output layer
+        Output: (B, output_dim) state delta, zero-initialized output layer
 
     The forward() method takes explicit history tensors rather than relying
     on the caller to pre-concatenate them.
@@ -463,9 +463,9 @@ class HistorySurrogateModel(nn.Module):
         self.config = config
         self.history_k = history_k
 
-        # Compute extended input dim: 131 + K*(124+5)
+        # Compute extended input dim: input_dim + K*(state_dim + action_dim)
         history_dim = history_k * (config.state_dim + config.action_dim)
-        extended_input_dim = config.input_dim + history_dim  # 131 + K*129
+        extended_input_dim = config.input_dim + history_dim
 
         # Build plain MLP with the extended input dim
         layers = []
@@ -504,19 +504,19 @@ class HistorySurrogateModel(nn.Module):
         """Predict state delta with history context.
 
         Args:
-            state: (B, 124) normalized current state.
+            state: (B, state_dim) normalized current state.
             action: (B, 5) current action.
-            time_encoding: (B, 2) [sin(t), cos(t)].
-            history_states: (B, K, 124) K prior states (oldest first).
+            time_encoding: (B, 4) [sin(phase), cos(phase), sin(n_cycles), cos(n_cycles)].
+            history_states: (B, K, state_dim) K prior states (oldest first).
             history_actions: (B, K, 5) K prior actions (oldest first).
 
         Returns:
-            (B, 124) predicted state delta.
+            (B, output_dim) predicted state delta.
         """
-        # Flatten history: (B, K*124) and (B, K*5)
-        history_states_flat = history_states.flatten(-2, -1)    # (B, K*124)
+        # Flatten history: (B, K*state_dim) and (B, K*5)
+        history_states_flat = history_states.flatten(-2, -1)    # (B, K*state_dim)
         history_actions_flat = history_actions.flatten(-2, -1)  # (B, K*5)
-        history_flat = torch.cat([history_states_flat, history_actions_flat], dim=-1)  # (B, K*129)
+        history_flat = torch.cat([history_states_flat, history_actions_flat], dim=-1)
 
         x = torch.cat([state, action, time_encoding, history_flat], dim=-1)
         return self.mlp(x)
@@ -533,15 +533,15 @@ class HistorySurrogateModel(nn.Module):
         """Predict next state with optional normalization handling.
 
         Args:
-            state: (B, 124) raw (unnormalized) rod state.
+            state: (B, state_dim) raw (unnormalized) rod state.
             action: (B, 5) raw action in [-1, 1].
-            time_encoding: (B, 2) [sin(t), cos(t)].
-            history_states: (B, K, 124) K prior raw states.
+            time_encoding: (B, 4) [sin(phase), cos(phase), sin(n_cycles), cos(n_cycles)].
+            history_states: (B, K, state_dim) K prior raw states.
             history_actions: (B, K, 5) K prior actions.
             normalizer: StateNormalizer instance (or None).
 
         Returns:
-            (B, 124) predicted next rod state (unnormalized).
+            (B, state_dim) predicted next rod state (unnormalized).
         """
         if normalizer is not None:
             state_norm = normalizer.normalize_state(state)
