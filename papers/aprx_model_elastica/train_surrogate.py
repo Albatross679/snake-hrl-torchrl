@@ -100,6 +100,14 @@ def parse_args() -> argparse.Namespace:
         "--d-model", type=int, default=None,
         help="Transformer embedding dimension (only with --arch transformer)",
     )
+    parser.add_argument(
+        "--save-dir", type=str, default=None,
+        help="Override output directory (skip timestamped run dir creation)",
+    )
+    parser.add_argument(
+        "--resume", type=str, default=None,
+        help="Resume from a run directory (loads model, optimizer, scheduler, epoch, patience)",
+    )
     return parser.parse_args()
 
 
@@ -137,13 +145,17 @@ def probe_auto_batch_size(
     device: str,
     use_amp: bool,
     start_bs: int = 4096,
-    vram_target: float = 0.85,
+    vram_target: float = 0.70,
 ) -> int:
     """Find the largest batch size that fits within vram_target of total GPU memory.
 
     Two-phase search:
       1. Coarse: double batch size until OOM (powers of 2 from start_bs)
       2. Fine: binary search between last passing and first failing
+
+    Note: vram_target is set conservatively (0.70) because the training loop
+    allocates additional tensors for per-component loss monitoring and
+    denormalization that are not captured by the probe's forward+backward pass.
 
     Args:
         model: The surrogate model.
@@ -152,7 +164,7 @@ def probe_auto_batch_size(
         device: CUDA device string.
         use_amp: Whether bf16 autocast is enabled.
         start_bs: Starting batch size for coarse search.
-        vram_target: Fraction of total VRAM to target (default 0.85).
+        vram_target: Fraction of total VRAM to target (default 0.70).
 
     Returns:
         Largest batch size that fits.
@@ -190,6 +202,12 @@ def probe_auto_batch_size(
                 pred = model(state_norm, action, time_enc)
                 loss = nn.functional.mse_loss(pred, delta_norm)
             loss.backward()
+
+            # Simulate per-component monitoring overhead (denormalize + component losses)
+            with torch.no_grad():
+                pred_denorm = normalizer.denormalize_delta(pred) if normalizer else pred
+                _ = nn.functional.mse_loss(pred_denorm, delta)
+
             model.zero_grad()
 
             peak = torch.cuda.max_memory_allocated(device)
@@ -466,8 +484,12 @@ def main():
     if args.d_model is not None:
         config.model.d_model = args.d_model
 
-    # Timestamped run directory
-    run_dir = setup_run_dir(config)
+    # Run directory: use --save-dir if provided, else timestamped
+    if args.save_dir is not None:
+        run_dir = Path(args.save_dir)
+        run_dir.mkdir(parents=True, exist_ok=True)
+    else:
+        run_dir = setup_run_dir(config)
     save_dir = run_dir / "checkpoints"
     save_dir.mkdir(parents=True, exist_ok=True)
 
@@ -587,16 +609,16 @@ def main():
             print(f"  Weight range: [{sample_weights.min():.2f}, {sample_weights.max():.2f}]")
             train_loader = DataLoader(
                 train_dataset, batch_size=config.batch_size, sampler=sampler,
-                num_workers=2, pin_memory=True, drop_last=True,
+                num_workers=0, pin_memory=True, drop_last=True,
             )
         else:
             train_loader = DataLoader(
                 train_dataset, batch_size=config.batch_size, shuffle=True,
-                num_workers=2, pin_memory=True, drop_last=True,
+                num_workers=0, pin_memory=True, drop_last=True,
             )
         val_loader = DataLoader(
             val_dataset, batch_size=config.batch_size, shuffle=False,
-            num_workers=2, pin_memory=True,
+            num_workers=0, pin_memory=True,
         )
 
         # Trajectory dataset for multi-step loss (loaded lazily)
@@ -631,7 +653,30 @@ def main():
         # Training loop
         best_val_loss = float("inf")
         patience_counter = 0
+        start_epoch = 1
         stop_reason = "completed"
+
+        # Resume from checkpoint if requested
+        if args.resume is not None:
+            resume_dir = Path(args.resume)
+            state_path = resume_dir / "checkpoints" / "training_state.pt"
+            model_path = resume_dir / "checkpoints" / "model.pt"
+            if state_path.exists():
+                print(f"Resuming from {state_path}...")
+                ckpt = torch.load(state_path, map_location=device, weights_only=False)
+                model.load_state_dict(ckpt["model_state_dict"])
+                optimizer.load_state_dict(ckpt["optimizer_state_dict"])
+                scheduler.load_state_dict(ckpt["scheduler_state_dict"])
+                start_epoch = ckpt["epoch"] + 1
+                best_val_loss = ckpt["best_val_loss"]
+                patience_counter = ckpt["patience_counter"]
+                print(f"  Resumed at epoch {start_epoch}, best_val={best_val_loss:.6f}, patience={patience_counter}")
+            elif model_path.exists():
+                print(f"Fine-tuning from {model_path} (no training state found)...")
+                model.load_state_dict(torch.load(model_path, map_location=device, weights_only=True))
+                print(f"  Loaded model weights, starting fresh optimizer/scheduler")
+            else:
+                print(f"WARNING: No checkpoint found in {resume_dir}, training from scratch")
 
         # Mixed precision context
         amp_ctx = _amp_context(config.use_amp, device)
@@ -652,7 +697,7 @@ def main():
         print(f"  Single-step loss only (rollout_loss_weight=0)")
 
         epoch = 0
-        for epoch in range(1, config.num_epochs + 1):
+        for epoch in range(start_epoch, config.num_epochs + 1):
             # Check graceful shutdown (SIGINT/SIGTERM)
             if shutdown_requested:
                 stop_reason = "signal"
@@ -704,7 +749,7 @@ def main():
                             continue
                         traj_loader = DataLoader(
                             traj_dataset, batch_size=min(256, config.batch_size),
-                            shuffle=True, num_workers=2, pin_memory=True, drop_last=True,
+                            shuffle=True, num_workers=0, pin_memory=True, drop_last=True,
                         )
                         traj_iter = iter(traj_loader)
                         print(f"  Trajectory dataset: {len(traj_dataset):,} windows")
@@ -753,6 +798,16 @@ def main():
                 torch.save(model.state_dict(), str(save_dir / "model.pt"))
             else:
                 patience_counter += 1
+
+            # Save training state for resume (every epoch, overwrites previous)
+            torch.save({
+                "epoch": epoch,
+                "model_state_dict": model.state_dict(),
+                "optimizer_state_dict": optimizer.state_dict(),
+                "scheduler_state_dict": scheduler.state_dict(),
+                "best_val_loss": best_val_loss,
+                "patience_counter": patience_counter,
+            }, str(save_dir / "training_state.pt"))
 
             elapsed = time.monotonic() - t_epoch
             lr = optimizer.param_groups[0]["lr"]

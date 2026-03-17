@@ -223,7 +223,7 @@ def _print_config_table(configs: list, output_base: str) -> None:
             except (json.JSONDecodeError, IOError):
                 val_loss_str = "error"
             status_str = "done"
-        elif (run_dir / "model.pt").exists():
+        elif (run_dir / "checkpoints" / "model.pt").exists():
             status_str = "in progress"
         hidden_str = cfg["hidden_dims"].replace(",", "x")
         print(
@@ -269,6 +269,7 @@ def run_sweep(args: argparse.Namespace) -> None:
         run_name = cfg["name"]
         log_path = output_base / f"{run_name}.log"
 
+        run_save_dir = str(output_base / run_name)
         cmd = [
             sys.executable, "-m", "aprx_model_elastica.train_surrogate",
             "--lr", str(cfg["lr"]),
@@ -279,6 +280,7 @@ def run_sweep(args: argparse.Namespace) -> None:
             "--device", args.device,
             "--rollout-weight", str(cfg["rollout_weight"]),
             "--arch", cfg["arch"],
+            "--save-dir", run_save_dir,
         ]
         # Transformer-specific args
         if cfg["arch"] == "transformer":
