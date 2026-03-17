@@ -4,14 +4,14 @@ milestone: v1.0
 milestone_name: milestone
 current_plan: 03-03 (analyze sweep results)
 status: 15-config sweep launched in tmux gsd-sweep; waiting for completion before analysis
-stopped_at: Phase 13 context gathered
-last_updated: "2026-03-17T18:52:01.085Z"
+stopped_at: Completed 13-01-PLAN.md
+last_updated: "2026-03-17T19:31:00.413Z"
 last_activity: 2026-03-17 - Completed 03-02-PLAN.md (smoke test + sweep launch)
 progress:
   total_phases: 17
   completed_phases: 4
-  total_plans: 19
-  completed_plans: 13
+  total_plans: 25
+  completed_plans: 14
   percent: 68
 ---
 
@@ -74,6 +74,7 @@ Progress: [███████░░░] 68%
 | Phase 03 P01 | 7 min | 2 tasks | 5 files |
 | Phase 03 P04 | 10 min | 2 tasks | 5 files |
 | Phase 03 P02 | 95 min | 2 tasks | 3 files |
+| Phase 13 P01 | 3 min | 1 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -119,6 +120,8 @@ Progress: [███████░░░] 68%
 - [Phase 03]: vram_target reduced 0.85->0.70 and probe includes denormalization overhead to prevent OOM
 - [Phase 03]: --save-dir overrides timestamped run_dir for sweep directory control
 - [Phase 03]: DataLoader num_workers=0 for multiprocessing safety; training_state.pt saved each epoch for resume
+- [Phase 13]: PhysicsRegularizer uses trapezoidal integration for kinematic constraints with 4 constraint types
+- [Phase 13]: NondimScales: L_ref=1.0m, t_ref=0.5s, F_ref=E*I/L^2 (physics-based, not z-score)
 
 ### Pending Todos
 
@@ -164,5 +167,5 @@ None currently.
 
 ## Session Continuity
 
-Last session: 2026-03-17T18:52:01.080Z
-Stopped at: Phase 13 context gathered
+Last session: 2026-03-17T19:31:00.408Z
+Stopped at: Completed 13-01-PLAN.md
