@@ -4,7 +4,7 @@ milestone: v1.0
 milestone_name: milestone
 status: Collection running in tmux gsd-collect-rl → data/surrogate_rl_step/ (flat format + forces); stop manually at 10 GB
 stopped_at: Completed 06.1-01-PLAN.md
-last_updated: "2026-03-17T13:40:14.698Z"
+last_updated: "2026-03-17T13:44:28.014Z"
 last_activity: "2026-03-16 - Completed quick task 260316-s3f: create DisMech surrogate package and write Chapter 3"
 progress:
   total_phases: 16
