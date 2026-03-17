@@ -2,17 +2,17 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-current_plan: 03-02 (launch 15-config sweep)
-status: completed
-stopped_at: Completed 03-04-PLAN.md
-last_updated: "2026-03-17T15:36:46.540Z"
-last_activity: 2026-03-17 - Completed 03-01-PLAN.md (transformer model + sweep infrastructure)
+current_plan: 03-03 (analyze sweep results)
+status: in-progress
+stopped_at: Completed 03-02-PLAN.md
+last_updated: "2026-03-17T17:15:51.795Z"
+last_activity: 2026-03-17 - Completed 03-02-PLAN.md (smoke test + sweep launch)
 progress:
   total_phases: 16
   completed_phases: 4
   total_plans: 19
-  completed_plans: 12
-  percent: 58
+  completed_plans: 13
+  percent: 68
 ---
 
 # Project State
@@ -22,16 +22,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-09)
 
 **Core value:** Train and validate a surrogate model of snake robot dynamics for use in RL training
-**Current focus:** Phase 3: Train Surrogate Model — Plan 02 (launch 15-config architecture sweep)
+**Current focus:** Phase 3: Train Surrogate Model — Plan 03 (analyze sweep results)
 
 ## Current Position
 
-Phase: 03 (Train Surrogate Model) — IN PROGRESS (1/4 plans done)
-Current Plan: 03-02 (launch 15-config sweep)
-Status: Sweep infrastructure complete; TransformerSurrogateModel, --arch CLI, 15-config sweep.py ready
-Last activity: 2026-03-17 - Completed 03-01-PLAN.md (transformer model + sweep infrastructure)
+Phase: 03 (Train Surrogate Model) — IN PROGRESS (2/4 plans done)
+Current Plan: 03-03 (analyze sweep results)
+Status: 15-config sweep launched in tmux gsd-sweep; waiting for completion before analysis
+Last activity: 2026-03-17 - Completed 03-02-PLAN.md (smoke test + sweep launch)
 
-Progress: [██████░░░░] 58%
+Progress: [███████░░░] 68%
 
 ## Dataset Summary
 
@@ -73,6 +73,7 @@ Progress: [██████░░░░] 58%
 | Phase 06.1 P01 | 11 min | 2 tasks | 1 files |
 | Phase 03 P01 | 7 min | 2 tasks | 5 files |
 | Phase 03 P04 | 10 min | 2 tasks | 5 files |
+| Phase 03 P02 | 95 min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -115,6 +116,9 @@ Progress: [██████░░░░] 58%
 - [Phase 03]: FT-Transformer per-scalar embedding with CLS token pooling for surrogate model
 - [Phase 03]: --arch CLI overrides --use-residual; sweep runs sequentially for GPU safety
 - [Phase 03]: [Phase 03, Plan 04]: CoM velocity at indices 4-5 in 130-dim relative state, all dimension refs use named REL_* constants
+- [Phase 03]: vram_target reduced 0.85->0.70 and probe includes denormalization overhead to prevent OOM
+- [Phase 03]: --save-dir overrides timestamped run_dir for sweep directory control
+- [Phase 03]: DataLoader num_workers=0 for multiprocessing safety; training_state.pt saved each epoch for resume
 
 ### Pending Todos
 
@@ -159,5 +163,5 @@ None currently.
 
 ## Session Continuity
 
-Last session: 2026-03-17T15:36:46.535Z
-Stopped at: Completed 03-04-PLAN.md
+Last session: 2026-03-17T17:15:51.791Z
+Stopped at: Completed 03-02-PLAN.md
