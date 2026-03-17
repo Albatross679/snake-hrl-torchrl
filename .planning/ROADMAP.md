@@ -124,6 +124,16 @@ Plans:
 - [x] 06-03-PLAN.md — Write Methods section (data collection, per-element encoding, MLP architecture, training) and Discussion subsections (physics calibration, data pipeline)
 - [x] 06-04-PLAN.md — Compile PDF via Docker, human review checkpoint
 
+### Phase 06.1: Improve report structure and organization (INSERTED)
+
+**Goal:** Restructure report.tex to improve logical flow: move Related Work before physics backends, unify Elastica/DisMech under a single Physics Simulation section with shared CPG subsection, merge RL training sections, and fix all cross-references.
+**Requirements**: RSTR-01, RSTR-02, RSTR-03
+**Depends on:** Phase 6
+**Plans:** 1 plan
+
+Plans:
+- [ ] 06.1-01-PLAN.md — Restructure section hierarchy (move Related Work up, unify physics, merge RL), fix all cross-references
+
 ### Phase 7: Foundation model exploration for snake robot dynamics
 
 **Goal:** Explore whether a foundation model approach (pretrained on diverse snake robot dynamics) yields interesting generalizable findings beyond task-specific surrogates
