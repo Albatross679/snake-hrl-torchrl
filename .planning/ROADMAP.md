@@ -92,12 +92,13 @@ Plans:
   2. Diagnostic plots saved: error histograms, predicted-vs-actual, sweep comparison, per-component RMSE
   3. Best model selected by human review of val_loss and per-component RMSE in physical units
   4. Best model checkpoint confirmed at output/surrogate/best/ with selection.json for Phase 4
-**Plans:** 1/3 complete
+**Plans:** 1/4 complete
 
 Plans:
 - [x] 03-01-PLAN.md — Implement TransformerSurrogateModel, wire FlatStepDataset, add --arch CLI, expand W&B logging, update sweep.py with 15 configs
 - [ ] 03-02-PLAN.md — Smoke test all architectures, launch full 15-config sweep in tmux
 - [ ] 03-03-PLAN.md — Build analysis script, generate diagnostic plots, human review, promote best model to output/surrogate/best/
+- [ ] 03-04-PLAN.md — Switch to CoM-relative velocities in state representation (128-dim to 130-dim)
 
 ### Phase 4: Validate surrogate model against Elastica solver trajectories
 
