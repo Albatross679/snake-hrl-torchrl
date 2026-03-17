@@ -17,7 +17,10 @@ import pytest
 import torch
 import torch.nn as nn
 
-from src.pinn import PhysicsRegularizer, ReLoBRaLo, NondimScales, CosseratRHS
+from src.pinn import (
+    PhysicsRegularizer, ReLoBRaLo, NondimScales, CosseratRHS,
+    DampedSinusoidalAnsatz, DDPINNModel, FourierFeatureEmbedding,
+)
 from src.pinn.collocation import sample_collocation, adaptive_refinement
 
 
@@ -469,3 +472,199 @@ class TestCollocation:
         """Invalid method raises ValueError."""
         with pytest.raises(ValueError, match="Unknown collocation method"):
             sample_collocation(10, method="invalid")
+
+
+# ---------------------------------------------------------------------------
+# DampedSinusoidalAnsatz tests (PINN-03)
+# ---------------------------------------------------------------------------
+
+class TestDampedSinusoidalAnsatz:
+    """Tests for DampedSinusoidalAnsatz."""
+
+    def test_ansatz_ic(self):
+        """Ansatz evaluates to zero at t=0 for any parameters (exact IC)."""
+        torch.manual_seed(42)
+        ansatz = DampedSinusoidalAnsatz(state_dim=130, n_basis=5)
+        params = torch.randn(8, ansatz.param_dim)
+        t_zero = torch.tensor(0.0)
+        g = ansatz(params, t_zero)
+        assert g.shape == (8, 130)
+        assert torch.allclose(g, torch.zeros_like(g), atol=1e-6), (
+            f"g(0) should be all zeros, max abs = {g.abs().max().item()}"
+        )
+
+    def test_ansatz_derivative(self):
+        """Closed-form derivative matches finite differences within 1e-4."""
+        torch.manual_seed(42)
+        ansatz = DampedSinusoidalAnsatz(state_dim=130, n_basis=5)
+        params = torch.randn(4, ansatz.param_dim) * 0.1  # Small params for stability
+
+        t_test = torch.tensor([0.1, 0.25, 0.4])
+        g_dot_analytic = ansatz.time_derivative(params, t_test)  # (4, 3, 130)
+
+        eps = 1e-5
+        t_plus = t_test + eps
+        t_minus = t_test - eps
+        g_plus = ansatz(params, t_plus)   # (4, 3, 130)
+        g_minus = ansatz(params, t_minus) # (4, 3, 130)
+        g_dot_numerical = (g_plus - g_minus) / (2 * eps)
+
+        assert torch.allclose(g_dot_analytic, g_dot_numerical, atol=5e-4), (
+            f"Max derivative error: {(g_dot_analytic - g_dot_numerical).abs().max().item()}"
+        )
+
+    def test_ansatz_shape(self):
+        """Output shape is correct for multi-point and scalar time."""
+        ansatz = DampedSinusoidalAnsatz(state_dim=130, n_basis=5)
+        params = torch.randn(4, ansatz.param_dim)
+
+        # Multi-point
+        t_multi = torch.tensor([0.0, 0.1, 0.2, 0.3, 0.5])
+        g = ansatz(params, t_multi)
+        assert g.shape == (4, 5, 130), f"Expected (4, 5, 130), got {g.shape}"
+
+        # Scalar
+        t_scalar = torch.tensor(0.25)
+        g_s = ansatz(params, t_scalar)
+        assert g_s.shape == (4, 130), f"Expected (4, 130), got {g_s.shape}"
+
+    def test_ansatz_damping(self):
+        """With positive damping, amplitude decreases over time."""
+        torch.manual_seed(42)
+        ansatz = DampedSinusoidalAnsatz(state_dim=10, n_basis=3)
+        # Construct params with large positive delta (strong damping)
+        B = 2
+        m, n_g = 10, 3
+        alpha = torch.ones(B, m, n_g)
+        delta_raw = torch.ones(B, m, n_g) * 5.0  # softplus(5) ~ 5
+        beta = torch.ones(B, m, n_g) * 2.0
+        gamma = torch.ones(B, m, n_g) * 0.5
+        params = torch.stack([alpha, delta_raw, beta, gamma], dim=1).view(B, -1)
+
+        t = torch.tensor([1.0, 5.0, 10.0])
+        g = ansatz(params, t)  # (2, 3, 10)
+        # Amplitude at t=10 should be much smaller than at t=1
+        amp_early = g[:, 0, :].abs().mean()
+        amp_late = g[:, 2, :].abs().mean()
+        assert amp_late < amp_early, (
+            f"Amplitude should decrease: early={amp_early:.6f}, late={amp_late:.6f}"
+        )
+
+    def test_ansatz_param_dim(self):
+        """param_dim = 4 * state_dim * n_basis."""
+        ansatz = DampedSinusoidalAnsatz(state_dim=130, n_basis=7)
+        assert ansatz.param_dim == 4 * 130 * 7
+
+
+# ---------------------------------------------------------------------------
+# FourierFeatureEmbedding tests (PINN-10)
+# ---------------------------------------------------------------------------
+
+class TestFourierFeatures:
+    """Tests for FourierFeatureEmbedding."""
+
+    def test_fourier_features(self):
+        """FourierFeatureEmbedding maps (B, 10) -> (B, 64) with non-zero values."""
+        torch.manual_seed(42)
+        ff = FourierFeatureEmbedding(10, 32, sigma=1.0)
+        x = torch.randn(8, 10)
+        out = ff(x)
+        assert out.shape == (8, 64), f"Expected (8, 64), got {out.shape}"
+        assert not torch.all(out == 0), "Output should be non-zero"
+
+    def test_fourier_output_dim(self):
+        """Output dim is 2 * n_features."""
+        ff = FourierFeatureEmbedding(5, 128, sigma=10.0)
+        assert ff.output_dim == 256
+        x = torch.randn(4, 5)
+        assert ff(x).shape == (4, 256)
+
+    def test_fourier_deterministic(self):
+        """Same input produces same output (B is fixed, not random per call)."""
+        torch.manual_seed(42)
+        ff = FourierFeatureEmbedding(10, 32, sigma=1.0)
+        x = torch.randn(4, 10)
+        out1 = ff(x)
+        out2 = ff(x)
+        assert torch.allclose(out1, out2)
+
+
+# ---------------------------------------------------------------------------
+# DDPINNModel tests (PINN-03, PINN-04)
+# ---------------------------------------------------------------------------
+
+class TestDDPINNModel:
+    """Tests for DDPINNModel."""
+
+    def test_ddpinn_forward_interface(self):
+        """DDPINNModel.forward(state, action, time_encoding) returns (B, 130)."""
+        torch.manual_seed(42)
+        model = DDPINNModel(state_dim=130, n_basis=5)
+        s = torch.randn(4, 130)
+        a = torch.randn(4, 5)
+        t = torch.randn(4, 4)
+        d = model(s, a, t)
+        assert d.shape == (4, 130), f"Expected (4, 130), got {d.shape}"
+
+    def test_ddpinn_predict_next_state(self):
+        """predict_next_state returns (B, 130) and works without normalizer."""
+        torch.manual_seed(42)
+        model = DDPINNModel(state_dim=130, n_basis=5)
+        s = torch.randn(4, 130)
+        a = torch.randn(4, 5)
+        t = torch.randn(4, 4)
+        ns = model.predict_next_state(s, a, t)
+        assert ns.shape == (4, 130), f"Expected (4, 130), got {ns.shape}"
+
+    def test_ddpinn_forward_trajectory(self):
+        """forward_trajectory returns (g, g_dot) with correct shapes."""
+        torch.manual_seed(42)
+        model = DDPINNModel(state_dim=130, n_basis=5)
+        s = torch.randn(4, 130)
+        a = torch.randn(4, 5)
+        t_enc = torch.randn(4, 4)
+        t_colloc = torch.linspace(0, 0.5, 10)
+        g, g_dot = model.forward_trajectory(s, a, t_enc, t_colloc)
+        assert g.shape == (4, 10, 130), f"g shape: {g.shape}"
+        assert g_dot.shape == (4, 10, 130), f"g_dot shape: {g_dot.shape}"
+
+    def test_ddpinn_zero_init(self):
+        """Initial model predicts near-zero delta (zero-init output layer)."""
+        torch.manual_seed(42)
+        model = DDPINNModel(state_dim=130, n_basis=5)
+        s = torch.zeros(2, 130)
+        a = torch.zeros(2, 5)
+        t = torch.zeros(2, 4)
+        d = model(s, a, t)
+        assert d.abs().max().item() < 1e-4, (
+            f"Initial delta should be near-zero, got max {d.abs().max().item()}"
+        )
+
+    def test_ddpinn_gradients(self):
+        """Gradients flow through DDPINNModel back to all parameters."""
+        torch.manual_seed(42)
+        model = DDPINNModel(state_dim=20, n_basis=3, hidden_dim=32, n_layers=2,
+                            n_fourier=16, fourier_sigma=1.0)
+        s = torch.randn(4, 20)
+        a = torch.randn(4, 5)
+        t = torch.randn(4, 4)
+        d = model(s, a, t)
+        loss = d.sum()
+        loss.backward()
+
+        for name, param in model.named_parameters():
+            if param.requires_grad:
+                assert param.grad is not None, f"No gradient for {name}"
+
+    def test_ddpinn_ic_satisfaction(self):
+        """DDPINNModel at t=0 predicts zero delta (IC satisfaction via ansatz)."""
+        torch.manual_seed(42)
+        model = DDPINNModel(state_dim=20, n_basis=3, hidden_dim=32, n_layers=2,
+                            n_fourier=16, dt=0.0)  # dt=0 means evaluate at t=0
+        s = torch.randn(4, 20)
+        a = torch.randn(4, 5)
+        t = torch.randn(4, 4)
+        d = model(s, a, t)
+        assert torch.allclose(d, torch.zeros_like(d), atol=1e-6), (
+            f"At t=0, delta should be zero, max abs = {d.abs().max().item()}"
+        )
