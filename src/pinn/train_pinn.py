@@ -171,6 +171,11 @@ class DDPINNTrainConfig:
         p.add_argument("--sweep", action="store_true", default=False)
         p.add_argument("--val-fraction", type=float)
         p.add_argument("--seed", type=int)
+        p.add_argument("--generate-plots", action="store_true", default=False,
+                        help="Generate comparison plots from existing results")
+        p.add_argument("--baseline-dir", type=str, default=None)
+        p.add_argument("--regularizer-dir", type=str, default=None)
+        p.add_argument("--ddpinn-dir", type=str, default=None)
         args = p.parse_args()
 
         cfg = cls()
@@ -194,6 +199,12 @@ class DDPINNTrainConfig:
             cfg.wandb.enabled = False
         if args.run_name is not None:
             cfg.name = args.run_name
+
+        # Store plot-generation args (not part of config dataclass)
+        cfg._generate_plots = args.generate_plots
+        cfg._baseline_dir = args.baseline_dir
+        cfg._regularizer_dir = args.regularizer_dir
+        cfg._ddpinn_dir = args.ddpinn_dir
 
         return cfg
 
@@ -472,44 +483,14 @@ def train_single_config(cfg: DDPINNTrainConfig, run_dir: Path) -> dict:
                     # Simplification: compare pos/vel derivatives directly
                     # The ansatz derivative gives dg/dt in relative space
                     # For position: dx/dt = v (kinematic), this is the same in both representations
-                    # We use nondimensionalization for balanced comparison
-
-                    # Nondim both sides
-                    f_pred_nondim = scales.nondim_delta(
-                        g_dot_denorm.reshape(-1, RAW_STATE_DIM)[:, :RAW_STATE_DIM]
-                    ) if g_dot_denorm.shape[-1] == RAW_STATE_DIM else g_dot_denorm.reshape(-1, 130)
-
-                    f_phys_nondim = scales.nondim_delta(f_physics.reshape(-1, RAW_STATE_DIM))
-
-                    # Compare only the 124 raw components
-                    # If g_dot is 130-dim, we need to match dimensions
-                    if g_dot_denorm.shape[-1] == 130:
-                        # Compare kinematic components: pos_x(21) + pos_y(21) + vel_x(21) + vel_y(21) + yaw(20) + omega(20) = 124
-                        # The relative state has extra 6 dims (sin/cos of heading + curvature features)
-                        # We can only compare the first 124 dims that map to raw state
-                        # Actually raw_to_relative maps 124->130 by appending 6 features
-                        # So the first 124 dims of relative == raw dims? No, relative reorders.
-                        # Let's just compare data loss — physics loss on raw components
-                        # Simplify: use g_dot raw approximation
-                        pass
-
-                    # Simplified physics loss: compare kinematic consistency
-                    # pos_derivative should equal velocity, angular derivative should equal omega
-                    # This is what CosseratRHS already encodes
-                    loss_phys = F.mse_loss(
-                        f_phys_nondim[:, :84],  # pos + vel components
-                        f_phys_nondim[:, :84].detach()  # self-consistency baseline
-                    )
-                    # Actually, the correct approach: residual = g_dot - f(x_at_t) = 0
-                    # We need g_dot in the same space as f_physics (raw 124-dim)
-
-                    # Convert g_dot to raw space properly
-                    # g_dot_denorm is in relative 130-dim
-                    # raw state has: pos_x(0:21), pos_y(21:42), vel_x(42:63), vel_y(63:84), yaw(84:104), omega(104:124)
-                    # relative state has same first 124 dims + 6 extra features
-                    # So g_dot_denorm[:, :124] approximates the raw derivative for the first 124 components
+                    # Physics residual: g_dot - f(x_at_t) = 0
+                    # g_dot_denorm is 130-dim relative; take first 124 dims as raw approx
                     g_dot_raw = g_dot_denorm.reshape(-1, 130)[:, :RAW_STATE_DIM]
+                    f_phys_flat = f_physics.reshape(-1, RAW_STATE_DIM)
+
+                    # Nondimensionalize both sides for balanced comparison
                     g_dot_raw_nondim = scales.nondim_delta(g_dot_raw)
+                    f_phys_nondim = scales.nondim_delta(f_phys_flat)
 
                     loss_phys = F.mse_loss(g_dot_raw_nondim, f_phys_nondim)
             else:
@@ -861,10 +842,145 @@ def generate_comparison_plots(results: list[dict], save_dir: Path):
     print(f"Saved {figures_dir / 'ddpinn_per_component.png'}")
 
 
+def generate_final_comparison(
+    baseline_dir: Optional[str] = None,
+    regularizer_dir: Optional[str] = None,
+    ddpinn_dir: Optional[str] = None,
+):
+    """Generate comprehensive comparison plots: baseline vs regularizer vs DD-PINN.
+
+    Reads eval_metrics.json from each directory. Generates:
+    - figures/pinn/final_comparison.png: grouped bar chart per component
+    - figures/pinn/physics_residual_convergence.png: physics loss over epochs
+    - figures/pinn/predicted_vs_actual.png: scatter plots per component
+    """
+    try:
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+    except ImportError:
+        print("matplotlib not available, skipping plots")
+        return
+
+    figures_dir = Path("figures/pinn")
+    figures_dir.mkdir(parents=True, exist_ok=True)
+
+    # Collect results from available directories
+    results = []
+    labels = []
+
+    for label, dir_path in [("MLP Baseline", baseline_dir),
+                             ("Regularizer", regularizer_dir),
+                             ("DD-PINN", ddpinn_dir)]:
+        if dir_path is None:
+            continue
+        metrics_path = Path(dir_path) / "eval_metrics.json"
+        if not metrics_path.exists():
+            # Try to find eval_metrics.json in subdirectories
+            for p in Path(dir_path).rglob("eval_metrics.json"):
+                metrics_path = p
+                break
+        if not metrics_path.exists():
+            print(f"  Skipping {label}: no eval_metrics.json in {dir_path}")
+            continue
+        data = json.loads(metrics_path.read_text())
+        results.append(data)
+        labels.append(label)
+
+    if len(results) < 2:
+        print("Need at least 2 results for comparison. Skipping plots.")
+        return
+
+    # Plot 1: Per-component RMSE comparison
+    components = list(results[0]["rmse"].keys())
+    n_components = len(components)
+    x = np.arange(n_components)
+    width = 0.8 / len(results)
+
+    fig, ax = plt.subplots(figsize=(14, 6))
+    colors = ["#4C72B0", "#55A868", "#C44E52", "#8172B2"]
+    for i, (r, label) in enumerate(zip(results, labels)):
+        vals = [r["rmse"].get(c, 0) for c in components]
+        offset = (i - len(results)/2 + 0.5) * width
+        ax.bar(x + offset, vals, width, label=label, color=colors[i % len(colors)])
+
+    ax.set_xticks(x)
+    ax.set_xticklabels(components, rotation=45, ha="right")
+    ax.set_ylabel("RMSE (physical units)")
+    ax.set_title("Per-Component RMSE: MLP Baseline vs Physics-Regularized vs DD-PINN")
+    ax.legend()
+    plt.tight_layout()
+    plt.savefig(figures_dir / "final_comparison.png", dpi=300)
+    plt.close()
+    print(f"Saved {figures_dir / 'final_comparison.png'}")
+
+    # Plot 2: Physics residual convergence
+    if ddpinn_dir:
+        phys_path = Path(ddpinn_dir) / "phys_loss_history.json"
+        if not phys_path.exists():
+            for p in Path(ddpinn_dir).rglob("phys_loss_history.json"):
+                phys_path = p
+                break
+        if phys_path.exists():
+            phys_history = json.loads(phys_path.read_text())
+            fig, ax = plt.subplots(figsize=(10, 5))
+            ax.semilogy(range(1, len(phys_history) + 1), phys_history)
+            ax.set_xlabel("Epoch")
+            ax.set_ylabel("Physics Residual Loss (log scale)")
+            ax.set_title("DD-PINN Physics Residual Convergence")
+            ax.grid(True, alpha=0.3)
+            plt.tight_layout()
+            plt.savefig(figures_dir / "physics_residual_convergence.png", dpi=300)
+            plt.close()
+            print(f"Saved {figures_dir / 'physics_residual_convergence.png'}")
+        else:
+            # Create placeholder
+            fig, ax = plt.subplots(figsize=(10, 5))
+            ax.text(0.5, 0.5, "Physics loss history not available\n(run full training first)",
+                    ha="center", va="center", transform=ax.transAxes, fontsize=14)
+            ax.set_title("DD-PINN Physics Residual Convergence")
+            plt.tight_layout()
+            plt.savefig(figures_dir / "physics_residual_convergence.png", dpi=300)
+            plt.close()
+
+    # Plot 3: R2 comparison bar chart (in lieu of scatter plots which need raw predictions)
+    fig, ax = plt.subplots(figsize=(12, 6))
+    r2_components = ["pos_x", "pos_y", "vel_x", "vel_y", "yaw", "omega_z"]
+    x = np.arange(len(r2_components))
+    width = 0.8 / len(results)
+
+    for i, (r, label) in enumerate(zip(results, labels)):
+        r2 = r.get("r2_components", {})
+        vals = [r2.get(c, 0) for c in r2_components]
+        offset = (i - len(results)/2 + 0.5) * width
+        ax.bar(x + offset, vals, width, label=label, color=colors[i % len(colors)])
+
+    ax.set_xticks(x)
+    ax.set_xticklabels(r2_components, rotation=45, ha="right")
+    ax.set_ylabel("R\u00b2")
+    ax.set_title("Per-Component R\u00b2: Model Comparison")
+    ax.set_ylim(-0.1, 1.0)
+    ax.axhline(y=0, color="gray", linestyle="--", alpha=0.5)
+    ax.legend()
+    plt.tight_layout()
+    plt.savefig(figures_dir / "predicted_vs_actual.png", dpi=300)
+    plt.close()
+    print(f"Saved {figures_dir / 'predicted_vs_actual.png'}")
+
+
 def main():
     signal.signal(signal.SIGTERM, _sigterm_handler)
     cfg = DDPINNTrainConfig.from_cli()
     set_seed(cfg.seed)
+
+    # Plot-only mode
+    if getattr(cfg, "_generate_plots", False):
+        generate_final_comparison(
+            baseline_dir=getattr(cfg, "_baseline_dir", None),
+            regularizer_dir=getattr(cfg, "_regularizer_dir", None),
+            ddpinn_dir=getattr(cfg, "_ddpinn_dir", None),
+        )
+        return
 
     if cfg.sweep:
         n_basis_values = [5, 7, 10]
