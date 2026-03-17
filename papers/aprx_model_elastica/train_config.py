@@ -20,18 +20,31 @@ from src.configs.training import PPOConfig
 
 @dataclass
 class SurrogateModelConfig:
-    """Architecture config for the surrogate MLP."""
+    """Architecture config for the surrogate MLP.
 
-    state_dim: int = 124
+    Uses the 130-dim relative state representation:
+        CoM (2) + heading sin/cos (2) + CoM velocity (2) + relative positions (42) +
+        relative velocities (42) + yaw (20) + omega_z (20) = 130.
+    """
+
+    state_dim: int = 130             # relative state representation
     action_dim: int = 5
-    time_encoding_dim: int = 2       # sin(t), cos(t)
-    input_dim: int = 131             # state + action + time_encoding
-    output_dim: int = 124            # state delta prediction
-    hidden_dims: List[int] = field(default_factory=lambda: [512, 512, 512])
+    time_encoding_dim: int = 4       # sin/cos phase (2) + sin/cos n_cycles (2)
+    input_dim: int = 139             # state(130) + action(5) + time_encoding(4)
+    output_dim: int = 130            # state delta prediction (relative repr)
+    hidden_dims: List[int] = field(default_factory=lambda: [1024, 1024, 1024, 1024])
     activation: str = "silu"
     use_layer_norm: bool = True
-    dropout: float = 0.0
+    dropout: float = 0.1
     predict_delta: bool = True       # next_state = current + model(input)
+
+    # Architecture selection: "mlp", "residual", or "transformer"
+    arch: str = "mlp"
+
+    # Transformer-specific (only used when arch="transformer")
+    n_layers: int = 6                # number of transformer encoder layers
+    n_heads: int = 8                 # number of attention heads
+    d_model: int = 256               # transformer embedding dimension
 
 
 # ---------------------------------------------------------------------------
@@ -43,21 +56,26 @@ class SurrogateModelConfig:
 class SurrogateTrainConfig:
     """Training hyperparameters for the surrogate model."""
 
-    # Data
-    data_dir: str = "data/surrogate"
+    name: str = "surrogate"
+
+    # Data (raw 124-dim, converted to 130-dim on-the-fly via raw_to_relative())
+    data_dir: str = "data/surrogate_rl_step"
     val_fraction: float = 0.1
 
     # Training
     batch_size: int = 4096
-    learning_rate: float = 3e-4
-    weight_decay: float = 1e-5
-    num_epochs: int = 200
+    auto_batch_size: bool = True          # Probe for largest batch that fits 85% VRAM
+    gradient_accumulation_steps: int = 1  # effective batch = batch_size * this
+    use_amp: bool = True                  # bf16 autocast (Ampere+ GPUs)
+    learning_rate: float = 1e-4
+    weight_decay: float = 1e-4
+    num_epochs: int = 999_999  # Effectively infinite; early stopping or manual stop decides
     lr_schedule: str = "cosine"
     warmup_epochs: int = 5
 
-    # Multi-step rollout loss
+    # Multi-step rollout loss (disabled — flat data has 1 step per episode)
     rollout_steps: int = 8
-    rollout_loss_weight: float = 0.1
+    rollout_loss_weight: float = 0.0
     rollout_start_epoch: int = 20
 
     # Noise injection for robustness
@@ -84,7 +102,7 @@ class SurrogateTrainConfig:
     model: SurrogateModelConfig = field(default_factory=SurrogateModelConfig)
 
     # W&B
-    wandb_enabled: bool = False
+    wandb_enabled: bool = True
     wandb_project: str = "snake-hrl-surrogate"
     wandb_entity: str = ""
 
