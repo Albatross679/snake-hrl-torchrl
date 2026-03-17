@@ -11,7 +11,7 @@ import math
 
 import torch
 
-from papers.aprx_model_elastica.state import (
+from src.pinn._state_slices import (
     POS_X, POS_Y, VEL_X, VEL_Y, YAW, OMEGA_Z,
     RAW_STATE_DIM,
 )

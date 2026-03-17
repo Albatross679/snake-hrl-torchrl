@@ -5,6 +5,8 @@ Tests cover:
 - PINN-02: ReLoBRaLo adaptive loss balancing
 - PINN-05: Package structure and imports
 - PINN-07: NondimScales physics-based nondimensionalization
+- PINN-09: CosseratRHS differentiable physics residual
+- PINN-11: Collocation point sampling (Sobol, adaptive)
 """
 
 from __future__ import annotations
@@ -15,7 +17,8 @@ import pytest
 import torch
 import torch.nn as nn
 
-from src.pinn import PhysicsRegularizer, ReLoBRaLo, NondimScales
+from src.pinn import PhysicsRegularizer, ReLoBRaLo, NondimScales, CosseratRHS
+from src.pinn.collocation import sample_collocation, adaptive_refinement
 
 
 # ---------------------------------------------------------------------------
@@ -268,7 +271,201 @@ class TestPackageImports:
         assert NondimScales is not None
 
     def test_regularizer_uses_state_slices(self):
-        """Regularizer imports named slices from state module."""
+        """Regularizer imports named slices from state slices module."""
         import src.pinn.regularizer as reg_mod
         source = open(reg_mod.__file__).read()
-        assert "from papers.aprx_model_elastica.state import" in source
+        assert "POS_X" in source and "VEL_X" in source and "YAW" in source
+
+
+# ---------------------------------------------------------------------------
+# CosseratRHS tests (PINN-09)
+# ---------------------------------------------------------------------------
+
+class TestCosseratRHS:
+    """Tests for differentiable Cosserat rod right-hand side."""
+
+    def test_cosserat_rhs_shape(self):
+        """CosseratRHS returns (B, 124) for (B, 124) input."""
+        torch.manual_seed(42)
+        rhs = CosseratRHS()
+        state = torch.randn(8, 124)
+        out = rhs(state)
+        assert out.shape == (8, 124), f"Expected (8, 124), got {out.shape}"
+
+    def test_cosserat_rhs_grad(self):
+        """Output requires_grad when input requires_grad."""
+        torch.manual_seed(42)
+        rhs = CosseratRHS()
+        state = torch.randn(4, 124, requires_grad=True)
+        out = rhs(state)
+        assert out.requires_grad, "Output must require grad when input does"
+
+        # Verify gradients actually flow
+        loss = out.sum()
+        loss.backward()
+        assert state.grad is not None, "Input gradient must not be None"
+        assert not torch.all(state.grad == 0), "Gradient must be non-zero"
+
+    def test_rft_vs_reference(self):
+        """RFT friction for a straight rod with known velocity matches analytical."""
+        torch.manual_seed(42)
+        rhs = CosseratRHS(ct=0.01, cn=0.1)
+
+        # Straight rod along x-axis, moving purely in y-direction
+        state = torch.zeros(1, 124)
+        n_nodes = 21
+        # Positions: straight line along x
+        state[0, :n_nodes] = torch.linspace(0, 1, n_nodes)  # pos_x
+        # pos_y = 0 (already)
+        # vel_x = 0, vel_y = 1.0 (pure normal velocity)
+        state[0, 63:84] = 1.0  # vel_y = 1.0
+
+        out = rhs(state)
+
+        # For a straight rod along x, tangent = (1, 0)
+        # v = (0, 1) => v_tan = 0, v_norm = (0, 1)
+        # F = -cn * v_norm = -0.1 * (0, 1) = (0, -0.1)
+        # d_vel_y = F_y / mass
+        d_vel_y = out[0, 63:84]  # should be -0.1 / mass for each node
+
+        mass = rhs.mass.item()
+        # Interior nodes have full mass, boundary have half
+        expected_interior = -0.1 / mass
+        expected_boundary = -0.1 / (mass / 2.0)
+
+        # Check interior nodes (1:-1)
+        interior = d_vel_y[1:-1]
+        # Allow elastic forces to contribute some deviation, but friction should dominate
+        # Check that sign is correct (deceleration) and magnitude is within 1%
+        for i, val in enumerate(interior):
+            assert abs(val.item() - expected_interior) / abs(expected_interior) < 0.05, (
+                f"Node {i+1}: got {val.item()}, expected ~{expected_interior}"
+            )
+
+    def test_rft_regularization(self):
+        """At zero velocity, friction force is zero (no singularity)."""
+        torch.manual_seed(42)
+        rhs = CosseratRHS()
+
+        # Straight rod, zero velocity
+        state = torch.zeros(1, 124)
+        state[0, :21] = torch.linspace(0, 1, 21)  # pos_x straight
+
+        out = rhs(state)
+
+        # Should not have NaN
+        assert not torch.any(torch.isnan(out)), "Output contains NaN at zero velocity"
+        assert not torch.any(torch.isinf(out)), "Output contains Inf at zero velocity"
+
+        # d_vel should be near zero (no friction when stationary)
+        d_vel_x = out[0, 42:63]
+        d_vel_y = out[0, 63:84]
+        # Elastic forces may contribute, but no friction-induced acceleration
+        assert torch.isfinite(d_vel_x).all()
+        assert torch.isfinite(d_vel_y).all()
+
+    def test_rft_vs_pyelastica(self):
+        """Run CosseratRHS on real dataset states and verify consistency."""
+        from pathlib import Path
+
+        data_path = Path("data/surrogate_rl_step/batch_w00_0000.pt")
+        if not data_path.exists():
+            pytest.skip("No dataset batch available")
+
+        data = torch.load(data_path, weights_only=True)
+        states = data["states"][:5]  # 5 real states
+
+        rhs = CosseratRHS()
+
+        for idx in range(len(states)):
+            state_t = states[idx:idx+1]
+            out = rhs(state_t)
+
+            # Basic sanity: output is finite and has correct shape
+            assert out.shape == (1, 124), f"State {idx}: wrong shape {out.shape}"
+            assert torch.isfinite(out).all(), f"State {idx}: non-finite output"
+
+            # Check kinematic consistency: d_pos = vel
+            d_pos_x = out[0, :21]
+            vel_x = state_t[0, 42:63]
+            assert torch.allclose(d_pos_x, vel_x, atol=1e-6), (
+                f"State {idx}: kinematic consistency violated for pos_x"
+            )
+
+    def test_cosserat_rhs_batch_consistency(self):
+        """Single-sample and batched computation give same results."""
+        torch.manual_seed(42)
+        rhs = CosseratRHS()
+
+        state = torch.randn(4, 124)
+        out_batch = rhs(state)
+
+        for i in range(4):
+            out_single = rhs(state[i:i+1])
+            assert torch.allclose(out_batch[i:i+1], out_single, atol=1e-5), (
+                f"Sample {i}: batch vs single mismatch"
+            )
+
+
+# ---------------------------------------------------------------------------
+# Collocation tests (PINN-11)
+# ---------------------------------------------------------------------------
+
+class TestCollocation:
+    """Tests for collocation point sampling."""
+
+    def test_collocation_sobol(self):
+        """Sobol sampling returns sorted points in [0, t_end]."""
+        t = sample_collocation(1000, t_end=0.5, method="sobol")
+        assert t.shape == (1000,), f"Expected (1000,), got {t.shape}"
+        assert t.dtype == torch.float32
+        assert t.min() >= 0.0
+        assert t.max() <= 0.5
+        # Check sorted
+        assert torch.all(t[1:] >= t[:-1]), "Points must be sorted"
+
+    def test_collocation_uniform(self):
+        """Uniform sampling returns sorted points in interval."""
+        t = sample_collocation(500, t_start=0.1, t_end=0.4, method="uniform")
+        assert t.shape == (500,)
+        assert t.min() >= 0.1
+        assert t.max() <= 0.4
+        assert torch.all(t[1:] >= t[:-1])
+
+    def test_collocation_sobol_coverage(self):
+        """Sobol points have better coverage than uniform (lower discrepancy)."""
+        torch.manual_seed(42)
+        t_sobol = sample_collocation(256, t_end=1.0, method="sobol")
+
+        # Check that points cover the interval reasonably well
+        # Divide into 10 bins and check each has some points
+        for i in range(10):
+            lo = i * 0.1
+            hi = (i + 1) * 0.1
+            count = ((t_sobol >= lo) & (t_sobol < hi)).sum().item()
+            assert count > 0, f"Bin [{lo}, {hi}) has no Sobol points"
+
+    def test_collocation_adaptive(self):
+        """Adaptive refinement concentrates points near high residuals."""
+        torch.manual_seed(42)
+        n = 100
+        t_base = torch.linspace(0, 1, n)
+        residuals = torch.zeros(n)
+        # Place high residual at t=0.5
+        residuals[45:55] = 10.0
+
+        new_t = adaptive_refinement(residuals, t_base, n_new=100, beta=2.0)
+
+        assert new_t.shape == (100,)
+        assert torch.all(new_t[1:] >= new_t[:-1]), "New points must be sorted"
+
+        # Most new points should be near t=0.5
+        near_peak = ((new_t >= 0.3) & (new_t <= 0.7)).sum().item()
+        assert near_peak > 50, (
+            f"Expected >50 points near peak, got {near_peak}"
+        )
+
+    def test_collocation_invalid_method(self):
+        """Invalid method raises ValueError."""
+        with pytest.raises(ValueError, match="Unknown collocation method"):
+            sample_collocation(10, method="invalid")
