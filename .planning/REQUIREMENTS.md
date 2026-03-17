@@ -39,7 +39,7 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Surrogate Model Training (Phase 3)
 
-- [ ] **SURR-01**: Hyperparameter sweep infrastructure — sweep runner script that launches training with different LR x model size configs, tracks results per run
+- [x] **SURR-01**: Hyperparameter sweep infrastructure — sweep runner script that launches training with different LR x model size configs, tracks results per run
 - [ ] **SURR-02**: Execute sweep — train 5 configurations (LR={1e-4, 3e-4, 1e-3} x hidden_dims={256x3, 512x3}) with W&B logging, early stopping, density weighting
 - [ ] **SURR-03**: Best model selection — select model with lowest single-step validation MSE across sweep runs
 - [ ] **SURR-04**: Per-component error analysis in physical units — compute RMSE/MAE per state component (pos mm, vel mm/s, yaw rad, omega rad/s)
