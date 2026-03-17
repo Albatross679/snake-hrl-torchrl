@@ -665,17 +665,77 @@ $\dot{\boldsymbol{\omega}}_z \in \mathbb{R}^{20}$ -- angular accel.
 \end{minipage}
 \end{algorithm}
 
-% ---- Explicit evaluation, not equation solving ----
+% ---- Method of Lines and Explicit Integration ----
 
-\paragraph{Explicit evaluation, not equation solving.}
-A crucial distinction: PyElastica does not \textit{solve} the Cosserat PDE system in the classical sense of an implicit solver or iterative scheme.
-The Position Verlet integrator is fully explicit --- each substep evaluates the right-hand side $\mathbf{g}(\mathbf{s}, \mathbf{a}, t)$ from the current state using closed-form arithmetic expressions (finite differences for strain, matrix--vector products for stiffness, cross products for curvature coupling, pointwise friction) and updates positions and velocities directly.
-There is no linear system to factor, no Newton iteration, and no convergence criterion.
-The entire cost of $T$ is sequential: 500 evaluations of these explicit update formulas, each dependent on the output of the previous one.
+\subsubsection{Method of Lines and Explicit Integration}
+\label{sec:physics:mol}
 
-The neural surrogate therefore replaces a \textbf{deterministic sequential map} --- 500 compositions of a fixed explicit update rule --- not a PDE solver.
-This stands in contrast to the DisMech backend (\cref{sec:physics:dismech}), which genuinely solves a nonlinear system via Newton iteration at each timestep.
-The distinction is favorable for surrogate modeling: because $T(\mathbf{s}_t, \mathbf{a}_t)$ is a smooth, deterministic function with no iterative convergence involved, a feedforward MLP can approximate the composed map directly.
+The Cosserat rod is governed by PDEs in arc length~$s$ and time~$t$, yet \cref{alg:elastica-transition} contains no iterative solver --- every line is a direct assignment.
+This is possible because of a \textbf{two-stage reduction} that converts the continuous PDE into a deterministic arithmetic map.
+
+\paragraph{Stage 1 --- spatial discretization (method of lines).}
+All spatial derivatives $\partial/\partial s$ are replaced by sparse matrix--vector products on the staggered grid (\cref{sec:physics:grid}):
+\begin{itemize}
+  \item Force gradient: $\partial \mathbf{F}/\partial s \;\to\; \mathbf{D}^T \mathbf{F}_e$ \quad (bidiagonal, $O(N)$ ops).
+  \item Strain from geometry: $\boldsymbol{\varepsilon}_e = \mathbf{Q}_e^T (\mathbf{x}_{e+1} - \mathbf{x}_e)/\ell_e^{\text{rest}}$ \quad (subtract, rotate).
+  \item Constitutive law: $\mathbf{F}_e = \mathbf{S}(\boldsymbol{\varepsilon}_e - \boldsymbol{\varepsilon}_e^{\text{rest}})$ \quad (pointwise multiply).
+\end{itemize}
+After replacement, no spatial derivative remains.
+The PDE in $(s,t)$ becomes the ODE system $\dot{\mathbf{s}} = \mathbf{g}(\mathbf{s}, \mathbf{a}, t)$ (\cref{eq:ode-system}), where $\mathbf{g}$ is a \textbf{closed-form function} --- a chain of geometry $\to$ strains $\to$ constitutive law $\to$ forces $\to$ accelerations, each computed by explicit algebra.
+
+\paragraph{Stage 2 --- explicit time integration.}
+An explicit integrator advances the ODE by evaluating~$\mathbf{g}$ at the \emph{current} state and writing the result directly:
+\[
+  \mathbf{s}^{n+1} = \Phi(\mathbf{s}^n, \Delta t)
+\]
+The unknown $\mathbf{s}^{n+1}$ appears \emph{only on the left-hand side} --- there is no equation to solve.
+Position Verlet evaluates $\mathbf{g}$ at a half-step configuration and updates positions and velocities in three sequential assignments.
+The result: each substep~$V_{\Delta t}$ is a deterministic map $\mathbb{R}^{124} \to \mathbb{R}^{124}$ composed entirely of arithmetic.
+
+\paragraph{Explicit vs.\ implicit integration.}
+The defining distinction is whether the unknown state appears on the right-hand side.
+
+\begin{table}[H]
+  \centering
+  \small
+  \renewcommand{\arraystretch}{1.3}
+  \caption{Explicit vs.\ implicit update rules.}
+  \label{tab:explicit-implicit-def}
+  \begin{tabular}{@{}lll@{}}
+    \toprule
+    \textbf{Method} & \textbf{Update rule} & \textbf{Type} \\
+    \midrule
+    Forward Euler &
+      $\mathbf{s}^{n+1} = \mathbf{s}^n + \Delta t\,\mathbf{g}(\mathbf{s}^n)$ &
+      Explicit \\
+    Backward Euler &
+      $\mathbf{s}^{n+1} = \mathbf{s}^n + \Delta t\,\mathbf{g}(\mathbf{s}^{n+1})$ &
+      Implicit \\
+    Position Verlet (Elastica) &
+      \cref{alg:elastica-transition} &
+      Explicit \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\noindent
+If $\mathbf{s}^{n+1}$ appears on the right-hand side, a Newton solve is required at every timestep (see \cref{sec:physics:dismech:implicit} for this approach in DisMech).
+
+\paragraph{CFL stability constraint.}
+Explicit methods are \textbf{conditionally stable}: the timestep must satisfy a Courant--Friedrichs--Lewy (CFL) bound set by the fastest wave mode (bending in the stiffest element):
+\[
+  \Delta t < C\,\sqrt{\frac{\rho A\,\Delta s^4}{EI}}
+\]
+With the project's rod parameters this gives $\Delta t_{\max} \approx 1.7 \times 10^{-3}$\,s.
+PyElastica uses $\Delta t = 10^{-3}$\,s, safely below the limit, but this forces $n_{\text{sub}} = 500$ substeps per RL action ($\Delta t_{\text{ctrl}} = 0.5$\,s).
+Implicit methods are unconditionally stable --- DisMech uses $\Delta t = 0.05$\,s (50$\times$ larger) at the cost of a Newton solve per step.
+\Cref{tab:comprehensive-comparison} provides the full property comparison between the two backends.
+
+\paragraph{Surrogate implications.}
+The neural surrogate replaces the 500-step composition $T(\mathbf{s}_t, \mathbf{a}_t) = V_{\Delta t}^{500}(\mathbf{s}_t; \mathbf{a}_t)$ (\cref{eq:transition-operator}) --- a \textbf{deterministic sequential map}, not a PDE solver.
+Each substep $V_{\Delta t}$ is a chain of explicit arithmetic (geometry, constitutive law, force balance, Verlet update); the computational cost arises from composing 500 such maps sequentially, with each depending on the output of the previous one.
+The surrogate collapses this sequential composition into a single forward pass.
+Because $T$ is a smooth, deterministic function with no iterative convergence involved, a feedforward network can approximate the composed map directly --- in contrast to DisMech (\cref{sec:physics:dismech}), where the surrogate must additionally learn to bypass the Newton solver's convergence behavior.
 
 % ---- Staggered grid subsection ----
 
