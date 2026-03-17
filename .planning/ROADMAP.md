@@ -51,6 +51,16 @@ Plans:
 - [ ] 02-01-PLAN.md — Build validation analysis module (distributions, quality, temporal, coverage, figures, report)
 - [ ] 02-02-PLAN.md — Run validation on dataset and human review of results
 
+### Phase 02.3: Collect DisMech snake dynamics data for surrogate training (INSERTED)
+
+**Goal:** [Urgent work - to be planned]
+**Requirements**: TBD
+**Depends on:** Phase 2
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd:plan-phase 02.3 to break down)
+
 ### Phase 2.1: Re-collect surrogate data with per-node phase encoding (INSERTED)
 
 **Goal:** Re-collect snake robot dynamics transitions incorporating per-node CPG phase as an explicit state feature, addressing the coverage and encoding gaps identified in Phase 2 validation. Produces a new dataset that replaces Phase 1 data for surrogate training.
@@ -129,7 +139,7 @@ Plans:
 **Goal:** Restructure report.tex to improve logical flow: move Related Work before physics backends, unify Elastica/DisMech under a single Physics Simulation section with shared CPG subsection, merge RL training sections, and fix all cross-references.
 **Requirements**: RSTR-01, RSTR-02, RSTR-03
 **Depends on:** Phase 6
-**Plans:** 1 plan
+**Plans:** 1/1 plans complete
 
 Plans:
 - [ ] 06.1-01-PLAN.md — Restructure section hierarchy (move Related Work up, unify physics, merge RL), fix all cross-references

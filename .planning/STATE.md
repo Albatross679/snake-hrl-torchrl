@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: Collection running in tmux gsd-collect-rl → data/surrogate_rl_step/ (flat format + forces); stop manually at 10 GB
-stopped_at: Phase 4 context updated
-last_updated: "2026-03-16T20:35:31Z"
+stopped_at: Completed 06.1-01-PLAN.md
+last_updated: "2026-03-17T13:40:14.698Z"
 last_activity: "2026-03-16 - Completed quick task 260316-s3f: create DisMech surrogate package and write Chapter 3"
 progress:
-  total_phases: 14
-  completed_phases: 3
-  total_plans: 15
+  total_phases: 16
+  completed_phases: 4
+  total_plans: 18
   completed_plans: 10
   percent: 53
 ---
@@ -69,6 +69,7 @@ Progress: [█████░░░░░] 53%
 |-------|------|----------|-------|-------|
 | 02.2-collect-rl-step-only-minimal-change-from-2-1 | 01 | 16 min | 6 | 4 |
 | Phase 06-write-research-report-in-latex P04 | 5 | 2 tasks | 3 files |
+| Phase 06.1 P01 | 11 min | 2 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -104,6 +105,8 @@ Progress: [█████░░░░░] 53%
 - [Phase 06]: Human approved PDF despite DreamerV3/Janner attribution error — deferred to future content revision
 - [Phase quick-2]: Introduction uses \\Cref for sentence-initial section references; 4-paragraph structure (problem, physics detail, contribution, roadmap)
 - [Phase quick-4]: Added Governing PDEs subsubsection and paragraph-level I/O summary to section 2.1
+- [Phase 06.1]: Staggered Grid and External Forces demoted to subsubsection under PyElastica Backend for clean hierarchy
+- [Phase 06.1]: DisMech CPG condensed to paragraph in shared CPG Control subsection rather than separate subsection
 
 ### Pending Todos
 
@@ -125,6 +128,8 @@ Progress: [█████░░░░░] 53%
 - Phase 10 added: Train RL agent for tunnel and pipe navigation — snake traverses building infrastructure
 - Phase 11 added: Explore model-based RL using surrogate as world model for planning and policy optimization
 - Phase 12 added: Explore Hamiltonian or Lagrangian neural networks for snake dynamics
+- Phase 06.1 inserted after Phase 6: Improve report structure and organization (URGENT)
+- Phase 02.3 inserted after Phase 2: Collect DisMech snake dynamics data for surrogate training (URGENT)
 
 ### Blockers/Concerns
 
@@ -143,5 +148,5 @@ None currently.
 
 ## Session Continuity
 
-Last session: 2026-03-16T20:35:31Z
-Stopped at: Completed quick task 260316-s3f
+Last session: 2026-03-17T13:40:14.693Z
+Stopped at: Completed 06.1-01-PLAN.md
