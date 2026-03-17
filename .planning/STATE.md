@@ -5,7 +5,7 @@ milestone_name: milestone
 status: Collection running in tmux gsd-collect-rl → data/surrogate_rl_step/ (flat format + forces); stop manually at 10 GB
 stopped_at: Completed 06.1-01-PLAN.md
 last_updated: "2026-03-17T13:44:28.014Z"
-last_activity: "2026-03-16 - Completed quick task 260316-s3f: create DisMech surrogate package and write Chapter 3"
+last_activity: "2026-03-17 - Completed quick task 260317-l6p: restructure report sections 2.2 and 2.3"
 progress:
   total_phases: 16
   completed_phases: 4
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-03-09)
 Phase: 02.2 (Collect RL-Step-Only Data) — COMPLETE (1/1 plans done)
 Next Phase: Phase 3 surrogate training (FlatStepDataset ready; wait for ≥10 GB in data/surrogate_rl_step/)
 Status: Collection running in tmux gsd-collect-rl → data/surrogate_rl_step/ (flat format + forces); stop manually at 10 GB
-Last activity: 2026-03-16 - Completed quick task 260316-s3f: create DisMech surrogate package and write Chapter 3
+Last activity: 2026-03-17 - Completed quick task 260317-l6p: restructure report sections 2.2 and 2.3
 
 Progress: [█████░░░░░] 53%
 
@@ -145,8 +145,9 @@ None currently.
 | 4 | restructure section 2.1 with upfront I/O framing | 2026-03-11 | 6239b38 | [4-restructure-section-2-1-to-clearly-prese](./quick/4-restructure-section-2-1-to-clearly-prese/) |
 | 260316-l3z | organize ROADMAP.md for cleaner formatting | 2026-03-16 | fac3a02 | [260316-l3z-organize-roadmap-md-for-cleaner-formatti](./quick/260316-l3z-organize-roadmap-md-for-cleaner-formatti/) |
 | 260316-s3f | create DisMech surrogate package and write Chapter 3 | 2026-03-16 | 946e78c | [260316-s3f-create-surrogate-model-for-dismech-based](./quick/260316-s3f-create-surrogate-model-for-dismech-based/) |
+| 260317-l6p | restructure report sections 2.2 and 2.3 | 2026-03-17 | 1642e0e | [260317-l6p-restructure-report-sections-2-2-and-2-3-](./quick/260317-l6p-restructure-report-sections-2-2-and-2-3-/) |
 
 ## Session Continuity
 
-Last session: 2026-03-17T13:40:14.693Z
-Stopped at: Completed 06.1-01-PLAN.md
+Last session: 2026-03-17T15:20:27Z
+Stopped at: Completed quick task 260317-l6p
