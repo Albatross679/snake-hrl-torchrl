@@ -2,16 +2,17 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: Collection running in tmux gsd-collect-rl → data/surrogate_rl_step/ (flat format + forces); stop manually at 10 GB
-stopped_at: Completed 03-01-PLAN.md
-last_updated: "2026-03-17T15:33:14.829Z"
-last_activity: "2026-03-17 - Completed quick task 260317-lb3: integrate method-of-lines explanation into report"
+current_plan: 03-02 (launch 15-config sweep)
+status: completed
+stopped_at: Completed 03-04-PLAN.md
+last_updated: "2026-03-17T15:36:46.540Z"
+last_activity: 2026-03-17 - Completed 03-01-PLAN.md (transformer model + sweep infrastructure)
 progress:
   total_phases: 16
   completed_phases: 4
   total_plans: 19
-  completed_plans: 11
-  percent: 53
+  completed_plans: 12
+  percent: 58
 ---
 
 # Project State
@@ -71,6 +72,7 @@ Progress: [██████░░░░] 58%
 | Phase 06-write-research-report-in-latex P04 | 5 | 2 tasks | 3 files |
 | Phase 06.1 P01 | 11 min | 2 tasks | 1 files |
 | Phase 03 P01 | 7 min | 2 tasks | 5 files |
+| Phase 03 P04 | 10 min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -112,6 +114,7 @@ Progress: [██████░░░░] 58%
 - [Phase 03]: RMSNorm for all transformer normalization (not LayerNorm)
 - [Phase 03]: FT-Transformer per-scalar embedding with CLS token pooling for surrogate model
 - [Phase 03]: --arch CLI overrides --use-residual; sweep runs sequentially for GPU safety
+- [Phase 03]: [Phase 03, Plan 04]: CoM velocity at indices 4-5 in 130-dim relative state, all dimension refs use named REL_* constants
 
 ### Pending Todos
 
@@ -156,5 +159,5 @@ None currently.
 
 ## Session Continuity
 
-Last session: 2026-03-17T15:33:14.824Z
-Stopped at: Completed 03-01-PLAN.md
+Last session: 2026-03-17T15:36:46.535Z
+Stopped at: Completed 03-04-PLAN.md
