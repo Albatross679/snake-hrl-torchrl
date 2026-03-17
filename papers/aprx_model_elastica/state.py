@@ -1,12 +1,21 @@
 """Rod state utilities: pack/unpack between PyElastica and flat 2D vectors.
 
-The snake moves in 2D (xy plane), so we reduce the full 3D Cosserat rod state
-to a 124-dimensional vector:
-    - positions (x, y) for 21 nodes:    42 floats
+Raw state (124-dim, stored on disk):
+    - positions (x, y) for 21 nodes:    42 floats  (absolute)
     - velocities (x, y) for 21 nodes:   42 floats
     - yaw angles for 20 elements:        20 floats
     - angular velocities (z) for 20 el:  20 floats
     Total:                               124 floats
+
+Relative state (130-dim, used as model input):
+    - CoM (x, y):                         2 floats  (absolute)
+    - heading (sin, cos):                  2 floats  (from mean element yaw)
+    - CoM velocity (x, y):                2 floats  (absolute)
+    - relative positions (x, y) for 21:   42 floats  (node pos - CoM)
+    - relative velocities (x, y) for 21:  42 floats  (node vel - CoM vel)
+    - yaw angles for 20 elements:         20 floats  (unchanged)
+    - angular velocities (z) for 20 el:   20 floats  (unchanged)
+    Total:                                130 floats
 """
 
 from __future__ import annotations
@@ -23,22 +32,45 @@ import torch
 # Constants
 # ---------------------------------------------------------------------------
 
-STATE_DIM = 124
 NUM_NODES = 21
 NUM_ELEMENTS = 20
 NUM_JOINTS = 19
 ACTION_DIM = 5
-TIME_ENC_DIM = 2  # Deprecated: use PER_ELEMENT_PHASE_DIM (60) for new dataset
+TIME_ENC_DIM = 4  # sin/cos phase (2) + sin/cos n_cycles (2)
 PER_ELEMENT_PHASE_DIM = 60  # 20 elements × (sin + cos + kappa) = 60
-INPUT_DIM = STATE_DIM + ACTION_DIM + PER_ELEMENT_PHASE_DIM  # 189
 
-# Named slices into the flat 124-dim state vector
+# Raw state (124-dim, as stored in .pt files)
+RAW_STATE_DIM = 124
+STATE_DIM = RAW_STATE_DIM  # Backward-compat alias
+
+# Named slices into the raw 124-dim state vector
 POS_X = slice(0, 21)
 POS_Y = slice(21, 42)
 VEL_X = slice(42, 63)
 VEL_Y = slice(63, 84)
 YAW = slice(84, 104)
 OMEGA_Z = slice(104, 124)
+
+# Relative state (130-dim, used as model input/output)
+REL_STATE_DIM = 130
+REL_INPUT_DIM = REL_STATE_DIM + ACTION_DIM + PER_ELEMENT_PHASE_DIM  # 195
+
+# Named slices into the relative 130-dim state vector
+REL_COM_X = slice(0, 1)
+REL_COM_Y = slice(1, 2)
+REL_HEADING_SIN = slice(2, 3)
+REL_HEADING_COS = slice(3, 4)
+REL_COM_VEL_X = slice(4, 5)      # CoM velocity x (absolute)
+REL_COM_VEL_Y = slice(5, 6)      # CoM velocity y (absolute)
+REL_POS_X = slice(6, 27)          # shifted +2
+REL_POS_Y = slice(27, 48)         # shifted +2
+REL_VEL_X = slice(48, 69)         # shifted +2, now CoM-relative
+REL_VEL_Y = slice(69, 90)         # shifted +2, now CoM-relative
+REL_YAW = slice(90, 110)          # shifted +2
+REL_OMEGA_Z = slice(110, 130)     # shifted +2
+
+# Legacy alias (code that imported INPUT_DIM)
+INPUT_DIM = REL_INPUT_DIM
 
 
 # ---------------------------------------------------------------------------
@@ -125,6 +157,101 @@ class RodState2D:
 
 
 # ---------------------------------------------------------------------------
+# Raw ↔ Relative state conversion
+# ---------------------------------------------------------------------------
+
+
+def raw_to_relative(state: torch.Tensor) -> torch.Tensor:
+    """Convert raw 124-dim absolute state to 130-dim relative representation.
+
+    Factorises absolute node positions into:
+        - CoM (2): absolute center-of-mass (x, y)
+        - Heading (2): sin/cos of mean element yaw angle
+        - CoM velocity (2): absolute center-of-mass velocity (x, y)
+        - Relative positions (42): node positions minus CoM
+        - Relative velocities (42): node velocities minus CoM velocity
+
+    Yaw and omega_z are passed through unchanged.
+
+    Args:
+        state: (..., 124) raw state tensor.
+
+    Returns:
+        (..., 130) relative state tensor.
+    """
+    pos_x = state[..., POS_X]       # (..., 21)
+    pos_y = state[..., POS_Y]       # (..., 21)
+    vel_x = state[..., VEL_X]       # (..., 21)
+    vel_y = state[..., VEL_Y]       # (..., 21)
+    yaw = state[..., YAW]           # (..., 20)
+    omega_z = state[..., OMEGA_Z]   # (..., 20)
+
+    # Absolute CoM
+    com_x = pos_x.mean(dim=-1, keepdim=True)   # (..., 1)
+    com_y = pos_y.mean(dim=-1, keepdim=True)   # (..., 1)
+
+    # Body heading from mean element yaw (sin/cos avoids wraparound issues)
+    heading = yaw.mean(dim=-1)                  # (...,)
+    heading_sin = heading.sin().unsqueeze(-1)   # (..., 1)
+    heading_cos = heading.cos().unsqueeze(-1)   # (..., 1)
+
+    # Absolute CoM velocity
+    com_vel_x = vel_x.mean(dim=-1, keepdim=True)   # (..., 1)
+    com_vel_y = vel_y.mean(dim=-1, keepdim=True)   # (..., 1)
+
+    # Relative positions (node - CoM)
+    rel_pos_x = pos_x - com_x                  # (..., 21)
+    rel_pos_y = pos_y - com_y                  # (..., 21)
+
+    # Relative velocities (node vel - CoM vel)
+    rel_vel_x = vel_x - com_vel_x              # (..., 21)
+    rel_vel_y = vel_y - com_vel_y              # (..., 21)
+
+    return torch.cat([
+        com_x, com_y, heading_sin, heading_cos,
+        com_vel_x, com_vel_y,          # 2 dims (absolute CoM velocity)
+        rel_pos_x, rel_pos_y,
+        rel_vel_x, rel_vel_y,          # now CoM-relative
+        yaw, omega_z,
+    ], dim=-1)
+
+
+def relative_to_raw(state: torch.Tensor) -> torch.Tensor:
+    """Convert 130-dim relative state back to 124-dim raw absolute state.
+
+    Reconstructs absolute node positions from CoM + relative positions.
+    Reconstructs absolute node velocities from CoM velocity + relative velocities.
+    Heading (sin/cos) is discarded (redundant with yaw array).
+
+    Args:
+        state: (..., 130) relative state tensor.
+
+    Returns:
+        (..., 124) raw state tensor.
+    """
+    com_x = state[..., REL_COM_X]              # (..., 1)
+    com_y = state[..., REL_COM_Y]              # (..., 1)
+    com_vel_x = state[..., REL_COM_VEL_X]      # (..., 1)
+    com_vel_y = state[..., REL_COM_VEL_Y]      # (..., 1)
+    rel_pos_x = state[..., REL_POS_X]          # (..., 21)
+    rel_pos_y = state[..., REL_POS_Y]          # (..., 21)
+    rel_vel_x = state[..., REL_VEL_X]          # (..., 21)
+    rel_vel_y = state[..., REL_VEL_Y]          # (..., 21)
+    yaw = state[..., REL_YAW]                  # (..., 20)
+    omega_z = state[..., REL_OMEGA_Z]          # (..., 20)
+
+    # Reconstruct absolute positions
+    pos_x = rel_pos_x + com_x                  # (..., 21)
+    pos_y = rel_pos_y + com_y                  # (..., 21)
+
+    # Reconstruct absolute velocities
+    vel_x = rel_vel_x + com_vel_x              # (..., 21)
+    vel_y = rel_vel_y + com_vel_y              # (..., 21)
+
+    return torch.cat([pos_x, pos_y, vel_x, vel_y, yaw, omega_z], dim=-1)
+
+
+# ---------------------------------------------------------------------------
 # Phase encoding (omega * t)
 # ---------------------------------------------------------------------------
 
@@ -188,6 +315,51 @@ def encode_phase_batch(phase: torch.Tensor) -> torch.Tensor:
     Returns:
         (..., 2) tensor of [sin(phase), cos(phase)].
     """
+    return torch.stack([torch.sin(phase), torch.cos(phase)], dim=-1)
+
+
+# ---------------------------------------------------------------------------
+# n_cycles encoding
+# ---------------------------------------------------------------------------
+
+DT_CTRL = 0.5  # seconds per RL macro-step (500 substeps × 0.001s)
+
+
+def encode_n_cycles(action: np.ndarray, freq_range: tuple = DEFAULT_FREQUENCY_RANGE) -> np.ndarray:
+    """Encode number of CPG oscillation cycles per RL step as [sin, cos].
+
+    n_cycles = frequency * dt_ctrl. When n_cycles is integer (full cycles),
+    sin=0, cos=1; when half-integer (reversal), sin=0, cos=-1.
+
+    Args:
+        action: (5,) action array, index 1 is normalized frequency in [-1, 1].
+        freq_range: (min_freq, max_freq) in Hz.
+
+    Returns:
+        (2,) array: [sin(2π·n_cycles), cos(2π·n_cycles)].
+    """
+    freq_norm = (float(np.clip(action[1], -1.0, 1.0)) + 1) / 2
+    frequency = freq_range[0] + freq_norm * (freq_range[1] - freq_range[0])
+    n_cycles = frequency * DT_CTRL
+    phase = 2 * np.pi * n_cycles
+    return np.array([np.sin(phase), np.cos(phase)], dtype=np.float32)
+
+
+def encode_n_cycles_batch(action: torch.Tensor, freq_range: tuple = DEFAULT_FREQUENCY_RANGE) -> torch.Tensor:
+    """Batch version of encode_n_cycles.
+
+    Args:
+        action: (..., 5) action tensor, index 1 is normalized frequency.
+        freq_range: (min_freq, max_freq) in Hz.
+
+    Returns:
+        (..., 2) tensor: [sin(2π·n_cycles), cos(2π·n_cycles)].
+    """
+    import math
+    freq_norm = (action[..., 1].clamp(-1.0, 1.0) + 1) / 2
+    frequency = freq_range[0] + freq_norm * (freq_range[1] - freq_range[0])
+    n_cycles = frequency * DT_CTRL
+    phase = 2 * math.pi * n_cycles
     return torch.stack([torch.sin(phase), torch.cos(phase)], dim=-1)
 
 
