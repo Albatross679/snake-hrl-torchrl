@@ -236,62 +236,138 @@ Two physics backends are investigated --- PyElastica (explicit symplectic) and D
 The most closely related prior work is SoRoLEX, which shares an identical pipeline structure (collect trajectories from a high-fidelity simulator, train a neural dynamics model, run large-scale RL in the learned environment).
 The present work differs in architecture (MLP vs.\ LSTM), prediction target (full 124-dimensional Cosserat rod state vs.\ task-space observation), and the explicit use of a multi-step rollout loss to limit autoregressive error accumulation.
 
-\subsection{RL Control for Soft Robots}
+\subsection{RL Control for Snake and Soft Robots}
 \label{sec:related:rl}
+% formerly sec:related:snake
 
-\Cref{tab:related-rl} summarizes RL approaches for soft robot control, organized by simulator backend and action representation.
+\Cref{tab:related-rl-snake} consolidates RL approaches for snake and soft robot control, spanning kinematic, rigid-body, and continuum-mechanics platforms.
+Entries marked with a checkmark in the \emph{Replicated} column were reimplemented as baselines to validate our simulation pipeline and contextualize the surrogate approach.
 
 \begin{table}[H]
   \centering
   \small
   \renewcommand{\arraystretch}{1.35}
-  \caption{RL methods for soft robot locomotion control.}
-  \label{tab:related-rl}
-  \begin{tabular}{@{}p{2.2cm}p{2.2cm}p{2.0cm}p{1.5cm}p{1.3cm}p{3.8cm}@{}}
+  \caption{RL methods for snake and soft robot control. Entries marked with $\checkmark$ were reimplemented as baselines.}
+  \label{tab:related-rl-snake}
+  \begin{tabular}{@{}p{2.0cm}p{1.8cm}p{2.0cm}p{1.2cm}p{1.5cm}p{0.8cm}p{3.5cm}@{}}
     \toprule
-    \textbf{Reference} & \textbf{Simulator} & \textbf{Action space} & \textbf{RL algo.} & \textbf{Step cost} & \textbf{Key finding} \\
+    \textbf{Reference} & \textbf{Robot type} & \textbf{Action space} & \textbf{RL algo.} & \textbf{Simulator} & \textbf{Repl.} & \textbf{Key finding} \\
     \midrule
-    \citet{Bing2019}
-      & PyElastica
+    %% --- Snake/soft robot baselines (replicated) ---
+    \citet{Shi2020}
+      & 3-link kinematic
+      & Joint vel.\ (discrete)
+      & DQN
+      & Analytical
+      & $\checkmark$
+      & Geometric mechanics (SE(2) fiber bundle) reduces state 5D$\to$3D \\
+    \addlinespace
+    \citet{Liu2021}
+      & 4-link soft
+      & CPG tonic + option (6-dim)
+      & PPO
+      & Custom
+      & $\checkmark$
+      & Cooperative multi-agent game for contact-aware obstacle navigation \\
+    \addlinespace
+    \citet{Liu2022}
+      & 9-link wheeled
+      & Gait offset $\phi_o$ (1-dim)
+      & PPO
+      & MuJoCo
+      & $\checkmark$
+      & RL modulates lateral undulation for path following with onboard camera \\
+    \addlinespace
+    \citet{Liu2023}
+      & 4-link soft
+      & CPG tonic (4-dim)
+      & PPO
+      & MuJoCo
+      & $\checkmark$
+      & 12-level distance curriculum with domain randomization for sim-to-real \\
+    \addlinespace
+    \citet{Zheng2022}
+      & 7-link rigid (underwater)
       & CPG (5-dim)
       & PPO
-      & ${\sim}46$\,ms
+      & MuJoCo (fluid)
+      & $\checkmark$
+      & Two-phase curriculum; stiffness sweep for series elastic actuators \\
+    \addlinespace
+    \citet{Jiang2024}
+      & 11-joint COBRA
+      & Dual CPG (7-dim)
+      & DDPG
+      & MuJoCo
+      & $\checkmark$
+      & Four-layer hierarchy: A* planner $\to$ RL navigator $\to$ CPG $\to$ PID \\
+    \addlinespace
+    \citet{Schaffer2024}
+      & Biohybrid lattice worm
+      & Muscle act.\ (42-dim)
+      & PPO
+      & PyElastica
+      & $\checkmark$
+      & Adaptive muscle force ceilings strengthen with exercise \\
+    \addlinespace
+    \citet{Choi2025}
+      & Soft manipulator
+      & $\Delta$ curvature (5 CPs)
+      & SAC
+      & DisMech
+      & $\checkmark$
+      & Implicit Euler enables rapid learning for contact-rich tasks \\
+    \addlinespace
+    %% --- General soft robot / model-based entries ---
+    \citet{Bing2019}
+      & Soft snake
+      & CPG (5-dim)
+      & PPO
+      & PyElastica
+      & ---
       & CPG action space reduces exploration burden vs.\ per-joint control \\
     \addlinespace
     \citet{Hong2026}
-      & FEM (custom)
+      & Soft robot
       & Joint torques
       & PPO
+      & FEM (custom)
       & ---
       & Accurate physics essential for sim-to-real; FEM training environment \\
     \addlinespace
     MBPO \newline \citep{Janner2019}
-      & MuJoCo (rigid)
+      & Rigid articulated
       & Joint torques
       & SAC+model
-      & ${\sim}1$\,ms
+      & MuJoCo
+      & ---
       & Model-based short-horizon planning; assumes rigid-body dynamics \\
     \addlinespace
-    GNN Simulator \newline \citep{SanchezGonzalez2020}
-      & Custom particle
+    GNN Sim.\ \newline \citep{SanchezGonzalez2020}
+      & Particle system
       & Forces
       & ---
+      & Custom particle
       & ---
       & Graph network learns complex physics; mesh-based simulation \\
     \midrule
     \textbf{This work}
-      & PyElastica / DisMech / Surrogate
+      & Soft snake
       & CPG (5-dim)
       & PPO
-      & 46 / 12 / 0.001\,ms
+      & PyElastica / DisMech / Surrogate
+      & ---
       & Surrogate replaces simulator for $4$--$5$ OOM speedup \\
     \bottomrule
   \end{tabular}
 \end{table}
 
 \noindent
-The computational cost of high-fidelity simulation is a recurring bottleneck across all approaches.
-The neural surrogate strategy in this work can be viewed as a model-based RL method where the learned model is the full transition operator rather than a latent dynamics model, enabling direct policy transfer evaluation between surrogate and real simulator.
+Several common themes emerge from these studies.
+CPG-based action spaces dominate snake robot RL, reducing the exploration burden relative to per-joint torque control \citep{Bing2019,Liu2021,Liu2023,Zheng2022,Jiang2024}.
+Curriculum learning and domain randomization are standard techniques for bridging the sim-to-real gap \citep{Liu2023,Zheng2022}.
+All approaches share the same simulation cost bottleneck that motivates this work: MuJoCo-based environments require ${\sim}1$\,ms per step, while Cosserat rod simulators such as PyElastica and DisMech cost $12$--$46$\,ms per step.
+The neural surrogate strategy developed here can be viewed as a model-based RL method where the learned model is the full transition operator rather than a latent dynamics model, enabling direct policy transfer evaluation between surrogate and real simulator and providing a drop-in replacement for any of these physics backends.
 
 % ---------------------------------------------------------------------------
 \section{Physics Simulation Backends}
