@@ -4,8 +4,11 @@ Tests for:
 - TransformerSurrogateModel (FT-Transformer architecture)
 - SurrogateModelConfig new fields (arch, n_layers, n_heads, d_model)
 - RMSNorm usage inside TransformerSurrogateModel
+- sweep.py 15-config table
+- --arch CLI arg acceptance
 """
 
+import sys
 import torch
 import pytest
 
@@ -104,3 +107,78 @@ class TestTransformerSurrogateModel:
         time_enc = torch.randn(1, config.time_encoding_dim)
         out = model(state, action, time_enc)
         assert out.shape == (1, config.output_dim)
+
+
+class TestSweepConfigs:
+    """Integration tests for sweep.py configuration table."""
+
+    def test_sweep_has_15_configs(self):
+        from aprx_model_elastica.sweep import SWEEP_CONFIGS
+        assert len(SWEEP_CONFIGS) == 15, f"Expected 15 configs, got {len(SWEEP_CONFIGS)}"
+
+    def test_all_configs_have_required_keys(self):
+        from aprx_model_elastica.sweep import SWEEP_CONFIGS
+        required_keys = {"name", "lr", "hidden_dims", "arch", "rollout_weight"}
+        for cfg in SWEEP_CONFIGS:
+            missing = required_keys - set(cfg.keys())
+            assert not missing, f"Config {cfg.get('name', '?')} missing keys: {missing}"
+
+    def test_transformer_configs_have_extra_keys(self):
+        from aprx_model_elastica.sweep import SWEEP_CONFIGS
+        transformer_configs = [c for c in SWEEP_CONFIGS if c["arch"] == "transformer"]
+        assert len(transformer_configs) == 4, f"Expected 4 transformer configs, got {len(transformer_configs)}"
+        for cfg in transformer_configs:
+            for key in ("n_layers", "n_heads", "d_model"):
+                assert key in cfg, f"Transformer config {cfg['name']} missing {key}"
+
+    def test_all_rollout_weights_zero(self):
+        from aprx_model_elastica.sweep import SWEEP_CONFIGS
+        for cfg in SWEEP_CONFIGS:
+            assert cfg["rollout_weight"] == 0.0, (
+                f"Config {cfg['name']} has rollout_weight={cfg['rollout_weight']}, expected 0.0"
+            )
+
+    def test_config_names_unique(self):
+        from aprx_model_elastica.sweep import SWEEP_CONFIGS
+        names = [c["name"] for c in SWEEP_CONFIGS]
+        assert len(names) == len(set(names)), f"Duplicate config names: {names}"
+
+
+class TestArchCLIArg:
+    """Test --arch CLI arg acceptance by train_surrogate.py parse_args()."""
+
+    def test_arch_arg_accepted(self, monkeypatch):
+        monkeypatch.setattr(sys, "argv", [
+            "train_surrogate", "--arch", "transformer", "--no-wandb",
+        ])
+        from aprx_model_elastica.train_surrogate import parse_args
+        args = parse_args()
+        assert args.arch == "transformer"
+
+    def test_arch_mlp_accepted(self, monkeypatch):
+        monkeypatch.setattr(sys, "argv", [
+            "train_surrogate", "--arch", "mlp", "--no-wandb",
+        ])
+        from aprx_model_elastica.train_surrogate import parse_args
+        args = parse_args()
+        assert args.arch == "mlp"
+
+    def test_arch_residual_accepted(self, monkeypatch):
+        monkeypatch.setattr(sys, "argv", [
+            "train_surrogate", "--arch", "residual", "--no-wandb",
+        ])
+        from aprx_model_elastica.train_surrogate import parse_args
+        args = parse_args()
+        assert args.arch == "residual"
+
+    def test_transformer_args_accepted(self, monkeypatch):
+        monkeypatch.setattr(sys, "argv", [
+            "train_surrogate", "--arch", "transformer",
+            "--n-layers", "4", "--n-heads", "4", "--d-model", "128",
+            "--no-wandb",
+        ])
+        from aprx_model_elastica.train_surrogate import parse_args
+        args = parse_args()
+        assert args.n_layers == 4
+        assert args.n_heads == 4
+        assert args.d_model == 128
