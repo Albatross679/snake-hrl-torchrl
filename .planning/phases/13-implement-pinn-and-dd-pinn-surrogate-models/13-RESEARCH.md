@@ -1,484 +1,669 @@
 # Phase 13: Implement PINN and DD-PINN Surrogate Models - Research
 
 **Researched:** 2026-03-17
-**Domain:** Physics-informed neural networks for Cosserat rod dynamics surrogate modeling
-**Confidence:** MEDIUM-HIGH (overall; varies by sub-approach)
+**Domain:** Physics-Informed Neural Networks (PINNs) for PDE/ODE Systems -- General Methodology and Ecosystem
+**Confidence:** HIGH (core methodology, standard stack) / MEDIUM (SOTA 2025 advances, project-specific application)
 
 ## Summary
 
-This phase concerns adding physics-informed training to the existing data-driven surrogate model pipeline for snake robot Cosserat rod dynamics. The project already has an extensive feasibility analysis (knowledge/pinn-ddpinn-snake-locomotion-feasibility.md) that established three possible approaches: (A) full DD-PINN, (B) physics loss regularizer on the existing surrogate, and (C) KNODE hybrid. This research validates that prior analysis, updates it with current ecosystem information, and provides prescriptive implementation guidance.
+Physics-Informed Neural Networks (PINNs) embed PDE/ODE residuals into the neural network loss function via automatic differentiation, enabling meshfree PDE solving with sparse data. The field has matured significantly since Raissi et al. (2019), with critical advances in loss balancing (NTK-based weighting, GradNorm, ReLoBRaLo), causal training for time-dependent problems, domain decomposition (XPINN, FBPINN, DD-PINN), spectral bias mitigation (Fourier features, SIREN), and separable architectures for high-dimensional problems.
 
-**Key ecosystem update since the feasibility analysis:** No DD-PINN open-source code has been released as of March 2026. The Krauss/Licher group (Leibniz Hannover) has published two DD-PINN papers (arXiv:2408.14951, arXiv:2508.12681) but no public repository exists. The tdcr-pinn repository (Martin-Bensch, ICRA 2024) handles only *static* Cosserat rods, not dynamic. The StableCosseratRods SIGGRAPH 2025 repository is C++/GLSL (not PyTorch, not differentiable for PINN use). A 2024 paper by Li et al. demonstrates PINNs for friction-involved nonsmooth dynamics, providing evidence that friction can be handled in PINN losses -- but their system is vastly simpler than ours (1-2 DOF vs 124 states).
+The standard training recipe is well-established: Adam optimizer (lr=1e-3) for 10-20K epochs followed by L-BFGS-B refinement, with adaptive collocation point sampling and multi-term loss balancing. The PINNacle benchmark (NeurIPS 2024) systematically evaluated ~10 methods across 20+ PDEs, finding that NTK-based loss weighting and domain decomposition are the most consistently beneficial techniques. For ODE systems specifically (the snake robot's case after spatial discretization), DD-PINN with sinusoidal ansatz provides exact initial condition satisfaction and closed-form time derivatives, avoiding the expensive autodiff-through-network computation of vanilla PINNs.
 
-**Primary recommendation:** Implement the phase in three tiers: (1) physics loss regularizer on the existing data-driven surrogate (1-2 weeks, high confidence), (2) DD-PINN ansatz prototype without friction (3-4 weeks, medium confidence), (3) DD-PINN with simplified friction (4-6 weeks, research-grade, low confidence of full success). Tier 1 is the minimum deliverable. Tiers 2-3 are stretch goals.
+The project already has extensive feasibility analysis for the specific snake robot application (see `knowledge/pinn-ddpinn-snake-locomotion-feasibility.md`). This research document covers the GENERAL PINN methodology, ecosystem, and best practices beyond the project-specific context, providing the planner with prescriptive guidance on how PINNs work, what libraries to use, and what pitfalls to avoid.
+
+**Primary recommendation:** Use DeepXDE 1.15.0 (PyTorch backend) for standard PINN experimentation and prototyping. For the project-specific DD-PINN, implement custom PyTorch code since no DD-PINN library exists. Start with a physics regularizer approach (1-2 weeks) before attempting full PINN/DD-PINN (4-8 weeks). Use the two-phase optimizer (Adam then L-BFGS), adaptive loss balancing (ReLoBRaLo or NTK-based), and Fourier features for spectral bias mitigation.
 
 ## Standard Stack
 
 ### Core
+
 | Library | Version | Purpose | Why Standard |
 |---------|---------|---------|--------------|
-| PyTorch | 2.10.0+cu128 | Autodiff backbone, existing stack | Already installed; all surrogate code uses it |
-| torchdiffeq | 0.2.5 | Neural ODE integration (KNODE variant, adjoint backprop) | Mature, GPU-native, O(1)-memory adjoint; 6.4k GitHub stars |
-| DeepXDE | 1.15.0 | PINN reference implementation, loss diagnostics | Most mature PINN library; PyTorch backend; ODE system examples |
+| DeepXDE | 1.15.0 | PINN framework for forward/inverse PDE/ODE problems | Most mature PINN library (Lu Lu, Yale); 5 backends; ODE system examples; SIAM Review paper; published 2025-12-05 on PyPI |
+| PyTorch | 2.x (existing) | Autodiff backbone for physics residuals and custom PINN code | Already in project stack; native autograd for PDE residuals |
+| torchdiffeq | 0.2.4+ | Neural ODE integration for KNODE-style hybrids | O(1) memory adjoint; GPU-native; mature (6.4K stars) |
 
 ### Supporting
+
 | Library | Version | Purpose | When to Use |
 |---------|---------|---------|-------------|
-| rbischof/relative_balancing | latest | ReLoBRaLo adaptive loss weighting | When implementing multi-term PINN loss (physics + data) |
-| scipy.stats.qmc | (bundled) | Latin Hypercube / Sobol collocation sampling | For generating collocation points in temporal domain |
+| PINNs-Torch | latest | High-performance PyTorch PINN with CUDA Graphs | When DeepXDE overhead is too high; up to 9x faster than TF v1 |
+| neuraloperator | 2.0.0 | FNO/TFNO for parametric PDE surrogates | When learning operator mappings across parameter families |
+| scipy.stats.qmc | (bundled) | Latin Hypercube / Sobol collocation sampling | For generating collocation points in spatiotemporal domains |
+| wandb | existing | Experiment tracking for PINN training | Track multi-term losses, collocation sampling, convergence |
 
 ### Alternatives Considered
+
 | Instead of | Could Use | Tradeoff |
 |------------|-----------|----------|
-| Custom PyTorch PINN loop | DeepXDE | DeepXDE adds overhead but provides loss diagnostics; for our custom DD-PINN ansatz, custom loop is better |
-| torchdiffeq | diffrax (JAX) | Would require rewriting in JAX; not compatible with existing stack |
-| NVIDIA PhysicsNeMo | Custom | Massive dependency for minimal benefit at this system scale |
+| DeepXDE | NVIDIA PhysicsNeMo (formerly Modulus) | PhysicsNeMo is production-grade but heavyweight; overkill for research-scale single-GPU work. Import path changed from `import modulus` to `import physicsnemo` in 2025 |
+| DeepXDE | Custom PyTorch | More control but must hand-roll collocation sampling, loss balancing, diagnostics |
+| DeepXDE | NeuralPDE.jl (Julia) | Strong for PDEs but requires Julia; incompatible with existing PyTorch pipeline |
+| torchdiffeq | diffrax (JAX) | diffrax is more feature-rich but requires JAX ecosystem migration |
+| Standard MLP | PIKANs (Kolmogorov-Arnold Networks) | PIKANs show promise with fewer params and noise robustness, but less mature; start with MLP |
 
 **Installation:**
 ```bash
-pip install torchdiffeq==0.2.5 deepxde==1.15.0
+pip install deepxde torchdiffeq
+# Set PyTorch backend for DeepXDE
+export DDEBACKEND=pytorch
+# Or set in ~/.deepxde/config.json: {"backend": "pytorch"}
 ```
-
-**Version verification:** torchdiffeq 0.2.5 confirmed on PyPI (latest as of 2026-03-17). DeepXDE 1.15.0 confirmed on PyPI (released 2025-12-05). PyTorch 2.10.0+cu128 already installed.
 
 ## Architecture Patterns
 
 ### Recommended Project Structure
 ```
-papers/aprx_model_elastica/
-    model.py                  # Existing: SurrogateModel, ResidualSurrogateModel, TransformerSurrogateModel
-    model_pinn.py             # NEW: PhysicsRegularizedSurrogate, DDPINNSurrogate, SinusoidalAnsatz
-    physics_residual.py       # NEW: Differentiable Cosserat rod physics (partial f_SSM)
-    loss_pinn.py              # NEW: Physics loss functions + ReLoBRaLo balancing
-    train_pinn.py             # NEW: Training loop with physics loss + collocation sampling
-    train_config.py           # EXTEND: Add PINNTrainConfig dataclass
-tests/
-    test_pinn_ansatz.py       # NEW: Ansatz forward/backward, IC enforcement, derivative accuracy
-    test_physics_residual.py  # NEW: Compare PyTorch f_SSM against PyElastica outputs
-    test_pinn_training.py     # NEW: Smoke test physics-regularized training loop
+src/
+  pinn/
+    __init__.py
+    ansatz.py           # DD-PINN sinusoidal ansatz (g(a,t))
+    physics_residual.py # f_SSM: differentiable Cosserat rod RHS
+    loss_balancing.py   # NTK-based / GradNorm / ReLoBRaLo adaptive weighting
+    collocation.py      # Adaptive sampling strategies (RAR, R3, Sobol)
+    models.py           # PINN network architectures (modified MLP, Fourier features)
+    train_pinn.py       # Training loop with Adam + L-BFGS two-phase optimizer
+    regularizer.py      # Physics loss regularizer for existing surrogate
+    utils.py            # Nondimensionalization, state extraction
 ```
 
-### Pattern 1: Physics Loss Regularizer (Tier 1 -- PRIMARY)
-**What:** Add soft physics constraints to the existing data-driven training loop. No architectural change to the surrogate model. Only the loss function changes.
-**When to use:** First step. Always implement this before attempting DD-PINN.
+### Pattern 1: Vanilla PINN for PDE/ODE Systems
+
+**What:** Network u_theta(x,t) directly approximates the PDE solution. Physics residual computed via autodiff: L[u_theta] - f = 0 at collocation points. Total loss = L_data + lambda_PDE * L_PDE + lambda_BC * L_BC + lambda_IC * L_IC.
+
+**When to use:** Forward PDE problems, inverse parameter estimation, benchmark problems, initial prototyping.
+
 **Example:**
 ```python
-# Source: Derived from existing knowledge/pinn-ddpinn-snake-locomotion-feasibility.md
-class PhysicsRegularizer(nn.Module):
-    """Soft physics constraints for existing delta-prediction surrogate.
+# Source: DeepXDE documentation (https://deepxde.readthedocs.io/en/latest/demos/pinn_forward/ode.system.html)
+import deepxde as dde
 
-    Three constraint types:
-    1. Velocity-position consistency: delta_pos ~ avg_vel * dt
-    2. Curvature-moment consistency: omega_dot ~ B*(kappa - kappa_rest) / (rho*I*ds)
-    3. Angular velocity-yaw consistency: delta_psi ~ omega * dt
-    """
+def ode_system(x, y):
+    """Physics residual for Lotka-Volterra ODE system."""
+    dy_dt = dde.grad.jacobian(y, x)  # autodiff: dy/dx where x=t
+    alpha, beta, delta, gamma = 1.0, 0.1, 0.02, 0.5
+    residual_1 = dy_dt[:, 0:1] - (alpha * y[:, 0:1] - beta * y[:, 0:1] * y[:, 1:2])
+    residual_2 = dy_dt[:, 1:2] - (delta * y[:, 0:1] * y[:, 1:2] - gamma * y[:, 1:2])
+    return [residual_1, residual_2]
 
-    def __init__(self, rod_params: dict, dt: float = 0.5):
-        super().__init__()
-        self.dt = dt
-        self.ds = rod_params['length'] / rod_params['n_elements']
-        self.B = rod_params['bending_stiffness']
-        self.rho_I = rod_params['density'] * rod_params['second_moment_of_area']
+geom = dde.geometry.TimeDomain(0, 25)
+ic1 = dde.icbc.IC(geom, lambda x: 10, lambda _, on_initial: on_initial, component=0)
+ic2 = dde.icbc.IC(geom, lambda x: 1, lambda _, on_initial: on_initial, component=1)
+data = dde.data.PDE(geom, ode_system, [ic1, ic2], num_domain=2500, num_boundary=2)
+net = dde.nn.FNN([1] + [64] * 3 + [2], "tanh", "Glorot normal")
 
-    def forward(self, state: torch.Tensor, delta_pred: torch.Tensor,
-                action: torch.Tensor, phase: torch.Tensor) -> torch.Tensor:
-        """Compute physics regularization loss.
-
-        Uses REL_* slice constants from state.py for index mapping.
-        Returns scalar loss (sum of all constraint violations).
-        """
-        next_state = state + delta_pred
-
-        # 1. Velocity-position consistency (positions 0-41, velocities 42-83)
-        # In relative coords: REL_POS_X, REL_POS_Y, REL_VEL_X, REL_VEL_Y
-        vel_x = state[..., 48:69]  # REL_VEL_X
-        vel_y = state[..., 69:90]  # REL_VEL_Y
-        delta_vel_x = delta_pred[..., 48:69]
-        delta_vel_y = delta_pred[..., 69:90]
-        delta_pos_x = delta_pred[..., 6:27]   # REL_POS_X
-        delta_pos_y = delta_pred[..., 27:48]  # REL_POS_Y
-
-        avg_vel_x = vel_x + 0.5 * delta_vel_x
-        avg_vel_y = vel_y + 0.5 * delta_vel_y
-        loss_kinematic = (
-            F.mse_loss(delta_pos_x, avg_vel_x * self.dt) +
-            F.mse_loss(delta_pos_y, avg_vel_y * self.dt)
-        )
-
-        # 2. Angular velocity-yaw consistency
-        omega = state[..., 110:130]  # REL_OMEGA_Z
-        delta_psi = delta_pred[..., 90:110]  # REL_YAW
-        delta_omega = delta_pred[..., 110:130]
-        avg_omega = omega + 0.5 * delta_omega
-        loss_angular = F.mse_loss(delta_psi, avg_omega * self.dt)
-
-        # 3. Curvature-moment consistency (simplified -- no friction)
-        psi_next = state[..., 90:110] + delta_psi
-        kappa = (psi_next[..., 1:] - psi_next[..., :-1]) / self.ds
-        kappa_rest = self._compute_rest_curvature(action, phase)
-        moment = self.B * (kappa - kappa_rest[..., :-1])
-        omega_dot = delta_omega / self.dt
-        loss_moment = F.mse_loss(
-            omega_dot[..., 1:-1] * self.rho_I,
-            (moment[..., 1:] - moment[..., :-1]) / self.ds
-        )
-
-        return loss_kinematic + loss_angular + loss_moment
-
-    def _compute_rest_curvature(self, action, phase):
-        """Extract rest curvature from action + per-element phase encoding."""
-        # phase encoding: (B, 60) = 20 elements x (sin, cos, kappa)
-        # kappa component is at indices 2, 5, 8, ..., 59
-        kappa_rest = phase[..., 2::3]  # (B, 20) rest curvature per element
-        return kappa_rest
+model = dde.Model(data, net)
+model.compile("adam", lr=1e-3)
+model.train(epochs=15000)
+model.compile("L-BFGS")
+model.train()
 ```
 
-### Pattern 2: DD-PINN Ansatz (Tier 2 -- STRETCH)
-**What:** Sinusoidal ansatz that decouples time from the neural network. Network outputs ansatz parameters; time enters only through closed-form sin/cos evaluation.
-**When to use:** After Tier 1 proves physics loss helps; if higher accuracy or fewer data points are needed.
-**Example:** See the SinusoidalAnsatz class in the existing feasibility analysis (knowledge/pinn-ddpinn-snake-locomotion-feasibility.md, Code Examples section). That implementation is correct and ready to use. Key parameters for our system:
-- state_dim = 130 (relative state, not raw 124)
-- n_basis = 5 (matching DD-PINN paper; increase to 7 if underfitting)
-- NN output dim = 3 * 130 * 5 = 1,950 (alpha, beta, gamma)
-- With damping: 4 * 130 * 5 = 2,600
+### Pattern 2: DD-PINN with Sinusoidal Ansatz (for ODE Systems)
 
-### Pattern 3: Loss Balancing with ReLoBRaLo
-**What:** Adaptive loss weighting using Relative Loss Balancing with Random Lookback.
-**When to use:** Whenever combining data loss + physics loss (both Tier 1 and Tier 2).
-**Example:**
+**What:** Separate the neural network from time evolution. NN predicts ansatz parameters (alpha, beta, gamma); ansatz provides closed-form time evolution: g_j(t) = sum_i alpha_ij * [sin(beta_ij*t + gamma_ij) - sin(gamma_ij)]. This guarantees g(a, 0) = 0 (exact IC satisfaction) and provides closed-form time derivative g_dot without autodiff.
+
+**When to use:** Dynamic ODE systems where: (a) initial conditions must be exactly satisfied, (b) dynamics are periodic/oscillatory, (c) autodiff overhead is prohibitive. DD-PINN is 5-38x faster than vanilla PINN for ODE systems.
+
+**Key advantage:** No autodiff through the network for time derivatives -- the ansatz provides g_dot(a,t) in closed form.
+
 ```python
-# Source: rbischof/relative_balancing (GitHub)
 import torch
+import torch.nn as nn
 
-class ReLoBRaLo:
-    """Relative Loss Balancing with Random Lookback.
+class SinusoidalAnsatz(nn.Module):
+    """DD-PINN sinusoidal ansatz: g(a, t) with g(a, 0) = 0.
 
-    Adaptively weights multiple loss terms based on their relative
-    rate of change, with a random lookback to prevent oscillation.
+    For each state dimension j, the ansatz is:
+        g_j(t) = sum_i alpha_ij * [sin(beta_ij*t + gamma_ij) - sin(gamma_ij)]
+
+    The NN outputs a = (alpha, beta, gamma) of shape (B, 3 * m * n_g).
     """
+    def __init__(self, state_dim: int, n_basis: int = 5):
+        super().__init__()
+        self.state_dim = state_dim
+        self.n_basis = n_basis
+        self.param_dim = 3 * state_dim * n_basis
 
-    def __init__(self, n_losses: int, alpha: float = 0.999, temperature: float = 1.0):
-        self.n_losses = n_losses
-        self.alpha = alpha  # EMA smoothing factor
-        self.temperature = temperature
-        self.prev_losses = None
-        self.weights = torch.ones(n_losses)
+    def forward(self, params: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
+        """Evaluate ansatz. Returns (B, N_c, m) state deviations from x_0."""
+        B, m, n_g = params.shape[0], self.state_dim, self.n_basis
+        alpha = params[:, :m*n_g].reshape(B, m, n_g)
+        beta  = params[:, m*n_g:2*m*n_g].reshape(B, m, n_g)
+        gamma = params[:, 2*m*n_g:].reshape(B, m, n_g)
 
-    def update(self, losses: list[torch.Tensor]) -> torch.Tensor:
-        """Return balanced weights for current losses.
+        t_exp = t[None, :, None, None]
+        phase = beta[:, None, :, :] * t_exp + gamma[:, None, :, :]
+        g = (alpha[:, None, :, :] * (torch.sin(phase) - torch.sin(gamma[:, None, :, :]))).sum(-1)
+        return g  # (B, N_c, m)
 
-        Args:
-            losses: List of scalar loss tensors (detached).
-        Returns:
-            Tensor of weights (n_losses,).
-        """
-        current = torch.tensor([l.item() for l in losses])
+    def time_derivative(self, params: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
+        """Closed-form g_dot. NO autodiff needed."""
+        B, m, n_g = params.shape[0], self.state_dim, self.n_basis
+        alpha = params[:, :m*n_g].reshape(B, m, n_g)
+        beta  = params[:, m*n_g:2*m*n_g].reshape(B, m, n_g)
+        gamma = params[:, 2*m*n_g:].reshape(B, m, n_g)
 
-        if self.prev_losses is None:
-            self.prev_losses = current.clone()
-            return self.weights
+        t_exp = t[None, :, None, None]
+        phase = beta[:, None, :, :] * t_exp + gamma[:, None, :, :]
+        g_dot = (alpha[:, None, :, :] * beta[:, None, :, :] * torch.cos(phase)).sum(-1)
+        return g_dot  # (B, N_c, m)
+```
 
-        # Relative change
-        ratios = current / (self.prev_losses + 1e-8)
+### Pattern 3: Physics Loss Regularizer on Existing Surrogate
 
-        # Softmax with temperature
-        weights = torch.softmax(ratios / self.temperature, dim=0) * self.n_losses
+**What:** Add soft physics constraints to the existing data-driven MLP/Transformer training loop. No architectural change. Only the loss function changes.
 
-        # EMA smoothing
-        self.weights = self.alpha * self.weights + (1 - self.alpha) * weights
-        self.prev_losses = current.clone()
+**When to use:** Lowest-risk physics incorporation. First step before attempting full PINN/DD-PINN.
 
-        return self.weights
+```python
+def physics_regularizer(state, delta_pred, dt=0.5):
+    """Soft physics constraints -- no full differentiable simulator needed.
+
+    Three constraint types that are valid for ANY dynamical system:
+    1. Velocity-position consistency: delta_pos ~ avg_vel * dt
+    2. Angular velocity-yaw consistency: delta_psi ~ avg_omega * dt
+    3. Curvature-moment consistency (system-specific, partial)
+    """
+    next_state = state + delta_pred
+
+    # 1. Kinematic consistency (valid for any system with pos/vel state)
+    vel_x = state[..., 42:63]
+    delta_x = delta_pred[..., 0:21]
+    delta_vx = delta_pred[..., 42:63]
+    loss_kin = F.mse_loss(delta_x, (vel_x + 0.5 * delta_vx) * dt)
+
+    # 2. Angular kinematic consistency
+    omega = state[..., 104:124]
+    delta_psi = delta_pred[..., 84:104]
+    delta_omega = delta_pred[..., 104:124]
+    loss_ang = F.mse_loss(delta_psi, (omega + 0.5 * delta_omega) * dt)
+
+    return loss_kin + loss_ang
+
+# Training integration:
+loss_data = F.mse_loss(model(state, action, phase), delta_target)
+loss_phys = physics_regularizer(state, model(state, action, phase))
+loss = loss_data + lambda_phys * loss_phys  # sweep lambda_phys in {0.001, 0.01, 0.1}
+```
+
+### Pattern 4: Modified MLP with Fourier Features (Spectral Bias Mitigation)
+
+**What:** Replace raw coordinate inputs with Fourier feature embedding to overcome spectral bias -- the tendency of standard MLPs to learn low-frequency functions first and struggle with high-frequency content.
+
+**When to use:** Any PINN problem with multi-scale or oscillatory solutions. Reported 30% error reduction in high-frequency regimes.
+
+```python
+class FourierFeatureEmbedding(nn.Module):
+    """Random Fourier features for spectral bias mitigation.
+
+    Source: Tancik et al. (2020), "Fourier Features Let Networks Learn
+    High Frequency Functions in Low Dimensional Domains"
+    """
+    def __init__(self, input_dim, n_features=256, sigma=1.0):
+        super().__init__()
+        self.B = nn.Parameter(torch.randn(input_dim, n_features) * sigma,
+                              requires_grad=False)
+
+    def forward(self, x):
+        proj = 2 * torch.pi * x @ self.B
+        return torch.cat([torch.sin(proj), torch.cos(proj)], dim=-1)
+
+class ModifiedMLP(nn.Module):
+    """Modified MLP for PINNs: Fourier features + residual connections.
+
+    This addresses two key PINN failure modes:
+    1. Spectral bias (via Fourier features)
+    2. Vanishing gradients in deep networks (via residual connections)
+    """
+    def __init__(self, input_dim, output_dim, hidden_dim=256, n_layers=4,
+                 n_fourier=128, sigma=10.0):
+        super().__init__()
+        self.fourier = FourierFeatureEmbedding(input_dim, n_fourier, sigma)
+        feat_dim = 2 * n_fourier
+        self.input_proj = nn.Linear(feat_dim, hidden_dim)
+        self.layers = nn.ModuleList([nn.Linear(hidden_dim, hidden_dim) for _ in range(n_layers)])
+        self.output = nn.Linear(hidden_dim, output_dim)
+
+    def forward(self, x):
+        h = torch.tanh(self.input_proj(self.fourier(x)))
+        for layer in self.layers:
+            h = h + torch.tanh(layer(h))  # Residual connection
+        return self.output(h)
+```
+
+### Pattern 5: Two-Phase Optimizer (Adam + L-BFGS)
+
+**What:** The standard PINN training recipe: Adam for global exploration, then L-BFGS for local refinement. This is the most consistently recommended approach across PINN literature.
+
+**When to use:** Always. This is the default training strategy.
+
+```python
+# Phase 1: Adam for global exploration (10K-20K epochs)
+model.compile("adam", lr=1e-3)
+model.train(epochs=20000)
+
+# Phase 2: L-BFGS for local refinement (until convergence)
+model.compile("L-BFGS")
+model.train()
+```
+
+### Pattern 6: Causal Training for Time-Dependent Problems
+
+**What:** Assign temporal weights that enforce sequential learning: the model must converge at early times before being allowed to learn at later times.
+
+**When to use:** Any time-dependent PDE/ODE where vanilla PINN shows propagation failure (good loss at late times but poor accuracy at early times).
+
+```python
+def causal_weights(t_colloc, residuals, epsilon=100.0):
+    """Compute causal weights following Wang & Perdikaris (2024).
+
+    w_i = exp(-epsilon * sum_{j<i} r_j^2)
+
+    This forces the model to achieve low residual at early times
+    before it can reduce residual at later times.
+    """
+    sorted_idx = torch.argsort(t_colloc)
+    sorted_residuals = residuals[sorted_idx]
+
+    cumsum = torch.cumsum(sorted_residuals ** 2, dim=0)
+    weights = torch.exp(-epsilon * cumsum)
+
+    # Unsort back to original order
+    inverse_idx = torch.argsort(sorted_idx)
+    return weights[inverse_idx]
 ```
 
 ### Anti-Patterns to Avoid
-- **Using PyElastica or DisMech as f_SSM:** Neither is differentiable. PyElastica is NumPy+Numba; DisMech is C++/pybind11. Attempting torch.autograd through them will silently fail or crash with `RuntimeError: Can't call numpy() on Tensor that requires grad`.
-- **Standard PINN (time as network input) for 124-state system:** DD-PINN strictly dominates. The autodiff overhead of computing dx/dt through a network with 124+ outputs at 250K+ collocation points is prohibitive. Use DD-PINN's closed-form derivative instead.
-- **Full physics loss without curriculum:** Starting training with both data and physics loss from epoch 0 causes catastrophic loss competition. Always use a curriculum: data-only first, then ramp physics loss.
-- **Reimplementing full f_SSM as first step:** Building the full differentiable Cosserat rod equations (including RFT friction) is 2-4 weeks of work with uncertain benefit. Start with partial physics (kinematic consistency, moment balance) which requires zero f_SSM code.
+
+- **Using vanilla PINNs on high-dimensional ODE systems without DD-PINN:** Autodiff through the network for dx/dt is 5-38x slower than DD-PINN's closed-form derivatives. Use DD-PINN for any ODE system with >10 states.
+- **Equal weighting of loss terms:** Naive lambda=1.0 for all loss components almost always fails. Use adaptive weighting (ReLoBRaLo, NTK-based, GradNorm) from the start.
+- **Uniform collocation point sampling:** Wastes capacity on easy regions. Use adaptive (R3, failure-informed, RAR) or at minimum Latin Hypercube / Sobol sampling.
+- **Ignoring nondimensionalization:** Raw physical units create loss terms with wildly different magnitudes. Nondimensionalize all inputs and outputs before PINN training.
+- **Standard PINN for time-dependent problems without causal training:** Vanilla PINNs can satisfy PDE residuals at later times while getting early times wrong. Use causal weighting or time-marching.
+- **Starting with full physics loss + data loss simultaneously:** Always use a curriculum: data-only first, then ramp physics loss gradually.
 
 ## Don't Hand-Roll
 
 | Problem | Don't Build | Use Instead | Why |
 |---------|-------------|-------------|-----|
-| ODE integration in KNODE | Custom Euler/RK4 loop | torchdiffeq.odeint_adjoint | Adjoint method, adaptive stepping, numerical stability, GPU support |
-| PINN collocation sampling | Custom random sampling | scipy.stats.qmc.LatinHypercube or Sobol | Better space-filling, proven for PINNs |
-| Loss balancing | Manual lambda tuning | ReLoBRaLo (rbischof/relative_balancing) | Adaptive, near-zero overhead, handles magnitude differences |
-| Sinusoidal ansatz derivatives | Torch autograd through sin() | Closed-form analytic expression | The whole point of DD-PINN is avoiding autograd for time derivatives |
-| State normalization | New normalizer | Existing StateNormalizer in state.py | Already handles mean/std for all 130 relative state dims |
-| Cosserat rod constitutive law | Derive from papers | Extract from PyElastica source (CosseratRod._compute_internal_forces) | Validated equations; translate NumPy to PyTorch, don't reinvent |
+| PINN training loop | Custom collocation + residual computation | DeepXDE | Adaptive sampling, loss balancing, multiple BC types already solved |
+| Loss balancing | Manual lambda tuning | NTK-based weighting (DeepXDE built-in) or ReLoBRaLo | Manual tuning fails for >2 loss terms; adaptive methods proven by PINNacle |
+| Collocation point sampling | Uniform random | RAR (Residual-based Adaptive Refinement) in DeepXDE, or scipy.stats.qmc.Sobol | Adaptive sampling places points where residual is high |
+| ODE integration in NN | Custom RK4 in PyTorch | torchdiffeq | Adjoint method, adaptive stepping, numerical stability |
+| Fourier feature embedding | Custom sin/cos mapping | Use DeepXDE's built-in multi-scale Fourier or Pattern 4 above | Correct initialization of frequency matrix sigma matters |
+| PINN benchmarking | Custom evaluation metrics | PINNacle benchmark suite | Standardized comparison across methods, 20+ PDE problems |
+| Inverse problem setup | Custom parameter-as-variable | DeepXDE's `dde.Variable` API | Handles gradient flow to unknown parameters automatically |
+| Ansatz time derivatives | Torch autograd through sin() | Closed-form analytic expression | The whole point of DD-PINN is avoiding autograd for time derivatives |
 
-**Key insight:** The engineering effort is NOT in the PINN framework or the ansatz -- it is in (a) formulating which physics constraints are useful without a full f_SSM, and (b) loss balancing. No library solves these for you.
+**Key insight:** The PINN *framework* (DeepXDE) handles the training mechanics. For this project, the hard part is formulating f_SSM -- the differentiable physics residual for Cosserat rods. No library solves that for you.
 
 ## Common Pitfalls
 
-### Pitfall 1: Assuming PyElastica Is Differentiable
-**What goes wrong:** Attempting to call PyElastica's integrator inside a PyTorch computation graph.
-**Why it happens:** Developers assume "Python = differentiable". PyElastica uses NumPy arrays internally with Numba JIT, which breaks autograd.
-**How to avoid:** The physics regularizer (Tier 1) avoids this entirely by using only algebraic constraints in PyTorch. For Tier 2 DD-PINN, the f_SSM must be pure PyTorch.
-**Warning signs:** `RuntimeError: Can't call numpy() on Tensor that requires grad` or gradients silently equal to zero.
+### Pitfall 1: Spectral Bias (Low-Frequency Preference)
+**What goes wrong:** The PINN learns smooth, low-frequency solutions and fails to capture high-frequency oscillatory dynamics.
+**Why it happens:** Standard MLP activations have frequency-dependent convergence rates that strongly favor low frequencies. Mathematically characterized through the Neural Tangent Kernel (NTK).
+**How to avoid:** (1) Use Fourier feature inputs with sigma tuned to the problem's frequency range. (2) Use SIREN (sinusoidal activation: sin(omega_0 * Wx + b)) with omega_0=30. (3) For DD-PINN, the sinusoidal ansatz naturally captures oscillatory dynamics. (4) Use ASPEN (Adaptive Spectral Physics-Enabled Network) with learnable Fourier features.
+**Warning signs:** Position predictions accurate but velocity/acceleration predictions poor. Smooth predictions where sharp features should exist. 30%+ error improvement reported when adding Fourier features.
 
-### Pitfall 2: Loss Balancing Catastrophe
-**What goes wrong:** Data loss and physics loss compete. One dominates training while the other stagnates. Total loss decreases but validation error gets worse.
-**Why it happens:** Physics residual magnitude (in Cosserat rod units: N*m, rad/s^2) is completely different from MSE on normalized deltas (dimensionless, ~0.01). Equal weighting is almost always wrong.
-**How to avoid:** Use ReLoBRaLo for adaptive weighting. Additionally, use a curriculum: train data-only for first 20% of epochs, then ramp lambda_phys linearly from 0 to target over next 30%, then hold.
-**Warning signs:** One loss component flatlines while total loss decreases. Validation MSE increases despite total training loss decreasing.
+### Pitfall 2: Loss Imbalance / Gradient Pathology
+**What goes wrong:** PDE residual loss and data/BC/IC losses converge at different rates. One loss component dominates while others stagnate.
+**Why it happens:** Different loss terms produce gradients of wildly different magnitudes. PDE residuals involve second derivatives (stiffer gradients) while data loss is first-order.
+**How to avoid:** Use NTK-based adaptive weighting (Wang et al., 2021) -- PINNacle benchmark found this most consistently effective. Or ReLoBRaLo (Relative Loss Balancing with Random Lookback). Or GradNorm. Always use adaptive weighting, never manual lambdas.
+**Warning signs:** Total loss decreases but one component flatlines or oscillates. Physics loss near zero but data loss high (or vice versa).
 
-### Pitfall 3: Spectral Bias with Angular Velocity
-**What goes wrong:** The PINN learns position and velocity components accurately but fails on omega_z (angular velocity), which has the highest frequency content.
-**Why it happens:** Standard MLP activations preferentially learn low-frequency functions. The omega_z component oscillates at CPG frequency (0.5-3 Hz) -- the same spectral bias that gives the current surrogate omega_z R^2 = 0.23.
-**How to avoid:** For Tier 1 (regularizer): the physics loss on curvature-moment consistency directly targets omega_z accuracy, which may help. For Tier 2 (DD-PINN): the sinusoidal ansatz naturally captures periodicity -- this is DD-PINN's key advantage.
-**Warning signs:** Good total loss, poor omega_z R^2 on validation.
+### Pitfall 3: Propagation Failure in Time-Dependent Problems
+**What goes wrong:** PINN minimizes residuals at later times without properly solving earlier times. Solution satisfies PDE pointwise but violates temporal causality.
+**Why it happens:** Optimization landscape allows "shortcut" solutions at later times.
+**How to avoid:** Causal training (Wang & Perdikaris, 2024): temporal weights that exponentially decay with accumulated residual at earlier times. Or time-marching: solve [0, T/k] then [T/k, 2T/k] etc.
+**Warning signs:** Low total loss but poor accuracy at early times. Solution "appears" at t>0 before properly evolving from IC.
 
-### Pitfall 4: Ignoring Friction Makes Physics Loss Misleading
-**What goes wrong:** A physics regularizer that models only internal elastic forces (moment balance) ignores RFT friction, which dominates net locomotion. The model satisfies the physics loss but produces non-physical trajectories.
-**Why it happens:** Internal forces are algebraic and easy to implement. Friction requires velocity-dependent, direction-dependent computation that is hard to differentiate.
-**How to avoid:** Do NOT include a full momentum balance (F = ma) without friction. Instead, use only self-consistency constraints (velocity-position, angular velocity-yaw) which are valid regardless of friction. The moment balance constraint should be weighted lower than kinematic consistency.
-**Warning signs:** Physics loss near zero, validation RMSE on position components unchanged or worse.
+### Pitfall 4: Stiff Systems Causing Training Instability
+**What goes wrong:** For stiff PDEs/ODEs, training becomes extremely unstable or converges to incorrect solutions.
+**Why it happens:** Stiff systems require representing dynamics at very different timescales simultaneously. Optimization landscape becomes ill-conditioned.
+**How to avoid:** (1) Nondimensionalize to reduce stiffness ratio. (2) Curriculum learning: start simple, gradually increase stiffness. (3) Exact enforcement of initial conditions (critical for stiff systems -- not soft enforcement). (4) Sequence-to-sequence formulation instead of whole-domain prediction.
+**Warning signs:** Loss oscillates wildly. Different random seeds give very different results. NFE explosion in Neural ODE context.
 
-### Pitfall 5: Collocation Point Budget Too Low
-**What goes wrong:** Using too few collocation points for the temporal domain. The physics loss appears satisfied at sampled points but is violated between them.
-**Why it happens:** For a 0.5s time horizon with dynamics at 0.5-3 Hz, the Nyquist criterion requires >= 6 Hz temporal resolution, i.e., >= 3 collocation points per cycle. With 1.5 cycles max, that is >= 5 points. But for the physics loss to meaningfully constrain, much more are needed.
-**How to avoid:** For DD-PINN: use N_c = 100-500 collocation points per training sample over [0, 0.5s]. This is cheap because ansatz evaluation is O(n_g) per point with no network forward pass. For physics regularizer (Tier 1): N/A -- regularizer operates on single-step predictions.
-**Warning signs:** Physics loss << data loss from the start (too easy to satisfy). Increasing N_c causes physics loss to suddenly jump.
+### Pitfall 5: Non-Differentiable Physics Simulators
+**What goes wrong:** Attempting to compute PDE residuals using simulators that don't participate in PyTorch autograd (e.g., NumPy-based, C++ based, Fortran-based).
+**Why it happens:** PINN physics loss requires gradients of the residual with respect to network parameters. These gradients must flow through the physics computation.
+**How to avoid:** Reimplement the physics residual in pure PyTorch. Or use physics regularizer approach (Pattern 3) which needs only algebraic constraints, not a full differentiable simulator.
+**Warning signs:** `RuntimeError: Can't call numpy() on Tensor that requires grad`. Gradients silently equal to zero. Loss decreasing but physics wrong.
+
+### Pitfall 6: Collocation Point Budget
+**What goes wrong:** Too few collocation points. Physics constraint satisfied at sample points but violated between them.
+**Why it happens:** High-dimensional systems need proportionally more collocation points. Uniform sampling wastes budget on easy regions.
+**How to avoid:** Start with 10K-50K collocation points. Use adaptive refinement (RAR) to concentrate in high-residual regions. DD-PINN paper uses 250K-1M for 72-state systems. DD-PINN collocation is cheap (no network forward pass, just ansatz evaluation).
+**Warning signs:** Physics loss very low but validation error high. Adding more collocation points significantly changes the solution.
+
+## PINN Methodology by PDE Type
+
+### Elliptic PDEs (Poisson, Laplace, Elastostatics)
+- **Character:** Steady-state, boundary value problems. Solution is smooth. Information propagates in all directions.
+- **PINN approach:** Standard PINN works well. Collocation in spatial domain only.
+- **Key tricks:** Domain decomposition (FBPINN/XPINN) for complex geometries. Moderate-depth networks (3-4 hidden layers). No causal training needed.
+- **Difficulty for PINNs:** LOW -- this is where PINNs work best.
+
+### Parabolic PDEs (Heat Equation, Diffusion)
+- **Character:** Time-dependent, diffusive. Solution smooths over time. Information propagates at infinite speed.
+- **PINN approach:** Standard PINN with causal training. Moderate difficulty.
+- **Key tricks:** Time-marching to prevent propagation failure. Fourier features for multi-scale diffusion. Curriculum learning on diffusion coefficient.
+- **Difficulty for PINNs:** MEDIUM -- causal training essential.
+
+### Hyperbolic PDEs (Wave Equation, Advection)
+- **Character:** Time-dependent, wave propagation. Can develop shocks/discontinuities. Information propagates at finite speed along characteristics.
+- **PINN approach:** HARDEST for PINNs. Requires causal training + adaptive sampling + conservation-form losses.
+- **Key tricks:** Viscosity solution regularization. R3 sampling near shock fronts. Weighted loss emphasizing conservation. CPINN along characteristics.
+- **Difficulty for PINNs:** HIGH -- shocks and discontinuities fundamentally challenge smooth NN approximation.
+
+### ODE Systems (Primary Case for Snake Robot)
+- **Character:** After spatial discretization, PDEs become large ODE systems. Time is the only independent variable.
+- **PINN approach:** DD-PINN strongly preferred over vanilla PINN. Closed-form time derivatives avoid autodiff overhead. Exact IC satisfaction.
+- **Key tricks:** Sinusoidal ansatz for oscillatory dynamics. Curriculum on physics loss. Adaptive loss balancing.
+- **Difficulty for PINNs:** MEDIUM -- DD-PINN makes this tractable.
+
+### Stiff / Multi-Scale Systems
+- **Character:** Multiple timescales (fast oscillations + slow drift). High condition number in the Jacobian.
+- **PINN approach:** Curriculum learning + nondimensionalization + exact IC enforcement.
+- **Key tricks:** Separable PINNs for computational tractability. Stiff-PINN techniques (analytical enrichment, stability-optimized time-stepping). Sequence-to-sequence formulation.
+- **Difficulty for PINNs:** HIGH -- active research area.
+
+## Domain Decomposition Methods
+
+### XPINN (Extended PINN, Jagtap & Karniadakis 2020)
+- **How:** Decompose spatial/temporal domain into arbitrary subdomains, each with its own small network. Interface conditions enforced via penalty terms.
+- **Advantage:** Arbitrary decomposition shape, space+time parallelization, applicable to any PDE type.
+- **Disadvantage:** Interface penalty weight tuning. Can have discontinuities at interfaces.
+- **Best for:** Complex geometry problems, multi-physics problems with different physics in different regions.
+
+### FBPINN (Finite Basis PINN, Moseley et al. 2023)
+- **How:** Overlapping domain decomposition with smooth window functions. Each subdomain network's output is windowed, then summed globally.
+- **Advantage:** Overlapping regions provide natural information exchange without hard interface constraints. Multilevel variants (2024) handle multi-scale problems. Consistently outperforms vanilla PINNs.
+- **Disadvantage:** Overlap size is a hyperparameter. More networks = more parameters.
+- **Best for:** Multi-scale problems, high-frequency solutions, problems where vanilla PINNs fail due to spectral bias.
+
+### CPINN (Conservative PINN, Jagtap et al. 2020)
+- **How:** Decompose along characteristics of conservation laws. Enforce flux continuity at interfaces.
+- **Advantage:** Respects physical conservation at interfaces. Natural for conservation-law PDEs.
+- **Disadvantage:** Only applicable to conservation-law PDEs. Cannot be applied to general PDEs.
+- **Best for:** Fluid dynamics (Euler, Navier-Stokes), conservation laws with shocks.
+
+### DD-PINN (Domain-Decoupled PINN, Krauss et al. 2024)
+- **How:** For ODE systems: decouple the NN from time via a parametric ansatz. NN maps (x_0, u) to ansatz parameters; ansatz provides x(t) with exact IC.
+- **Advantage:** 5-38x faster than vanilla PINN. Exact IC satisfaction. No autodiff for time derivatives. Collocation is cheap (only ansatz evaluation).
+- **Disadvantage:** Ansatz must match solution character (sinusoidal for oscillatory, exponential for diffusive). Limited to ODE systems (not spatial PDEs). No open-source implementation as of March 2026.
+- **Best for:** Large ODE systems from spatially-discretized PDEs, oscillatory dynamics, control problems. Demonstrated on 72-state Cosserat rod system with 44,000x speedup over direct simulation.
+
+### DADD-PINN (Dual Adaptive Domain Decomposition, 2025)
+- **How:** Automatically adapts subdomain boundaries and number of subdomains during training based on residual distribution.
+- **Advantage:** No manual subdomain specification needed. Adapts to problem complexity.
+- **Disadvantage:** Very new (2025), limited validation.
+
+### When to Decompose
+- Complex geometry with heterogeneous regions -> XPINN or FBPINN
+- Multi-scale temporal dynamics -> time-domain XPINN or Multilevel FBPINN
+- Large ODE system from spatial discretization -> DD-PINN (Krauss et al.)
+- Conservation law with shocks -> CPINN
+- Unknown problem structure -> DADD-PINN (automatic)
+
+## Inverse Problems with PINNs
+
+PINNs are naturally suited for inverse problems (parameter estimation) because unknown parameters can be treated as trainable variables alongside network weights.
+
+**Workflow in DeepXDE:**
+```python
+import deepxde as dde
+
+# Unknown parameter (initial guess)
+C = dde.Variable(1.0)
+
+def pde(x, y):
+    dy_t = dde.grad.jacobian(y, x, j=1)
+    dy_xx = dde.grad.hessian(y, x, j=0)
+    return dy_t - C * dy_xx  # C is trainable
+
+# Add observed data as boundary condition
+observe = dde.icbc.PointSetBC(observe_x, observe_y, component=0)
+data = dde.data.TimePDE(geomtime, pde, [observe], ...)
+
+model = dde.Model(data, net)
+model.compile("adam", lr=0.001, external_trainable_variables=[C])
+model.train(epochs=30000)
+# C converges to true value
+```
+
+**Applications for this project:** Estimate rod stiffness parameters from trajectory data. Identify friction coefficients. Calibrate CPG model parameters.
+
+## SOTA Advances (2024-2026)
+
+| Method | Year | Key Contribution | Impact |
+|--------|------|------------------|--------|
+| Causal PINNs | 2024 | Temporal causality weights prevent propagation failure | Essential for time-dependent problems |
+| Separable PINNs (SPINNs) | 2023-24 | Factorized networks using forward-mode AD, 60x speedup | Linear scaling with dimensionality |
+| PIKANs | 2024 | Kolmogorov-Arnold Networks for PINNs | Fewer parameters, more robust to noise |
+| PINNacle Benchmark | 2024 (NeurIPS) | Systematic comparison of ~10 methods on 20+ PDEs | NTK weighting + domain decomposition = best combo |
+| FRES | 2024 | Dynamic Fourier feature generation | 30% error reduction in high-frequency regimes |
+| R3 Sampling | 2023 (ICML) | Retain-Resample-Release adaptive collocation | Low-overhead adaptive sampling |
+| Stiff-PINN | 2024-25 | Curriculum regularization, sequence-to-sequence | Robust on stiff chemical kinetics, boundary layers |
+| DADD-PINN | 2025 | Automatic domain decomposition adaptation | Eliminates manual subdomain design |
+| DD-PINN for Cosserat | 2025 | Dynamic Cosserat rod control at 70 Hz | 44,000x speedup over direct simulation |
+| ASPEN | 2025 | Adaptive Spectral Physics-Enabled Network | Learnable Fourier features, auto-tunes spectral basis |
+| Bayesian CPINN | 2025 | Uncertainty quantification in domain decomposition | Robust to 15% data noise |
+
+### Deprecated / Outdated Approaches
+- **Equal-weight loss terms:** Superseded by NTK-based / GradNorm / ReLoBRaLo adaptive weighting
+- **Uniform random collocation:** Superseded by RAR, R3, failure-informed sampling
+- **Vanilla PINN on time-dependent problems without causal weighting:** Superseded by causal PINNs
+- **NVIDIA Modulus (old name):** Renamed to PhysicsNeMo in 2025; import path changed from `import modulus` to `import physicsnemo`
+- **TensorFlow 1.x for PINNs:** DeepXDE still supports it but PyTorch backend is now preferred
 
 ## Code Examples
 
-### Example 1: Curriculum Training with Physics Loss Ramp
+### Example 1: DeepXDE Inverse Problem (Parameter Estimation)
 ```python
-# Source: Adapted from Wang & Perdikaris (2024), "Challenges in Training PINNs"
-def get_physics_weight(epoch: int, total_epochs: int, max_weight: float = 0.1) -> float:
-    """Curriculum schedule: data-only -> ramp physics -> hold.
+# Source: https://deepxde.readthedocs.io/en/latest/demos/pinn_inverse.html
+import deepxde as dde
+import numpy as np
 
-    Schedule:
-        epochs [0, 0.2*total):      lambda_phys = 0.0  (data-only)
-        epochs [0.2*total, 0.5*total): lambda_phys ramps linearly to max_weight
-        epochs [0.5*total, total):   lambda_phys = max_weight
-    """
+C = dde.Variable(1.0)  # Unknown diffusion coefficient
+
+def pde(x, y):
+    dy_t = dde.grad.jacobian(y, x, j=1)
+    dy_xx = dde.grad.hessian(y, x, j=0)
+    return dy_t - C * dy_xx
+
+geom = dde.geometry.Interval(0, 1)
+timedomain = dde.geometry.TimeDomain(0, 1)
+geomtime = dde.geometry.GeometryXTime(geom, timedomain)
+
+observe_x = np.array([[0.25, 0.5], [0.5, 0.5], [0.75, 0.5]])
+observe_y = np.array([[0.3], [0.2], [0.1]])
+observe = dde.icbc.PointSetBC(observe_x, observe_y, component=0)
+
+data = dde.data.TimePDE(geomtime, pde, [observe],
+                         num_domain=2500, num_boundary=100,
+                         num_initial=160, num_test=2500)
+net = dde.nn.FNN([2] + [32] * 3 + [1], "tanh", "Glorot uniform")
+model = dde.Model(data, net)
+model.compile("adam", lr=0.001, external_trainable_variables=[C])
+model.train(epochs=30000)
+print(f"Estimated C = {C.detach().numpy():.4f}")
+```
+
+### Example 2: Curriculum Training with Physics Loss Ramp
+```python
+# Source: Adapted from Wang & Perdikaris (2024)
+def get_physics_weight(epoch, total_epochs, max_weight=0.1):
+    """Curriculum: data-only -> ramp physics -> hold."""
     warmup_end = int(0.2 * total_epochs)
     ramp_end = int(0.5 * total_epochs)
-
     if epoch < warmup_end:
         return 0.0
     elif epoch < ramp_end:
-        progress = (epoch - warmup_end) / (ramp_end - warmup_end)
-        return max_weight * progress
+        return max_weight * (epoch - warmup_end) / (ramp_end - warmup_end)
     else:
         return max_weight
 ```
 
-### Example 2: Collocation Point Sampling for DD-PINN
+### Example 3: Adaptive Loss Balancing (ReLoBRaLo)
 ```python
-# Source: scipy.stats.qmc documentation + PINN best practices
-from scipy.stats import qmc
+class ReLoBRaLo:
+    """Relative Loss Balancing with Random Lookback.
 
-def sample_collocation_points(
-    n_points: int,
-    t_start: float = 0.0,
-    t_end: float = 0.5,
-    method: str = "sobol",
-) -> torch.Tensor:
-    """Sample collocation points in [t_start, t_end] for DD-PINN.
-
-    Args:
-        n_points: Number of collocation points.
-        t_start: Start of temporal domain.
-        t_end: End of temporal domain.
-        method: "sobol", "lhs", or "uniform".
-
-    Returns:
-        (n_points,) tensor of sorted collocation times.
+    Adaptively weights multiple loss terms based on relative rate of change.
     """
-    if method == "sobol":
-        sampler = qmc.Sobol(d=1, scramble=True)
-        points = sampler.random(n_points)
-    elif method == "lhs":
-        sampler = qmc.LatinHypercube(d=1)
-        points = sampler.random(n_points)
-    elif method == "uniform":
-        points = torch.rand(n_points, 1).numpy()
-    else:
-        raise ValueError(f"Unknown method: {method}")
+    def __init__(self, n_losses, alpha=0.999, temperature=1.0):
+        self.alpha = alpha
+        self.temperature = temperature
+        self.prev_losses = None
+        self.weights = torch.ones(n_losses)
 
-    # Scale to [t_start, t_end]
-    t = torch.tensor(
-        qmc.scale(points, t_start, t_end).flatten(),
-        dtype=torch.float32,
-    ).sort().values
-
-    return t
+    def update(self, losses):
+        current = torch.tensor([l.item() for l in losses])
+        if self.prev_losses is None:
+            self.prev_losses = current.clone()
+            return self.weights
+        ratios = current / (self.prev_losses + 1e-8)
+        weights = torch.softmax(ratios / self.temperature, dim=0) * len(losses)
+        self.weights = self.alpha * self.weights + (1 - self.alpha) * weights
+        self.prev_losses = current.clone()
+        return self.weights
 ```
 
-### Example 3: DD-PINN Training Step
+### Example 4: Collocation Point Sampling
 ```python
-# Source: Derived from DD-PINN paper (arXiv:2408.14951) + existing train_surrogate.py
-def ddpinn_train_step(
-    model: nn.Module,       # NN that outputs ansatz parameters
-    ansatz: SinusoidalAnsatz,
-    optimizer: torch.optim.Optimizer,
-    batch: dict,
-    t_collocation: torch.Tensor,  # (N_c,)
-    f_ssm_partial,          # Partial physics RHS (internal forces only)
-    lambda_phys: float,
-    rod_params: dict,
-) -> dict:
-    """One DD-PINN training step with data + physics loss."""
-    optimizer.zero_grad()
+from scipy.stats import qmc
 
-    x0 = batch['state']          # (B, 130) relative state
-    action = batch['action']     # (B, 5)
-    phase = batch['phase']       # (B, 60)
-    target = batch['next_state'] # (B, 130) target next state
-
-    # NN forward: predict ansatz parameters
-    nn_input = torch.cat([x0, action, phase], dim=-1)
-    a_params = model(nn_input)  # (B, 3*m*n_g)
-
-    # Ansatz evaluation at t=0.5s (end of RL step)
-    t_final = torch.tensor([0.5], device=x0.device)
-    g_final = ansatz(a_params, t_final)  # (B, 1, m)
-    x_pred = g_final.squeeze(1) + x0     # (B, m) predicted next state
-
-    # Data loss
-    loss_data = F.mse_loss(x_pred, target)
-
-    # Physics loss at collocation points
-    if lambda_phys > 0:
-        g_dot = ansatz.time_derivative(a_params, t_collocation)  # (B, N_c, m)
-        g_vals = ansatz(a_params, t_collocation)                  # (B, N_c, m)
-        x_hat = g_vals + x0.unsqueeze(1)                          # (B, N_c, m)
-
-        # Partial physics RHS (internal moments only -- no friction)
-        x_dot_phys = f_ssm_partial(x_hat, action, phase, rod_params)  # (B, N_c, m)
-
-        # Physics residual: only on components where f_SSM is defined
-        # Kinematic components (dx/dt = v) are exact
-        # Moment components (domega/dt = ...) are partial
-        loss_phys = F.mse_loss(g_dot, x_dot_phys)
-    else:
-        loss_phys = torch.tensor(0.0, device=x0.device)
-
-    loss = loss_data + lambda_phys * loss_phys
-    loss.backward()
-    optimizer.step()
-
-    return {
-        'loss': loss.item(),
-        'loss_data': loss_data.item(),
-        'loss_phys': loss_phys.item(),
-        'lambda_phys': lambda_phys,
-    }
+def sample_collocation(n_points, t_start=0.0, t_end=0.5, method="sobol"):
+    """Quasi-random collocation points for PINN temporal domain."""
+    if method == "sobol":
+        sampler = qmc.Sobol(d=1, scramble=True)
+    elif method == "lhs":
+        sampler = qmc.LatinHypercube(d=1)
+    points = sampler.random(n_points)
+    t = torch.tensor(qmc.scale(points, t_start, t_end).flatten(), dtype=torch.float32)
+    return t.sort().values
 ```
 
 ## State of the Art
 
 | Old Approach | Current Approach | When Changed | Impact |
 |--------------|------------------|--------------|--------|
-| Vanilla PINN (time as input) | DD-PINN (time in ansatz) | Aug 2024 (Krauss et al.) | 5-38x training speedup; scales to 72+ states |
-| Manual loss weights | ReLoBRaLo / NTK-based adaptive | 2022-2025 | Eliminates lambda tuning; improves convergence |
-| Uniform random collocation | Adaptive / failure-informed sampling | 2023-2024 | Better accuracy with fewer points |
-| Standard MLP for PINN | Fourier feature encoding | 2020-present | Mitigates spectral bias; critical for oscillatory dynamics |
-| Equal-weight loss terms | Curriculum training (data first) | 2023-present | Prevents physics loss from corrupting early learning |
-| PINN for static Cosserat (Bensch) | DD-PINN for dynamic Cosserat (Licher) | 2024-2025 | Dynamic control at 70 Hz demonstrated |
-
-**Deprecated/outdated:**
-- Standard PINN for large ODE systems (use DD-PINN instead -- strictly better)
-- Equal loss weighting (always use adaptive or curriculum)
-- Uniform collocation sampling (use quasi-random or adaptive)
-
-## Open Questions
-
-1. **Does the physics regularizer actually improve omega_z R^2?**
-   - What we know: The current surrogate has omega_z R^2 = 0.23 (very poor). Kinematic consistency and moment balance target exactly this component.
-   - What's unclear: Whether soft constraints without friction can improve a quantity that is dominated by friction effects at the RL-step timescale (0.5s).
-   - Recommendation: This is the key experiment. If Tier 1 does NOT improve omega_z, Tier 2 (DD-PINN) is unlikely to help either without friction in the physics loss.
-
-2. **Can RFT friction be smoothly differentiated in PyTorch?**
-   - What we know: The existing friction.py uses sigmoid regularization at low speed. The Li et al. 2024 paper demonstrates PINNs with friction but on 1-2 DOF systems. Our system has 21 nodes each with their own friction.
-   - What's unclear: Whether the gradients through 21-node RFT friction are numerically stable for PINN training at scale.
-   - Recommendation: If Tier 2 succeeds without friction, attempt a simplified isotropic drag (F = -c*v, fully smooth) as a first approximation before attempting full anisotropic RFT.
-
-3. **What is the right n_basis for the DD-PINN ansatz?**
-   - What we know: The DD-PINN paper uses n_g=5 for 72-state systems. Our system has higher-frequency content (CPG at 0.5-3 Hz over 0.5s window).
-   - What's unclear: Whether n_g=5 provides enough basis functions for our 130-state relative system.
-   - Recommendation: Start with n_g=5, sweep {3, 5, 7, 10}. The NN output dimension scales linearly with n_g, so this is a direct cost-accuracy tradeoff.
-
-4. **Should the DD-PINN predict in raw (124-dim) or relative (130-dim) space?**
-   - What we know: The current surrogate uses 130-dim relative coordinates (CoM-subtracted). The DD-PINN ansatz works in state space.
-   - What's unclear: Whether the CoM-relative transform (which involves a mean operation) interacts poorly with the sinusoidal ansatz.
-   - Recommendation: Use relative coordinates. The CoM translation is a simple offset that the ansatz can absorb into the alpha parameters.
-
-5. **Has any DD-PINN code been released since March 2026?**
-   - What we know: No code found as of 2026-03-17. The Krauss/Licher group published arXiv:2508.12681v2 (Jan 2026 update) with no code link.
-   - Recommendation: Check again before starting Tier 2. If code appears, it dramatically reduces implementation effort.
+| Equal loss weights | NTK-based / GradNorm / ReLoBRaLo adaptive | 2021-2024 | 10-100x accuracy improvement |
+| Uniform collocation | RAR / R3 adaptive sampling | 2023-2024 | 2-10x efficiency gain |
+| Vanilla PINN for time PDEs | Causal PINNs | 2024 | Eliminates propagation failure |
+| Standard MLP | Modified MLP + Fourier features | 2022-2024 | Resolves spectral bias |
+| Single-network PINN | Domain decomposition (XPINN/FBPINN) | 2023-2025 | Complex geometries, parallelizable |
+| MLP-only | PIKANs (Kolmogorov-Arnold) | 2024 | Fewer parameters, more robust |
+| Vanilla PINN for ODE systems | DD-PINN (Krauss et al.) | Aug 2024 | 5-38x training speedup |
+| Adam only | Adam + L-BFGS two-phase | Established | Consistently best optimizer strategy |
+| NVIDIA Modulus | NVIDIA PhysicsNeMo | 2025 | Renamed; new import paths |
 
 ## Validation Architecture
 
 ### Test Framework
 | Property | Value |
 |----------|-------|
-| Framework | pytest 8.0+ |
-| Config file | pyproject.toml [tool.pytest.ini_options] |
-| Quick run command | `pytest tests/test_pinn_ansatz.py tests/test_physics_residual.py -x -v` |
-| Full suite command | `pytest tests/ -v --tb=short` |
+| Framework | pytest (existing in project) |
+| Config file | tests/ directory with existing test files |
+| Quick run command | `python -m pytest tests/test_pinn.py -x -q --timeout=60` |
+| Full suite command | `python -m pytest tests/ -v --timeout=120` |
 
 ### Phase Requirements -> Test Map
 
-Phase 13 has TBD requirements. Based on the implementation tiers, the following test map captures the core behaviors:
+Phase 13 requirements are TBD in ROADMAP. Based on research, the following test map covers core PINN behaviors:
 
 | Req ID | Behavior | Test Type | Automated Command | File Exists? |
 |--------|----------|-----------|-------------------|-------------|
-| PINN-01 | PhysicsRegularizer computes valid scalar loss from state+delta+action+phase | unit | `pytest tests/test_physics_residual.py::test_regularizer_forward -x` | No -- Wave 0 |
-| PINN-02 | PhysicsRegularizer gradients flow to model parameters | unit | `pytest tests/test_physics_residual.py::test_regularizer_gradients -x` | No -- Wave 0 |
-| PINN-03 | SinusoidalAnsatz satisfies g(a, 0) = 0 for any a | unit | `pytest tests/test_pinn_ansatz.py::test_ansatz_ic -x` | No -- Wave 0 |
-| PINN-04 | SinusoidalAnsatz.time_derivative matches finite-difference check | unit | `pytest tests/test_pinn_ansatz.py::test_ansatz_derivative_accuracy -x` | No -- Wave 0 |
-| PINN-05 | DD-PINN training step runs without error (smoke test) | smoke | `pytest tests/test_pinn_training.py::test_ddpinn_smoke -x` | No -- Wave 0 |
-| PINN-06 | Physics-regularized training improves omega_z R^2 vs baseline | integration | `pytest tests/test_pinn_training.py::test_physics_reg_improves_omega -x` | No -- Wave 0 |
-| PINN-07 | ReLoBRaLo balances data+physics loss within 10x of each other | unit | `pytest tests/test_pinn_training.py::test_relobralo_balance -x` | No -- Wave 0 |
+| PINN-01 | Physics regularizer computes valid scalar loss | unit | `pytest tests/test_pinn.py::test_physics_regularizer -x` | No -- Wave 0 |
+| PINN-02 | Physics regularizer gradients flow to model parameters | unit | `pytest tests/test_pinn.py::test_regularizer_gradients -x` | No -- Wave 0 |
+| PINN-03 | DD-PINN ansatz satisfies g(a,0)=0 for any params | unit | `pytest tests/test_pinn.py::test_ansatz_ic -x` | No -- Wave 0 |
+| PINN-04 | DD-PINN time derivative matches finite differences | unit | `pytest tests/test_pinn.py::test_ansatz_derivative -x` | No -- Wave 0 |
+| PINN-05 | Fourier features improve high-freq reconstruction | unit | `pytest tests/test_pinn.py::test_fourier_features -x` | No -- Wave 0 |
+| PINN-06 | DeepXDE ODE system setup runs without error | smoke | `pytest tests/test_pinn.py::test_deepxde_smoke -x` | No -- Wave 0 |
+| PINN-07 | Loss balancing keeps terms within 10x of each other | integration | `pytest tests/test_pinn.py::test_loss_balancing -x` | No -- Wave 0 |
 
 ### Sampling Rate
-- **Per task commit:** `pytest tests/test_pinn_ansatz.py tests/test_physics_residual.py -x -v`
-- **Per wave merge:** `pytest tests/ -v --tb=short`
+- **Per task commit:** `python -m pytest tests/test_pinn.py -x -q --timeout=60`
+- **Per wave merge:** `python -m pytest tests/ -v --timeout=120`
 - **Phase gate:** Full suite green before `/gsd:verify-work`
 
 ### Wave 0 Gaps
-- [ ] `tests/test_pinn_ansatz.py` -- covers PINN-03, PINN-04
-- [ ] `tests/test_physics_residual.py` -- covers PINN-01, PINN-02
-- [ ] `tests/test_pinn_training.py` -- covers PINN-05, PINN-06, PINN-07
-- [ ] `pip install torchdiffeq==0.2.5` -- if Neural ODE / KNODE variant is pursued
+- [ ] `tests/test_pinn.py` -- covers PINN-01 through PINN-07
+- [ ] `src/pinn/__init__.py` -- package structure
+- [ ] Framework install: `pip install deepxde torchdiffeq` -- verify in environment
+
+## Open Questions
+
+1. **Has DD-PINN code been released since this research date?**
+   - What we know: As of 2026-03-17, no open-source DD-PINN implementation exists (Krauss/Licher group at Leibniz Hannover).
+   - What's unclear: Whether code accompanied arXiv:2502.01916 (generalizable PINN surrogates).
+   - Recommendation: Check before implementation. The architecture is well-described enough to implement from scratch.
+
+2. **Is a partial physics loss (without friction) useful for the snake system?**
+   - What we know: Internal elastic forces dominate short-timescale dynamics; friction dominates locomotion.
+   - What's unclear: Whether kinematic consistency constraints alone help at the 0.5s RL-step timescale.
+   - Recommendation: This is the key experiment. The physics regularizer (Pattern 3) is the cheapest test.
+
+3. **PIKANs vs modified MLP for this problem scale?**
+   - What we know: PIKANs show promise with fewer parameters and noise robustness on benchmarks.
+   - What's unclear: Maturity of PyTorch PIKAN implementations for 100+ state ODE systems.
+   - Recommendation: Start with modified MLP (proven), explore PIKANs as stretch goal.
+
+4. **What is the right ansatz for damping-dominated dynamics?**
+   - What we know: DD-PINN uses sinusoidal ansatz. Snake locomotion has significant friction damping.
+   - What's unclear: Whether sinusoidal ansatz with n_g>=5 basis functions can capture overdamped dynamics.
+   - Recommendation: Use damped variant (exponential * sinusoidal) with n_g in {5, 7, 10}.
+
+5. **Can Separable PINNs scale to 124-state ODE systems?**
+   - What we know: SPINNs achieve 60x speedup by factorizing along dimensions.
+   - What's unclear: Whether factorization is meaningful for ODE systems (only 1 independent variable: time).
+   - Recommendation: SPINNs are most useful for spatial PDEs, not ODE systems. DD-PINN is the right approach for our case.
 
 ## Sources
 
 ### Primary (HIGH confidence)
-- **Existing project analysis:** knowledge/pinn-ddpinn-snake-locomotion-feasibility.md -- extensive feasibility study, code examples, architecture analysis
-- **Existing project analysis:** knowledge/neural-ode-pde-approximation-survey.md -- comprehensive survey of PINN/Neural ODE/operator methods
-- **Existing project analysis:** knowledge/knode-cosserat-hybrid-surrogate-report.md -- KNODE alternative analysis
-- **DD-PINN original:** Krauss et al. "Domain-decoupled Physics-informed Neural Networks." [arXiv:2408.14951](https://arxiv.org/abs/2408.14951) (Aug 2024)
-- **DD-PINN Cosserat application:** Licher et al. "Adaptive MPC of a Soft Continuum Robot Using a PINN Based on Cosserat Rod Theory." [arXiv:2508.12681](https://arxiv.org/abs/2508.12681) (Aug 2025, updated Jan 2026)
-- **PyPI verified:** torchdiffeq 0.2.5, DeepXDE 1.15.0, PyTorch 2.10.0+cu128
+- [DeepXDE GitHub](https://github.com/lululxvi/deepxde) - v1.15.0 on PyPI (2025-12-05)
+- [DeepXDE ODE system example](https://deepxde.readthedocs.io/en/latest/demos/pinn_forward/ode.system.html)
+- [DeepXDE inverse problem demos](https://deepxde.readthedocs.io/en/latest/demos/pinn_inverse.html)
+- [PINNacle benchmark (NeurIPS 2024)](https://github.com/i207M/PINNacle) - 10 methods, 20+ PDEs
+- [NVIDIA PhysicsNeMo](https://github.com/NVIDIA/physicsnemo) - renamed from Modulus, v25.08
+- [Wang & Perdikaris, Respecting causality for training PINNs (2024)](https://www.sciencedirect.com/science/article/abs/pii/S0045782524000690)
+- [Separable PINNs (NeurIPS 2023)](https://proceedings.neurips.cc/paper_files/paper/2023/file/4af827e7d0b7bdae6097d44977e87534-Paper-Conference.pdf)
 
 ### Secondary (MEDIUM confidence)
-- **ReLoBRaLo:** Bischof & Kraus. "Multi-Objective Loss Balancing for Physics-Informed Deep Learning." [arXiv:2110.09813](https://arxiv.org/abs/2110.09813). Code: [github.com/rbischof/relative_balancing](https://github.com/rbischof/relative_balancing)
-- **PINN with friction:** Li et al. "Physics-informed neural networks for friction-involved nonsmooth dynamics." [Nonlinear Dynamics 112, 7159-7183 (2024)](https://link.springer.com/article/10.1007/s11071-024-09350-z)
-- **tdcr-pinn (static Cosserat):** Bensch et al., ICRA 2024. Code: [github.com/Martin-Bensch/tdcr-pinn](https://github.com/Martin-Bensch/tdcr-pinn) -- static only, not applicable to dynamic problem
-- **Adaptive collocation sampling:** [arXiv:2501.07700](https://arxiv.org/html/2501.07700) -- QR-DEIM adaptive collocation points
-- **Causal training:** Wang & Perdikaris (2024). "Challenges in Training PINNs." [arXiv:2402.01868](https://arxiv.org/pdf/2402.01868)
+- [From PINNs to PIKANs survey (2024)](https://arxiv.org/html/2410.13228v1) - comprehensive survey of recent PINN variants
+- [PINNs-Torch](https://github.com/rezaakb/pinns-torch) - PyTorch PINN with CUDA Graphs, up to 9x speedup
+- [Multilevel FBPINN (2024)](https://www.sciencedirect.com/science/article/pii/S0045782524003724) - domain decomposition
+- [DADD-PINN (2025)](https://www.mdpi.com/2227-7390/14/4/744) - dual adaptive domain decomposition
+- [Stiff-PINN approaches](https://www.emergentmind.com/topics/stiff-pinn) - multi-scale stiff systems
+- [Two-Phase Optimization for PINNs (2024)](https://arxiv.org/html/2409.07296v1) - Adam then L-BFGS
+- [Spectral bias analysis and mitigation (2025)](https://arxiv.org/html/2602.19265v1)
+- [Physics-informed NNs comprehensive review (2025)](https://link.springer.com/article/10.1007/s10462-025-11322-7)
+- [PINN with weighted loss for hyperbolic conservation laws (2025)](https://www.nature.com/articles/s41598-025-34263-1)
+- [Multi-Objective Loss Balancing (2025)](https://www.sciencedirect.com/science/article/pii/S0045782525001860)
 
 ### Tertiary (LOW confidence -- needs validation)
-- No published DD-PINN open-source code found as of 2026-03-17 (confirmed by WebSearch)
-- No published results on PINNs with RFT friction for locomotion (confirmed by WebSearch)
-- Claim that "physics regularizer helps omega_z" is hypothetical -- requires experimental validation
-- The StableCosseratRods (SIGGRAPH 2025) codebase is C++/GLSL, not usable as differentiable PyTorch backbone
+- PIKANs for large ODE systems -- limited evidence beyond benchmark problems
+- No DD-PINN open-source code found as of March 2026
+- ASPEN (learnable Fourier features) -- single paper, 2025
+
+### Project-Internal (HIGH confidence)
+- `knowledge/pinn-ddpinn-snake-locomotion-feasibility.md` - detailed system-specific PINN/DD-PINN feasibility analysis
+- `knowledge/neural-ode-pde-approximation-survey.md` - broad survey of PINN/Neural ODE/operator methods
+- `knowledge/knode-cosserat-hybrid-surrogate-report.md` - KNODE alternative approach
 
 ## Metadata
 
 **Confidence breakdown:**
-- Standard stack: HIGH -- all libraries verified on PyPI, compatible with existing project
-- Architecture (Tier 1 physics regularizer): HIGH -- algebraic constraints well-understood, no external dependencies
-- Architecture (Tier 2 DD-PINN ansatz): MEDIUM -- paper is clear but no reference implementation exists
-- Architecture (Tier 3 DD-PINN with friction): LOW -- unsolved research problem at this scale
-- Pitfalls: HIGH -- drawn from extensive existing analysis + verified literature
-- Loss balancing: MEDIUM-HIGH -- ReLoBRaLo is published and has code, but untested on this specific system
+- Standard stack: HIGH - DeepXDE and torchdiffeq well-established, versions verified on PyPI
+- Architecture patterns: HIGH - DD-PINN, vanilla PINN, physics regularizer all well-documented in literature and project knowledge base
+- Training tricks (loss balancing, causal, curriculum): HIGH - PINNacle benchmark provides systematic evidence; community consensus
+- PDE-type-specific guidance: HIGH - well-established in numerical PDE literature
+- Domain decomposition methods: MEDIUM-HIGH - XPINN/FBPINN well-documented; DD-PINN proven but no public code
+- SOTA advances (PIKANs, ASPEN, DADD-PINN): MEDIUM - recent papers, limited reproduction evidence
+- Pitfalls: HIGH - failure modes well-characterized in literature (Wang & Perdikaris, PINNacle, project feasibility study)
 
 **Research date:** 2026-03-17
-**Valid until:** 2026-04-17 (30 days -- check for DD-PINN code releases before implementing)
+**Valid until:** 2026-04-17 (30 days -- stable field with incremental advances; check for DD-PINN code releases)
