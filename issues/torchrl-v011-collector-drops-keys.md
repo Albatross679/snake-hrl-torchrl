@@ -1,11 +1,14 @@
 ---
-created: 2026-03-05T00:00:00
-updated: 2026-03-05T00:00:00
-tags: [torchrl, compatibility, v0.11, bug, collector, diagnostics]
+name: TorchRL v0.11 SyncDataCollector silently drops unspecced diagnostic keys
+description: SyncDataCollector only preserves keys declared in env specs, silently dropping custom diagnostic keys like v_g, dist_to_goal, reward_velocity, etc.
 type: issue
 status: resolved
 severity: high
 subtype: compatibility
+created: 2026-03-05T00:00:00
+updated: 2026-03-05T00:00:00
+tags: [torchrl, compatibility, v0.11, bug, collector, diagnostics]
+aliases: []
 ---
 
 # TorchRL v0.11 Collector Drops Unspecced Keys

@@ -207,11 +207,11 @@ Two physics backends are investigated --- PyElastica (explicit symplectic) and D
 
 \begin{table}[H]
   \centering
-  \small
+  \footnotesize
   \renewcommand{\arraystretch}{1.35}
   \caption{Neural surrogates for soft robot / Cosserat rod dynamics.}
   \label{tab:related-surrogates}
-  \begin{tabular}{@{}p{2.2cm}p{2.0cm}p{1.8cm}p{1.5cm}p{1.5cm}p{4.2cm}@{}}
+  \begin{tabular}{@{}p{2.0cm}p{1.9cm}p{1.7cm}p{1.4cm}p{1.4cm}p{4.0cm}@{}}
     \toprule
     \textbf{Reference} & \textbf{Method} & \textbf{Architecture} & \textbf{Speedup} & \textbf{Accuracy} & \textbf{Key contribution} \\
     \midrule
@@ -471,7 +471,7 @@ The 2D restriction ($z \equiv 0$) is exact for planar locomotion.
 
 % ---- Single unified algorithm ----
 
-\begin{algorithm}[H]\small
+\begin{algorithm}[ht!]\small
 \caption{Elastica Transition Operator $T(\mathbf{s}_t,\, \mathbf{a}_t,\, t_{\text{step}}) \to \mathbf{s}_{t+1}$}\label{alg:elastica-transition}
 \vspace{2pt}
 \noindent
@@ -661,10 +661,10 @@ Implicit methods are unconditionally stable --- DisMech uses $\Delta t = 0.05$\,
 \Cref{tab:comprehensive-comparison} provides the full property comparison between the two backends.
 
 \paragraph{Surrogate implications.}
-The neural surrogate replaces the 500-step composition $T(\mathbf{s}_t, \mathbf{a}_t) = V_{\Delta t}^{500}(\mathbf{s}_t; \mathbf{a}_t)$ (\cref{eq:transition-operator}) --- a \textbf{deterministic sequential map}, not a PDE solver.
+The neural surrogate replaces the 500-step composition $T(\mathbf{s}_t, \mathbf{a}_t) = V_{\Delta t}^{500}(\mathbf{s}_t; \mathbf{a}_t)$ (\cref{eq:transition-operator})---a \textbf{deterministic sequential map}, not a PDE solver.
 Each substep $V_{\Delta t}$ is a chain of explicit arithmetic (geometry, constitutive law, force balance, Verlet update); the computational cost arises from composing 500 such maps sequentially, with each depending on the output of the previous one.
 The surrogate collapses this sequential composition into a single forward pass.
-Because $T$ is a smooth, deterministic function with no iterative convergence involved, a feedforward network can approximate the composed map directly --- in contrast to DisMech (\cref{sec:physics:dismech}), where the surrogate must additionally learn to bypass the Newton solver's convergence behavior.
+Because $T$ is a smooth, deterministic function with no iterative convergence involved, a feedforward network can approximate the composed map directly---in contrast to DisMech (\cref{sec:physics:dismech}), where the surrogate must additionally learn to bypass the Newton solver's convergence behavior.\looseness=-1
 
 % ---- Staggered grid subsection ----
 
@@ -739,11 +739,11 @@ At each substep, the Elastica backend computes and applies the following externa
 
 \begin{table}[H]
   \centering
-  \small
+  \footnotesize
   \renewcommand{\arraystretch}{1.3}
   \caption{External forces and torques in PyElastica.}
   \label{tab:elastica-forces}
-  \begin{tabular}{@{}llllp{4cm}@{}}
+  \begin{tabular}{@{}ll>{\raggedright\arraybackslash}p{3.5cm}>{\raggedright\arraybackslash}p{2.5cm}>{\raggedright\arraybackslash}p{2.8cm}@{}}
     \toprule
     Force type & Acts on & Formula & Parameters & Notes \\
     \midrule
@@ -1066,13 +1066,13 @@ The only adaptation is the state extraction layer (\cref{tab:dismech-state-extra
 
 \Cref{tab:comprehensive-comparison} provides a comprehensive comparison of the two physics backends across solver properties, supported physics, and project metadata.
 
-\begin{table}[H]
+\begin{table}[ht!]
   \centering
-  \small
+  \footnotesize
   \renewcommand{\arraystretch}{1.3}
   \caption{Comprehensive comparison of PyElastica and DisMech.}
   \label{tab:comprehensive-comparison}
-  \begin{tabular}{@{}lll@{}}
+  \begin{tabular}{@{}p{3.5cm}p{4.5cm}p{5.5cm}@{}}
     \toprule
     \textbf{Property} & \textbf{PyElastica} & \textbf{DisMech} \\
     \midrule
@@ -1335,15 +1335,15 @@ The surrogate replaces the entire transition operator $T$ with a single forward 
 \end{equation}
 
 \begin{equation}
-  f_\theta(\mathbf{z}_t) \;\approx\; T(\mathbf{s}_t,\, \mathbf{a}_t) - \mathbf{s}_t, \qquad
-  \mathbf{z}_t \in \mathbb{R}^{189},\;\;
-  f_\theta \colon \mathbb{R}^{189} \to \mathbb{R}^{124}
+  f_\theta(\mathbf{z}_t) \approx T(\mathbf{s}_t, \mathbf{a}_t) - \mathbf{s}_t,\quad
+  \mathbf{z}_t \in \mathbb{R}^{189},\;
+  f_\theta \colon \mathbb{R}^{189} \!\to\! \mathbb{R}^{124}
   \label{eq:nn-approximation}
 \end{equation}
 
 \noindent
 The surrogate is a feedforward MLP.
-It maps the 189-dimensional input $\mathbf{z}_t$ to a 124-dimensional normalized state delta, from which the predicted next state is recovered through affine reconstruction:
+It maps the 189-dimensional input~$\mathbf{z}_t$ to a 124-dimensional normalized state delta, from which the predicted next state is recovered through affine reconstruction:\looseness=-1
 
 \begin{equation}
   f_\theta : \mathbf{z}_t \mapsto \overline{\Delta\mathbf{s}}
@@ -1632,21 +1632,57 @@ A feedforward network $\mathbf{h}_\theta$ predicts the state at time~$t$:
   \label{eq:pinn:pred}
 \end{equation}
 The PINN loss combines three objectives:
-\begin{equation}
+\begin{multline}
   \mathcal{L}(\theta)
     = \underbrace{\lambda_{\mathrm{IC}} \bigl\| \xhat_0 - \mathbf{x}_0 \bigr\|^2}_{\mathcal{L}_{\mathrm{IC}}}
     + \underbrace{\lambda_{\mathrm{phys}} \frac{1}{N_c}\sum_{k=1}^{N_c}
-      \left\| \frac{\partial \xhat_{t_k}}{\partial t} - \fssm(\xhat_{t_k},\, \mathbf{u}_{t_k}) \right\|^2}_{\mathcal{L}_{\mathrm{phys}}}
+      \left\| \frac{\partial \xhat_{t_k}}{\partial t} - \fssm(\xhat_{t_k}, \mathbf{u}_{t_k}) \right\|^2}_{\mathcal{L}_{\mathrm{phys}}} \\
     + \underbrace{\lambda_{\mathrm{data}} \frac{1}{N_d}\sum_{k=1}^{N_d}
       \left\| \xhat_{t_k} - \mathbf{x}_{\mathrm{data},k} \right\|^2}_{\mathcal{L}_{\mathrm{data}}}.
   \label{eq:pinn:loss}
-\end{equation}
+\end{multline}
 The physics residual is evaluated at $N_c$ \emph{collocation points}---randomly sampled time instants where the governing equations are enforced without requiring simulation data.
 The time derivative $\partial \xhat_t / \partial t$ is obtained via \emph{automatic differentiation} (autodiff) through the network with respect to the input~$t$.
 
+\paragraph{Explicit loss decomposition.}
+Each term in the PINN loss serves a distinct role:
+\begin{enumerate}[label=(\roman*)]
+  \item \textbf{Initial condition loss} $\mathcal{L}_{\mathrm{IC}}$: penalizes deviation from the known starting state.
+    Since the network receives $\mathbf{x}_0$ as input and must reproduce it at $t{=}0$:
+    \begin{equation}
+      \mathcal{L}_{\mathrm{IC}} = \bigl\| \mathbf{h}_\theta(\mathbf{x}_0,\, \mathbf{u},\, 0) - \mathbf{x}_0 \bigr\|^2.
+      \label{eq:pinn:ic-explicit}
+    \end{equation}
+    This is only approximately satisfied via gradient descent---the network can still violate the initial condition.
+
+  \item \textbf{Physics residual loss} $\mathcal{L}_{\mathrm{phys}}$: enforces the governing ODE at collocation points $\{t_k\}_{k=1}^{N_c}$ sampled over $[0, T_s]$.
+    At each collocation point, the residual vector is
+    \begin{equation}
+      \mathbf{r}(t_k) = \underbrace{\frac{\partial \mathbf{h}_\theta(\mathbf{x}_0,\, \mathbf{u},\, t_k)}{\partial t}}_{\text{autodiff through network}} - \underbrace{\fssm\bigl(\mathbf{h}_\theta(\mathbf{x}_0,\, \mathbf{u},\, t_k),\, \mathbf{u}_{t_k}\bigr)}_{\text{physics at predicted state}},
+      \label{eq:pinn:residual-explicit}
+    \end{equation}
+    and the loss aggregates the squared residuals:
+    \begin{equation}
+      \mathcal{L}_{\mathrm{phys}} = \frac{1}{N_c}\sum_{k=1}^{N_c} \bigl\| \mathbf{r}(t_k) \bigr\|^2.
+      \label{eq:pinn:phys-explicit}
+    \end{equation}
+    Computing $\partial \mathbf{h}_\theta / \partial t$ requires backpropagating through the entire network with respect to the input~$t$, distinct from the weight-gradient backpropagation used for optimization---doubling the autodiff cost per collocation point.
+
+  \item \textbf{Data loss} $\mathcal{L}_{\mathrm{data}}$: matches predictions against observed simulator trajectories:
+    \begin{equation}
+      \mathcal{L}_{\mathrm{data}} = \frac{1}{N_d}\sum_{k=1}^{N_d} \bigl\| \mathbf{h}_\theta(\mathbf{x}_0^{(k)},\, \mathbf{u}^{(k)},\, t^{(k)}) - \mathbf{x}_{\mathrm{data}}^{(k)} \bigr\|^2.
+      \label{eq:pinn:data-explicit}
+    \end{equation}
+    This term is optional---PINNs can train with $N_d = 0$ if the physics is fully specified.
+\end{enumerate}
+
+\noindent
+The weights $\lambda_{\mathrm{IC}}, \lambda_{\mathrm{phys}}, \lambda_{\mathrm{data}}$ control the relative importance of each objective.
+Choosing these weights is non-trivial: if $\lambda_{\mathrm{phys}}$ dominates, the network satisfies the ODE but ignores data; if too small, physics provides no regularization.
+
 While PINNs can train with little or no observed data, three practical bottlenecks limit their scalability:
 \begin{enumerate}
-  \item \textbf{Expensive autodiff.} Computing $\partial \xhat_t / \partial t$ requires an additional backward pass through the entire computational graph for each collocation point, adding significant cost for large state spaces.
+  \item \textbf{Expensive autodiff.} Computing $\partial \xhat_t / \partial t$ requires an additional backward pass through the entire computational graph for each collocation point, adding significant cost for large state spaces.\looseness=-1
   \item \textbf{Loss balancing.} The three loss terms ($\mathcal{L}_{\mathrm{IC}}$, $\mathcal{L}_{\mathrm{phys}}$, $\mathcal{L}_{\mathrm{data}}$) compete during training and require careful weighting schemes.
   \item \textbf{Training instability.} For systems with many coupled states ($m \gg 1$), PINN predictions can diverge.
 \end{enumerate}
@@ -1696,7 +1732,29 @@ Since $\mathcal{L}_{\mathrm{IC}} \equiv 0$ by construction, the training loss re
     + \lambda_{\mathrm{data}}\, \mathcal{L}_{\mathrm{data}},
   \label{eq:pinn:ddpinn-loss}
 \end{equation}
-where $\mathcal{L}_{\mathrm{phys}}$ and $\mathcal{L}_{\mathrm{data}}$ follow the same form as in~\eqref{eq:pinn:loss} but with $\dot{\mathbf{g}}(\avec, t_k)$ replacing the autodiff-based derivative.
+where the autodiff-based derivative in the standard PINN is replaced by the closed-form ansatz derivative.
+
+\paragraph{Explicit DD-PINN loss construction.}
+The two loss terms are constructed as follows.
+The \textbf{physics residual loss} evaluates the ODE mismatch at $N_c$ collocation points $\{t_k\}_{k=1}^{N_c} \subset [0, T_s]$:
+\begin{equation}
+  \mathcal{L}_{\mathrm{phys}}(\theta) = \frac{1}{N_c}\sum_{k=1}^{N_c}
+    \left\| \dot{\mathbf{g}}(\avec, t_k) - \fssm\bigl(\mathbf{g}(\avec, t_k) + \mathbf{x}_0,\;\mathbf{u}_{t_k}\bigr) \right\|^2,
+  \label{eq:pinn:ddpinn-phys-explicit}
+\end{equation}
+where $\dot{\mathbf{g}}(\avec, t_k)$ is computed analytically via~\eqref{eq:pinn:closed-form} and $\fssm$ is the differentiable Cosserat rod right-hand side (\cref{sec:pinn:cosserat-rhs}).
+The predicted state at each collocation point is $\xhat_{t_k} = \mathbf{g}(\avec, t_k) + \mathbf{x}_0$, and both the ansatz derivative and the physics evaluation are performed in physical units before nondimensionalization (\cref{sec:pinn:nondim}).
+
+The \textbf{data loss} compares the predicted state delta against ground-truth simulator transitions:
+\begin{equation}
+  \mathcal{L}_{\mathrm{data}}(\theta) = \frac{1}{N_d}\sum_{k=1}^{N_d}
+    \bigl\| \hat{\Delta}\mathbf{x}^{(k)} - \Delta\mathbf{x}^{(k)} \bigr\|^2,
+  \label{eq:pinn:ddpinn-data-explicit}
+\end{equation}
+where $\hat{\Delta}\mathbf{x}^{(k)} = \mathbf{g}(\avec^{(k)}, T_s)$ is the predicted delta at the end of the control interval and $\Delta\mathbf{x}^{(k)} = \mathbf{x}_{T_s}^{(k)} - \mathbf{x}_0^{(k)}$ is the ground-truth transition from the simulator dataset.
+This loss operates in the normalized relative representation used by the network.
+
+The key difference from the standard PINN is that both $\mathbf{g}$ and $\dot{\mathbf{g}}$ are evaluated without any autodiff---the network $\fnn$ is called \emph{once} to produce $\avec$, and the ansatz evaluates to $N_c$ collocation points and $N_d$ data points using elementary operations.
 Because gradient evaluation is cheap, DD-PINN uses 10--25$\times$ more collocation points than standard PINNs, improving physics enforcement.
 
 \paragraph{Inference pipeline.}
@@ -1751,29 +1809,374 @@ The neural network is evaluated \emph{once} per prediction to produce ansatz par
 \label{sec:pinn:implementation}
 % ---------------------------------------------------------------------------
 
-Three physics-informed approaches were implemented in \texttt{src/pinn/}:
+Three physics-informed approaches were implemented in \texttt{src/pinn/}.
+The following subsubsections present the full mathematical formulation of each component.
 
-\paragraph{1. Physics-regularized surrogate.}
-The simplest approach adds Cosserat rod physics constraints as soft regularizers to the existing MLP surrogate of \cref{sec:surrogate}.
-The \texttt{PhysicsRegularizer} module computes four algebraic constraint losses: kinematic consistency in $x$ and $y$ (predicted displacement matches velocity-integrated displacement via the trapezoidal rule), angular consistency (yaw change matches integrated angular velocity), curvature--moment consistency (bending moment proportional to curvature), and energy conservation (kinetic energy change bounded).
-These constraints are weighted adaptively using \emph{ReLoBRaLo} (Random Lookback with ReLU Balancing), which adjusts per-term weights via softmax over relative loss changes with exponential moving average smoothing.
-A lambda sweep over $\{0.001, 0.01, 0.1, 1.0\}$ was conducted to determine the optimal regularization strength.
+% - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+\subsubsection{Differentiable Cosserat Rod Right-Hand Side}
+\label{sec:pinn:cosserat-rhs}
+% - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 
-\paragraph{2. Differentiable Cosserat RHS.}
-For the full PINN and DD-PINN approaches, a differentiable \texttt{CosseratRHS} module computes the time derivative $\dot{\mathbf{x}} = \fssm(\mathbf{x})$ for the 124-dimensional rod state, extending prior PINN work on static Cosserat rod approximation \citep{Bensch2024} to the dynamic case.
-The module implements elastic bending moments via discrete curvature and full anisotropic resistive force theory (RFT) friction following the same formulation as the PyElastica backend (\cref{sec:physics:elastica}).
+For both the standard PINN and DD-PINN, a differentiable implementation of the Cosserat rod dynamics $\fssm$ is required so that gradients from the physics loss flow back to the network parameters.
+This module computes $\dot{\mathbf{x}} = \fssm(\mathbf{x})$ for the 124-dimensional state vector $\mathbf{x} \in \mathbb{R}^{124}$, extending prior PINN work on \emph{static} Cosserat rod approximation \citep{Bensch2024} to the \emph{dynamic} case.
 An inextensible rod approximation is used: stretching stiffness is omitted since bending dominates for planar snake locomotion.
-Gradient stability near zero element length is ensured by regularized tangent normalization $\hat{\mathbf{t}} = \Delta\mathbf{r} / \sqrt{\|\Delta\mathbf{r}\|^2 + \varepsilon^2}$, which provides smooth gradients where the standard normalization would be singular.
 
-\paragraph{3. DD-PINN ansatz and model.}
-The \texttt{DampedSinusoidalAnsatz} implements \cref{eq:pinn:ansatz} with softplus-enforced positive damping coefficients and exact initial condition satisfaction by construction.
-The \texttt{DDPINNModel} wraps a feedforward network with the ansatz and exposes the same \texttt{forward(state, action, time\_encoding)} interface as the data-driven \texttt{SurrogateModel}, enabling drop-in substitution.
+The state vector decomposes into six blocks (\cref{tab:state-vector}):
+$\mathbf{x} = (x_i,\; y_i,\; \dot{x}_i,\; \dot{y}_i,\; \psi_e,\; \omega_{z,e})$,
+with $N_n = 21$ nodes and $N_e = 20$ elements.
+The right-hand side computes the time derivative of each block.
+
+\paragraph{Kinematic equations.}
+Position and orientation rates follow directly from the velocity and angular velocity states:
+\begin{equation}
+  \dot{x}_i = v_{x,i}, \qquad
+  \dot{y}_i = v_{y,i}, \qquad
+  \dot{\psi}_e = \omega_{z,e},
+  \label{eq:pinn:kinematics}
+\end{equation}
+for $i = 0, \ldots, N_n{-}1$ (nodes) and $e = 0, \ldots, N_e{-}1$ (elements).
+
+\paragraph{Elastic bending moments.}
+Discrete curvature at internal joint $j$ (connecting elements $e{=}j$ and $e{=}j{+}1$) is
+\begin{equation}
+  \kappa_j = \frac{\psi_{j+1} - \psi_j}{\Delta\ell}, \qquad j = 0, \ldots, N_e{-}2,
+  \label{eq:pinn:curvature}
+\end{equation}
+where $\Delta\ell = L / N_e$ is the element length.
+The bending moment at each joint is
+\begin{equation}
+  M_j = B\,\kappa_j = EI\,\frac{\psi_{j+1} - \psi_j}{\Delta\ell},
+  \label{eq:pinn:moment}
+\end{equation}
+with $B = EI$ the bending stiffness and $I = \pi r^4 / 4$ the second moment of area.
+
+The elastic torque on each element arises from the gradient of the bending moment:
+\begin{equation}
+  \tau_e^{\mathrm{elastic}} =
+  \begin{cases}
+    M_0 / \Delta\ell, & e = 0 \;\;\text{(first element)}, \\[3pt]
+    (M_e - M_{e-1}) / \Delta\ell, & 1 \leq e \leq N_e{-}2, \\[3pt]
+    -M_{N_e-2} / \Delta\ell, & e = N_e{-}1 \;\;\text{(last element)}.
+  \end{cases}
+  \label{eq:pinn:torque}
+\end{equation}
+
+\paragraph{Anisotropic RFT friction forces.}
+Resistive force theory decomposes the velocity of each node into tangential and normal components relative to the local rod tangent, applying different drag coefficients to each.
+
+The element tangent vector is computed with regularized normalization to ensure smooth gradients near zero element length:
+\begin{equation}
+  \hat{t}_{x,e} = \frac{x_{e+1} - x_e}{\sqrt{(x_{e+1} - x_e)^2 + (y_{e+1} - y_e)^2 + \varepsilon^2}},
+  \label{eq:pinn:tangent-reg}
+\end{equation}
+and similarly for $\hat{t}_{y,e}$, where $\varepsilon = 10^{-6}$ prevents division by zero.
+Node tangents are obtained by averaging neighboring element tangents (with boundary nodes using the nearest element tangent) and re-normalizing:
+\begin{equation}
+  \hat{t}_{x,i}^{\mathrm{node}} =
+  \begin{cases}
+    \hat{t}_{x,0}, & i = 0, \\
+    \tfrac{1}{2}(\hat{t}_{x,i-1} + \hat{t}_{x,i}), & 1 \leq i \leq N_n{-}2, \\
+    \hat{t}_{x,N_e-1}, & i = N_n{-}1.
+  \end{cases}
+  \label{eq:pinn:node-tangent}
+\end{equation}
+
+Velocity decomposition at each node:
+\begin{align}
+  v_{\parallel,i} &= v_{x,i}\,\hat{t}_{x,i}^{\mathrm{node}} + v_{y,i}\,\hat{t}_{y,i}^{\mathrm{node}},
+  \label{eq:pinn:v-proj} \\
+  \mathbf{v}_{\mathrm{tan},i} &= v_{\parallel,i}\,\hat{\mathbf{t}}_i^{\mathrm{node}},
+  \qquad
+  \mathbf{v}_{\mathrm{norm},i} = \mathbf{v}_i - \mathbf{v}_{\mathrm{tan},i}.
+  \label{eq:pinn:v-decomp}
+\end{align}
+The RFT friction force at each node is then:
+\begin{equation}
+  \boxed{%
+    F_{x,i}^{\mathrm{fric}} = -c_t\, v_{\mathrm{tan},x,i} - c_n\, v_{\mathrm{norm},x,i}, \qquad
+    F_{y,i}^{\mathrm{fric}} = -c_t\, v_{\mathrm{tan},y,i} - c_n\, v_{\mathrm{norm},y,i},
+  }
+  \label{eq:pinn:rft}
+\end{equation}
+where $c_t$ and $c_n$ are the tangential and normal drag coefficients.
+
+\paragraph{Elastic bending forces.}
+The bending moment gradient generates transverse forces at internal joints.
+The normal direction at joint $j$ is the $90^\circ$ rotation of the joint tangent:
+\begin{equation}
+  \hat{n}_{x,j} = -\hat{t}_{y,j}^{\mathrm{joint}}, \qquad
+  \hat{n}_{y,j} = \hat{t}_{x,j}^{\mathrm{joint}},
+  \label{eq:pinn:normal}
+\end{equation}
+where the joint tangent is the average of the two neighboring element tangents.
+The elastic force at node $i = j{+}1$ (the node at joint $j$) is:
+\begin{equation}
+  F_{x,i}^{\mathrm{elastic}} = \frac{M_j\,\hat{n}_{x,j}}{\Delta\ell^2}, \qquad
+  F_{y,i}^{\mathrm{elastic}} = \frac{M_j\,\hat{n}_{y,j}}{\Delta\ell^2},
+  \label{eq:pinn:elastic-force}
+\end{equation}
+with $F^{\mathrm{elastic}} = 0$ at the two boundary nodes.
+
+\paragraph{Newton's second law.}
+The translational acceleration at each node combines friction and elastic forces:
+\begin{equation}
+  \dot{v}_{x,i} = \frac{F_{x,i}^{\mathrm{fric}} + F_{x,i}^{\mathrm{elastic}}}{m_i}, \qquad
+  \dot{v}_{y,i} = \frac{F_{y,i}^{\mathrm{fric}} + F_{y,i}^{\mathrm{elastic}}}{m_i},
+  \label{eq:pinn:newton}
+\end{equation}
+where $m_i = \rho A \Delta\ell$ for interior nodes and $m_i = \rho A \Delta\ell / 2$ for the two boundary nodes (half-mass lumping).
+
+\paragraph{Angular momentum balance.}
+The angular acceleration of each element is driven by the elastic torque:
+\begin{equation}
+  \dot{\omega}_{z,e} = \frac{\tau_e^{\mathrm{elastic}}}{\rho I \Delta\ell}.
+  \label{eq:pinn:angular-momentum}
+\end{equation}
+
+\noindent
+The complete right-hand side assembles all six blocks:
+\begin{equation}
+  \fssm(\mathbf{x}) = \bigl(\dot{x}_i,\; \dot{y}_i,\; \dot{v}_{x,i},\; \dot{v}_{y,i},\; \dot{\psi}_e,\; \dot{\omega}_{z,e}\bigr) \in \mathbb{R}^{124}.
+  \label{eq:pinn:rhs-full}
+\end{equation}
+
+% - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+\subsubsection{Physics-Regularized Surrogate Loss}
+\label{sec:pinn:regularizer}
+% - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+The simplest physics-informed approach adds algebraic constraints as soft regularizers to the data-driven surrogate of \cref{sec:surrogate}.
+Unlike the PINN and DD-PINN, this approach requires \emph{no differentiable simulator}---the constraints are derived from kinematic identities and energy bounds on the 124-dimensional state delta $\Delta\mathbf{x} = \mathbf{x}_{t+1} - \mathbf{x}_t$.
+All constraints use trapezoidal integration for improved accuracy.
+
+\paragraph{Constraint 1: Translational kinematic consistency.}
+The predicted position change must be consistent with the predicted velocity change via trapezoidal integration:
+\begin{align}
+  \mathcal{L}_{\mathrm{kin},x} &= \frac{1}{N_n}\sum_{i=0}^{N_n-1}
+    \Bigl( \Delta x_i - \bigl(v_{x,i} + \tfrac{1}{2}\,\Delta v_{x,i}\bigr)\,\Delta t \Bigr)^2,
+  \label{eq:pinn:reg-kin-x} \\
+  \mathcal{L}_{\mathrm{kin},y} &= \frac{1}{N_n}\sum_{i=0}^{N_n-1}
+    \Bigl( \Delta y_i - \bigl(v_{y,i} + \tfrac{1}{2}\,\Delta v_{y,i}\bigr)\,\Delta t \Bigr)^2,
+  \label{eq:pinn:reg-kin-y}
+\end{align}
+where $\Delta t = 0.5$\,s is the control timestep, $v_{x,i}$ is the current velocity, and $\Delta v_{x,i}$ is the predicted velocity change.
+The trapezoidal form uses the average velocity $\bar{v} = v + \frac{1}{2}\Delta v$ rather than the current velocity alone.
+
+\paragraph{Constraint 2: Angular kinematic consistency.}
+Analogously, the predicted yaw change must match the integrated angular velocity:
+\begin{equation}
+  \mathcal{L}_{\mathrm{ang}} = \frac{1}{N_e}\sum_{e=0}^{N_e-1}
+    \Bigl( \Delta\psi_e - \bigl(\omega_{z,e} + \tfrac{1}{2}\,\Delta\omega_{z,e}\bigr)\,\Delta t \Bigr)^2.
+  \label{eq:pinn:reg-ang}
+\end{equation}
+
+\paragraph{Constraint 3: Curvature--moment consistency.}
+The change in discrete curvature should be consistent with the spatial gradient of the predicted angular velocity change:
+\begin{equation}
+  \mathcal{L}_{\mathrm{curv}} = 0.1 \cdot \frac{1}{N_e{-}1}\sum_{j=0}^{N_e-2}
+    \left( \frac{\psi_{j+1}' - \psi_j'}{\Delta\ell} - \frac{\psi_{j+1} - \psi_j}{\Delta\ell}
+    - \frac{\Delta\omega_{z,j+1} - \Delta\omega_{z,j}}{\Delta\ell}\,\Delta t \right)^2,
+  \label{eq:pinn:reg-curv}
+\end{equation}
+where $\psi' = \psi + \Delta\psi$ is the predicted next yaw.
+This constraint is weighted at $0.1\times$ because the curvature--moment relation is approximate for large deformations.
+
+\paragraph{Constraint 4: Bounded kinetic energy change.}
+The kinetic energy change between consecutive states should not exceed a threshold $E_{\mathrm{thr}}$:
+\begin{equation}
+  \mathcal{L}_{\mathrm{energy}} = \frac{1}{B}\sum_{b=1}^{B}
+    \Bigl[\operatorname{ReLU}\bigl(|\Delta\mathrm{KE}_b| - E_{\mathrm{thr}}\bigr)\Bigr]^2,
+  \label{eq:pinn:reg-energy}
+\end{equation}
+where the kinetic energy and its change are:
+\begin{equation}
+  \mathrm{KE} = \frac{1}{2}\sum_{i=0}^{N_n-1} (v_{x,i}^2 + v_{y,i}^2), \qquad
+  \Delta\mathrm{KE} = \mathrm{KE}' - \mathrm{KE}.
+  \label{eq:pinn:ke}
+\end{equation}
+The ReLU activation ensures this constraint is only active when the energy change is unreasonably large ($|\Delta\mathrm{KE}| > E_{\mathrm{thr}}$), acting as a one-sided penalty.
+
+\paragraph{Total regularization loss.}
+The four constraints sum to form the physics regularization:
+\begin{equation}
+  \boxed{%
+    \mathcal{L}_{\mathrm{reg}} = \mathcal{L}_{\mathrm{kin},x} + \mathcal{L}_{\mathrm{kin},y} + \mathcal{L}_{\mathrm{ang}} + \mathcal{L}_{\mathrm{curv}} + \mathcal{L}_{\mathrm{energy}}.
+  }
+  \label{eq:pinn:reg-total}
+\end{equation}
+
+% - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+\subsubsection{DD-PINN Ansatz and Model}
+\label{sec:pinn:ansatz-impl}
+% - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+The \texttt{DampedSinusoidalAnsatz} implements \cref{eq:pinn:ansatz} with softplus-enforced positive damping coefficients.
+The network $\fnn$ outputs a flat parameter vector which is reshaped and parsed as:
+\begin{equation}
+  \avec = \fnn(\mathbf{x}_0, \mathbf{u};\,\theta) \in \mathbb{R}^{4 m n_g},
+  \qquad
+  \avec \;\mapsto\;
+  \underbrace{\alpha_{ij}}_{\text{amplitude}},\;
+  \underbrace{\delta_{ij} = \operatorname{softplus}(\tilde{\delta}_{ij})}_{\text{damping} \geq 0},\;
+  \underbrace{\beta_{ij}}_{\text{frequency}},\;
+  \underbrace{\gamma_{ij}}_{\text{phase}},
+  \label{eq:pinn:param-parse}
+\end{equation}
+for $i = 1, \ldots, n_g$ (basis functions) and $j = 1, \ldots, m$ (state dimensions), where $\operatorname{softplus}(x) = \ln(1 + e^x)$ ensures non-negative damping.
+
+The \texttt{DDPINNModel} wraps the feedforward network with the ansatz.
 A \texttt{FourierFeatureEmbedding} layer mitigates spectral bias by projecting inputs through random Fourier features before the hidden layers.
-The output layer is zero-initialized so that the initial prediction is zero displacement (i.e., $\xhat_t = \mathbf{x}_0$).
+The output layer is zero-initialized so that the initial prediction is zero displacement ($\xhat_t = \mathbf{x}_0$).
+For the 130-dimensional relative state with $n_g = 5$ basis functions, the network output dimension is $4 \times 130 \times 5 = 2{,}600$.
 
-\paragraph{Collocation and nondimensionalization.}
-Temporal collocation points are sampled using Sobol quasi-random sequences for uniform coverage of the prediction interval, with residual-based adaptive refinement (RAR) concentrating additional points where the physics residual is largest.
-All quantities are nondimensionalized using physics-based reference scales ($L_{\mathrm{ref}} = 1.0$\,m, $t_{\mathrm{ref}} = 0.5$\,s, $F_{\mathrm{ref}} = EI/L^2$) to balance the magnitudes of position, velocity, and force terms in the residual loss.
+% - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+\subsubsection{Nondimensionalization}
+\label{sec:pinn:nondim}
+% - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+The physics residual loss involves quantities spanning vastly different scales---positions in meters, velocities in m/s, angular velocities in rad/s, and forces in newtons.
+Without normalization, the loss would be dominated by whichever component has the largest magnitude.
+All quantities are nondimensionalized using physics-based reference scales rather than statistical z-score normalization, ensuring the physics residual remains meaningful:
+\begin{equation}
+  \begin{aligned}
+    L_{\mathrm{ref}} &= L = 1.0\;\text{m} && \text{(rod length)}, \\
+    t_{\mathrm{ref}} &= \Delta t_{\mathrm{ctrl}} = 0.5\;\text{s} && \text{(control timestep)}, \\
+    V_{\mathrm{ref}} &= L_{\mathrm{ref}} / t_{\mathrm{ref}} = 2.0\;\text{m/s} && \text{(characteristic velocity)}, \\
+    \omega_{\mathrm{ref}} &= 1 / t_{\mathrm{ref}} = 2.0\;\text{rad/s} && \text{(characteristic angular velocity)}, \\
+    F_{\mathrm{ref}} &= EI / L_{\mathrm{ref}}^2 && \text{(characteristic elastic force)},
+  \end{aligned}
+  \label{eq:pinn:nondim-scales}
+\end{equation}
+where $I = \pi r^4 / 4$ is the second moment of area.
+The nondimensionalization applies component-wise to the 124-dimensional state:
+\begin{equation}
+  \tilde{x}_i = \frac{x_i}{L_{\mathrm{ref}}}, \qquad
+  \tilde{v}_{x,i} = \frac{v_{x,i}}{V_{\mathrm{ref}}}, \qquad
+  \tilde{\psi}_e = \psi_e, \qquad
+  \tilde{\omega}_{z,e} = \frac{\omega_{z,e}}{\omega_{\mathrm{ref}}},
+  \label{eq:pinn:nondim-state}
+\end{equation}
+and analogously for $y$-components and the state delta $\Delta\mathbf{x}$.
+Yaw angles are already dimensionless (radians) and require no scaling.
+The same scaling is applied to the ansatz time derivative $\dot{\mathbf{g}}$ and the Cosserat RHS output $\fssm(\mathbf{x})$ before computing the physics MSE, keeping both sides at $\mathcal{O}(1)$ magnitude.
+
+% - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+\subsubsection{ReLoBRaLo Adaptive Loss Weighting}
+\label{sec:pinn:relobralo}
+% - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+The two-term DD-PINN loss (and the multi-term regularized loss) requires balancing competing objectives.
+ReLoBRaLo \citep{Bischof2022} adjusts weights based on the relative rate of change of each loss term.
+
+At iteration $n$, given $K$ loss terms $\ell_1^{(n)}, \ldots, \ell_K^{(n)}$, the algorithm:
+\begin{enumerate}
+  \item Selects a reference loss vector: with probability $\rho$ use the previous iteration $\bm{\ell}^{(n-1)}$, otherwise use a random lookback $\bm{\ell}^{(n-2)}$.
+  \item Computes relative change ratios:
+    \begin{equation}
+      r_k = \frac{\ell_k^{(n)}}{\ell_k^{\mathrm{ref}} + \epsilon}, \qquad k = 1, \ldots, K.
+      \label{eq:pinn:relobralo-ratio}
+    \end{equation}
+  \item Applies temperature-scaled softmax to produce unnormalized weights:
+    \begin{equation}
+      \hat{w}_k = K \cdot \operatorname{softmax}\!\left(\frac{r_k}{\tau}\right) = K \cdot \frac{\exp(r_k / \tau)}{\sum_{j=1}^{K} \exp(r_j / \tau)}.
+      \label{eq:pinn:relobralo-softmax}
+    \end{equation}
+  \item Smooths with an exponential moving average:
+    \begin{equation}
+      w_k^{(n)} = \alpha\, w_k^{(n-1)} + (1 - \alpha)\,\hat{w}_k.
+      \label{eq:pinn:relobralo-ema}
+    \end{equation}
+\end{enumerate}
+
+The hyperparameters are: $\alpha = 0.999$ (heavy EMA smoothing), $\tau = 1.0$ (softmax temperature), and $\rho = 0.999$ (lookback probability).
+The resulting weights $w_{\mathrm{data}}, w_{\mathrm{phys}}$ upweight whichever loss is decreasing more slowly, preventing any single objective from dominating.
+
+% - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+\subsubsection{Training Loss Construction}
+\label{sec:pinn:loss-construction}
+% - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+\paragraph{DD-PINN total loss.}
+Combining the data loss, physics loss, adaptive weights, and curriculum warmup, the DD-PINN training loss at epoch $n$ is:
+\begin{equation}
+  \boxed{%
+    \mathcal{L}^{(n)}(\theta) = w_{\mathrm{data}}^{(n)}\,\mathcal{L}_{\mathrm{data}}(\theta)
+    + w_{\mathrm{phys}}^{(n)}\,\lambda\,\sigma(n)\,\mathcal{L}_{\mathrm{phys}}(\theta),
+  }
+  \label{eq:pinn:ddpinn-total}
+\end{equation}
+where $w_{\mathrm{data}}^{(n)}, w_{\mathrm{phys}}^{(n)}$ are the ReLoBRaLo weights, $\lambda$ is a fixed physics strength hyperparameter, and $\sigma(n)$ is the curriculum schedule:
+\begin{equation}
+  \sigma(n) =
+  \begin{cases}
+    0, & n < 0.15\,N_{\mathrm{epochs}} \quad\text{(data-only warmup)}, \\[3pt]
+    \dfrac{n - 0.15\,N_{\mathrm{epochs}}}{0.30\,N_{\mathrm{epochs}}}, & 0.15\,N_{\mathrm{epochs}} \leq n < 0.45\,N_{\mathrm{epochs}} \quad\text{(linear ramp)}, \\[6pt]
+    1, & n \geq 0.45\,N_{\mathrm{epochs}} \quad\text{(full physics)}.
+  \end{cases}
+  \label{eq:pinn:curriculum}
+\end{equation}
+The warmup allows the network to learn a reasonable data-driven initialization before the physics loss activates.
+
+\paragraph{Physics-regularized total loss.}
+For the regularized surrogate variant:
+\begin{equation}
+  \mathcal{L}^{(n)}(\theta) = \mathcal{L}_{\mathrm{data}}(\theta) + \lambda\,\sigma_{\mathrm{reg}}(n)\,\mathcal{L}_{\mathrm{reg}}(\theta),
+  \label{eq:pinn:reg-total-loss}
+\end{equation}
+where $\mathcal{L}_{\mathrm{reg}}$ is the sum of four algebraic constraints (\cref{eq:pinn:reg-total}) and $\sigma_{\mathrm{reg}}$ follows the same piecewise-linear schedule with a 20\% warmup fraction.
+A sweep over $\lambda \in \{0.001, 0.01, 0.1, 1.0\}$ determined the optimal regularization strength.
+
+\paragraph{Coordinate space pipeline.}
+The DD-PINN training step requires careful coordinate transformations.
+The model operates on a 130-dimensional relative representation (node positions minus center-of-mass, node velocities minus CoM velocity), while the physics loss requires 124-dimensional absolute coordinates because RFT friction forces depend on absolute node velocities through the medium.
+Each training step follows the pipeline:
+\begin{equation}
+  \underbrace{\fnn(\tilde{\mathbf{x}}_0^{\mathrm{rel}}, \mathbf{u})}_{\text{network forward}}
+  \;\xrightarrow{\;\text{ansatz}\;}
+  \underbrace{\mathbf{g},\, \dot{\mathbf{g}}}_{\text{at } N_c \text{ points}}
+  \;\xrightarrow{\;\text{denorm}\;}
+  \underbrace{\mathbf{g}_{\mathrm{phys}}}_{\text{physical units}}
+  \;\xrightarrow{\;\text{rel}\to\text{abs}\;}
+  \underbrace{\hat{\mathbf{x}}(t_k)}_{\text{124-dim}}
+  \;\xrightarrow{\;\fssm\;}
+  \underbrace{\dot{\mathbf{x}}_{\mathrm{phys}}}_{\text{RHS}}
+  \;\xrightarrow{\;\text{nondim}\;}
+  \underbrace{\tilde{\dot{\mathbf{x}}}}_{\mathcal{O}(1)}.
+  \label{eq:pinn:pipeline}
+\end{equation}
+The physics MSE is computed in the nondimensionalized space, where both the ansatz derivative $\dot{\mathbf{g}}$ and the Cosserat RHS output $\fssm(\hat{\mathbf{x}})$ are at comparable magnitudes.
+
+\paragraph{Collocation strategy.}
+Temporal collocation points are sampled using Sobol quasi-random sequences for uniform coverage of the prediction interval $[0, \Delta t_{\mathrm{ctrl}}]$, with residual-based adaptive refinement (RAR) concentrating additional points where the physics residual is largest (every 20 epochs, adding 10\% new points).\looseness=-1
+
+\paragraph{DD-PINN configuration.}
+\Cref{tab:pinn:config} summarizes the DD-PINN hyperparameters used for the 124-state Cosserat rod surrogate.
+
+\begin{table}[H]
+\centering
+\caption{DD-PINN training configuration for the snake robot Cosserat rod surrogate.}
+\label{tab:pinn:config}
+\footnotesize
+\renewcommand{\arraystretch}{1.15}
+\begin{tabular}{@{} l l @{}}
+\toprule
+\textbf{Parameter} & \textbf{Value} \\
+\midrule
+State dimension       & 124 (21 nodes $\times$ 2 pos/vel + 20 elements $\times$ 2 yaw/$\omega_z$) \\
+Ansatz basis functions ($n_{\mathrm{basis}}$) & sweep $\{5, 7, 10\}$ \\
+Hidden layers         & $4 \times 512$ \\
+Fourier features      & 128 features, $\sigma = 10.0$ \\
+Collocation points    & 100\,000 (Sobol) \\
+Physics weight $\lambda$ & 1.0 \\
+Batch size            & 4\,096 \\
+Learning rate         & $10^{-3}$ (cosine annealing) \\
+Gradient clipping     & 1.0 \\
+Early stopping        & patience 50 epochs \\
+RAR                   & every 20 epochs, 10\% new points \\
+Curriculum warmup     & 15\% data-only \\
+\bottomrule
+\end{tabular}
+\end{table}
 
 % ---------------------------------------------------------------------------
 \subsection{Results and Comparison}
@@ -1785,7 +2188,7 @@ All quantities are nondimensionalized using physics-based reference scales ($L_{
 \begin{figure}[H]
   \centering
   \includegraphics[width=\textwidth]{pinn/final_comparison.png}
-  \caption{Per-component RMSE comparison across surrogate approaches. \mytodo{Fill in wall-clock training times after full runs.}}
+  \caption{Per-component RMSE comparison across surrogate approaches. Physics-regularized training ($\lambda = 0.01$) converged in 138 epochs (${\sim}8$\,h on RTX~A4000, ${\sim}211$\,s/epoch).}
   \label{fig:pinn:comparison}
 \end{figure}
 
@@ -1799,7 +2202,7 @@ All quantities are nondimensionalized using physics-based reference scales ($L_{
 \begin{figure}[H]
   \centering
   \includegraphics[width=0.85\textwidth]{pinn/predicted_vs_actual.png}
-  \caption{Per-component predicted vs.\ actual $R^2$ for the DD-PINN model. \mytodo{Report final R2 values from completed training.}}
+  \caption{Per-component predicted vs.\ actual $R^2$ for the physics-regularized surrogate ($\lambda{=}0.01$). Overall $R^2{=}0.714$; per-component: $\text{pos}_{x,y}$\,=\,0.978, $\text{vel}_{x,y}$\,$\approx$\,0.52, yaw\,=\,0.862, $\omega_z$\,=\,0.422.}
   \label{fig:pinn:r2}
 \end{figure}
 
@@ -1812,9 +2215,9 @@ All quantities are nondimensionalized using physics-based reference scales ($L_{
 \centering
 \caption{Comparison of four approaches---formulation and training.}
 \label{tab:pinn:four-way-a}
-\footnotesize
+\scriptsize
 \renewcommand{\arraystretch}{1.2}
-\begin{tabular}{@{} p{2.8cm} p{4.2cm} p{4.2cm} p{4.2cm} p{4.2cm} @{}}
+\begin{tabular}{@{} p{2.4cm} p{3.8cm} p{3.8cm} p{3.8cm} p{3.8cm} @{}}
 \toprule
 \textbf{Aspect}
     & \textbf{PDE Solver}
@@ -1885,9 +2288,9 @@ All quantities are nondimensionalized using physics-based reference scales ($L_{
 \centering
 \caption{Comparison of four approaches---performance and practical aspects.}
 \label{tab:pinn:four-way-b}
-\footnotesize
+\scriptsize
 \renewcommand{\arraystretch}{1.2}
-\begin{tabular}{@{} p{2.8cm} p{4.2cm} p{4.2cm} p{4.2cm} p{4.2cm} @{}}
+\begin{tabular}{@{} p{2.4cm} p{3.8cm} p{3.8cm} p{3.8cm} p{3.8cm} @{}}
 \toprule
 \textbf{Aspect}
     & \textbf{PDE Solver}
@@ -2165,11 +2568,11 @@ The sign error motivates unit tests that verify wave propagation direction, rath
 
 \begin{table}[H]
   \centering
-  \small
+  \footnotesize
   \renewcommand{\arraystretch}{1.35}
   \caption{Architecture sweep results (placeholder).}
   \label{tab:discussion-arch}
-  \begin{tabular}{@{}p{3cm}ccccc@{}}
+  \begin{tabular}{@{}p{2.5cm}ccccc@{}}
     \toprule
     \textbf{Architecture} & \textbf{Params} & \textbf{Val MSE} & \textbf{$\omega_z$ $R^2$} & \textbf{Rollout RMSE} & \textbf{Train time} \\
     \midrule
@@ -2190,18 +2593,18 @@ Four engineering challenges were encountered while building the parallel data co
 
 \begin{table}[H]
   \centering
-  \small
+  \footnotesize
   \renewcommand{\arraystretch}{1.35}
   \caption{Data collection pipeline challenges.}
   \label{tab:discussion-pipeline}
-  \begin{tabular}{@{}p{2.5cm}p{4.0cm}p{3.5cm}p{3.5cm}@{}}
+  \begin{tabular}{@{}p{2.2cm}p{3.6cm}p{3.2cm}p{3.2cm}@{}}
     \toprule
     \textbf{Challenge} & \textbf{Symptom} & \textbf{Root cause} & \textbf{Resolution} \\
     \midrule
     Numba thread pool deadlock
       & Silent deadlock at episode boundaries under heavy load
       & 16 workers $\times$ 48 Numba threads $=$ 768 threads on 48 cores
-      & \texttt{NUMBA\_NUM\_THREADS=1}; intra-function parallelism has no benefit for single-rod instances \\
+      & Set \texttt{NUMBA\_NUM\_\allowbreak{}THREADS=1}; intra-function parallelism has no benefit for single-rod instances \\
     \addlinespace
     Stall detection false positives
       & All 16 workers flagged as stalled and respawned within 60\,s of startup

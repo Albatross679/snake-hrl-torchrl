@@ -109,6 +109,8 @@ class DDPINNTrainConfig:
     num_epochs: int = 9999
     lr: float = 1e-3
     batch_size: int = 4096
+    auto_batch_size: bool = True
+    gradient_accumulation_steps: int = 1
     patience: int = 50
     grad_clip: float = 1.0
 
@@ -164,6 +166,9 @@ class DDPINNTrainConfig:
         p.add_argument("--rar-interval", type=int)
         p.add_argument("--rar-fraction", type=float)
         p.add_argument("--curriculum-warmup", type=float)
+        p.add_argument("--no-auto-batch", action="store_true", default=False)
+        p.add_argument("--grad-accum", type=int, default=None, dest="grad_accum")
+        p.add_argument("--resume", type=str, default=None)
         p.add_argument("--no-wandb", action="store_true", default=False)
         p.add_argument("--run-name", type=str, default=None)
         p.add_argument("--save-dir", type=str)
@@ -189,6 +194,10 @@ class DDPINNTrainConfig:
                 setattr(cfg, attr, cli_val)
         if args.use_lbfgs is not None:
             cfg.use_lbfgs = True
+        if args.no_auto_batch:
+            cfg.auto_batch_size = False
+        if args.grad_accum is not None:
+            cfg.gradient_accumulation_steps = args.grad_accum
         if args.no_relobralo:
             cfg.use_relobralo = False
         if args.no_rar:
@@ -205,6 +214,7 @@ class DDPINNTrainConfig:
         cfg._baseline_dir = args.baseline_dir
         cfg._regularizer_dir = args.regularizer_dir
         cfg._ddpinn_dir = args.ddpinn_dir
+        cfg._resume_dir = args.resume
 
         return cfg
 
@@ -253,6 +263,95 @@ def per_component_rmse(pred_deltas, true_deltas):
         "yaw_rad": _rmse(pred_deltas[:, YAW], true_deltas[:, YAW]),
         "omega_z_rad_s": _rmse(pred_deltas[:, OMEGA_Z], true_deltas[:, OMEGA_Z]),
     }
+
+
+def probe_auto_batch_size(
+    model: nn.Module,
+    rhs: nn.Module,
+    normalizer,
+    sample_input: dict,
+    device: str,
+    amp_ctx,
+    t_colloc_sample: torch.Tensor,
+    start_bs: int = 4096,
+    vram_target: float = 0.55,
+) -> int:
+    """Find the largest batch size that fits within vram_target of total GPU memory.
+
+    Two-phase search: coarse (powers of 2) then fine (binary search).
+    Simulates both data loss and physics loss at collocation points.
+    """
+    if not torch.cuda.is_available() or "cuda" not in device:
+        print(f"  Auto-batch: CPU mode, using default {start_bs}")
+        return start_bs
+
+    total_vram = torch.cuda.get_device_properties(device).total_memory
+    target_bytes = int(total_vram * vram_target)
+
+    _ensure_papers_path()
+    from aprx_model_elastica.state import relative_to_raw
+
+    def _try_batch(bs: int) -> bool:
+        try:
+            torch.cuda.empty_cache()
+            torch.cuda.reset_peak_memory_stats(device)
+
+            state = sample_input["state"].unsqueeze(0).expand(bs, -1).to(device)
+            action = sample_input["action"].unsqueeze(0).expand(bs, -1).to(device)
+            serp_time = sample_input["t_start"].unsqueeze(0).expand(bs).to(device)
+            delta = sample_input["delta"].unsqueeze(0).expand(bs, -1).to(device)
+
+            state_norm = normalizer.normalize_state(state)
+            delta_norm = normalizer.normalize_delta(delta)
+            time_enc = _encode_time(action, serp_time)
+
+            ctx = amp_ctx if amp_ctx is not None else nullcontext()
+            with ctx:
+                # Data loss
+                pred = model(state_norm, action, time_enc)
+                loss_data = F.mse_loss(pred, delta_norm)
+
+                # Simulate physics loss with collocation
+                phys_bs = min(256, bs)
+                t_batch = t_colloc_sample[:min(100, len(t_colloc_sample))]
+                g, g_dot = model.forward_trajectory(
+                    state_norm[:phys_bs], action[:phys_bs], time_enc[:phys_bs], t_batch
+                )
+                loss = loss_data + g.sum() * 0  # ensure memory allocated
+
+            loss.backward()
+            model.zero_grad()
+
+            peak = torch.cuda.max_memory_allocated(device)
+            return peak <= target_bytes
+        except torch.cuda.OutOfMemoryError:
+            torch.cuda.empty_cache()
+            model.zero_grad()
+            return False
+
+    # Phase 1: Coarse (powers of 2)
+    last_pass = start_bs
+    bs = start_bs
+    while _try_batch(bs):
+        last_pass = bs
+        bs *= 2
+    first_fail = bs
+
+    # Phase 2: Fine (binary search)
+    lo, hi = last_pass, first_fail
+    while hi - lo > max(256, lo // 8):
+        mid = (lo + hi) // 2
+        mid = (mid // 256) * 256
+        if mid <= lo:
+            break
+        if _try_batch(mid):
+            lo = mid
+        else:
+            hi = mid
+
+    torch.cuda.empty_cache()
+    model.zero_grad()
+    return lo
 
 
 def _ensure_papers_path():
@@ -349,6 +448,25 @@ def train_single_config(cfg: DDPINNTrainConfig, run_dir: Path) -> dict:
     ).to(device)
     print(f"Collocation: {len(t_colloc)} points ({cfg.collocation_method})")
 
+    # AMP context (needed for auto-batch probe)
+    amp_ctx = get_amp_context(device)
+
+    # Auto batch size probing
+    if cfg.auto_batch_size and "cuda" in device:
+        print("Probing auto batch size...")
+        sample = train_ds[0]
+        probed_bs = probe_auto_batch_size(
+            model, rhs, normalizer, sample, device, amp_ctx,
+            t_colloc_sample=t_colloc,
+            start_bs=cfg.batch_size,
+        )
+        print(f"  Auto-batch: {cfg.batch_size} -> {probed_bs}")
+        cfg.batch_size = probed_bs
+
+    # Gradient accumulation
+    grad_accum = cfg.gradient_accumulation_steps
+    effective_batch = cfg.batch_size * grad_accum
+
     # Optimizer
     optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=1e-4)
 
@@ -383,26 +501,46 @@ def train_single_config(cfg: DDPINNTrainConfig, run_dir: Path) -> dict:
         "num_train_samples": len(train_ds),
         "num_dev_samples": len(val_ds),
         "n_collocation": cfg.n_collocation,
+        "batch_size": cfg.batch_size,
+        "auto_batch_size": cfg.auto_batch_size,
+        "gradient_accumulation_steps": grad_accum,
+        "effective_batch_size": effective_batch,
         **hw_info,
     })
 
     _ensure_papers_path()
     from aprx_model_elastica.state import relative_to_raw, raw_to_relative
 
-    amp_ctx = get_amp_context(device)
-
     # Subsample collocation for each batch to keep memory bounded
     n_colloc_batch = min(1000, len(t_colloc))
     # Subsample physics batch size (smaller than data batch)
     phys_batch_size = min(256, cfg.batch_size)
+
+    print(f"  Batch size: {cfg.batch_size} x {grad_accum} accum = {effective_batch} effective")
 
     # Training loop
     best_val_loss = float("inf")
     patience_counter = 0
     phys_loss_history = []
     epoch = 0
+    start_epoch = 1
 
-    for epoch in range(1, cfg.num_epochs + 1):
+    # Resume from checkpoint if requested
+    resume_dir = getattr(cfg, '_resume_dir', None)
+    if resume_dir is not None:
+        state_path = Path(resume_dir) / "training_state.pt"
+        if state_path.exists():
+            print(f"Resuming from {state_path}...")
+            ckpt = torch.load(str(state_path), map_location=device, weights_only=False)
+            model.load_state_dict(ckpt["model_state_dict"])
+            optimizer.load_state_dict(ckpt["optimizer_state_dict"])
+            scheduler.load_state_dict(ckpt["scheduler_state_dict"])
+            start_epoch = ckpt["epoch"] + 1
+            best_val_loss = ckpt["best_val_loss"]
+            patience_counter = ckpt["patience_counter"]
+            print(f"  Resumed at epoch {start_epoch}, best_val={best_val_loss:.6f}, patience={patience_counter}")
+
+    for epoch in range(start_epoch, cfg.num_epochs + 1):
         if _check_stop(run_dir):
             print(f"  Stop requested at epoch {epoch} — saving and exiting.")
             break
@@ -417,7 +555,9 @@ def train_single_config(cfg: DDPINNTrainConfig, run_dir: Path) -> dict:
             epoch, cfg.num_epochs, cfg.lambda_phys, cfg.curriculum_warmup
         )
 
-        for batch in train_loader:
+        optimizer.zero_grad()
+
+        for batch_idx, batch in enumerate(train_loader):
             state = batch["state"].to(device)
             action = batch["action"].to(device)
             serp_time = batch["t_start"].to(device)
@@ -477,13 +617,6 @@ def train_single_config(cfg: DDPINNTrainConfig, run_dir: Path) -> dict:
                         g_dot.reshape(-1, 130)
                     ).reshape(g.shape[0], g.shape[1], 130)
 
-                    # Convert relative derivative to raw derivative
-                    # For positions/velocities, raw_to_relative just copies, so derivative mapping is identity
-                    # We need to compare in raw space for kinematic components
-                    # Simplification: compare pos/vel derivatives directly
-                    # The ansatz derivative gives dg/dt in relative space
-                    # For position: dx/dt = v (kinematic), this is the same in both representations
-                    # Physics residual: g_dot - f(x_at_t) = 0
                     # g_dot_denorm is 130-dim relative; take first 124 dims as raw approx
                     g_dot_raw = g_dot_denorm.reshape(-1, 130)[:, :RAW_STATE_DIM]
                     f_phys_flat = f_physics.reshape(-1, RAW_STATE_DIM)
@@ -503,12 +636,15 @@ def train_single_config(cfg: DDPINNTrainConfig, run_dir: Path) -> dict:
             else:
                 loss = loss_data + phys_weight * loss_phys
 
-            # Backward OUTSIDE AMP
-            optimizer.zero_grad()
-            loss.backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), cfg.grad_clip)
-            optimizer.step()
-            scheduler.step()
+            # Scale loss for gradient accumulation, backward OUTSIDE AMP
+            (loss / grad_accum).backward()
+
+            # Step optimizer every grad_accum batches (or at end of epoch)
+            if (batch_idx + 1) % grad_accum == 0 or (batch_idx + 1) == len(train_loader):
+                torch.nn.utils.clip_grad_norm_(model.parameters(), cfg.grad_clip)
+                optimizer.step()
+                scheduler.step()
+                optimizer.zero_grad()
 
             epoch_data_loss += loss_data.item()
             epoch_phys_loss += loss_phys.item() if isinstance(loss_phys, torch.Tensor) else loss_phys
@@ -569,6 +705,16 @@ def train_single_config(cfg: DDPINNTrainConfig, run_dir: Path) -> dict:
         else:
             patience_counter += 1
         torch.save(model.state_dict(), str(run_dir / "model_last.pt"))
+
+        # Save training state for resume (every epoch, overwrites previous)
+        torch.save({
+            "epoch": epoch,
+            "model_state_dict": model.state_dict(),
+            "optimizer_state_dict": optimizer.state_dict(),
+            "scheduler_state_dict": scheduler.state_dict(),
+            "best_val_loss": best_val_loss,
+            "patience_counter": patience_counter,
+        }, str(run_dir / "training_state.pt"))
 
         lr = optimizer.param_groups[0]["lr"]
 

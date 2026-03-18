@@ -1,0 +1,670 @@
+% Valid Time Integration for Elastica in the Snake-HRL Project
+% Standalone reference document — defines the two-level stepping hierarchy,
+% stability constraints, and CPG–integrator synchronization
+
+\documentclass[11pt]{article}
+
+% ---------------------------------------------------------------------------
+% Font and encoding
+% ---------------------------------------------------------------------------
+\usepackage{palatino}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+
+% ---------------------------------------------------------------------------
+% Page layout
+% ---------------------------------------------------------------------------
+\usepackage[top=1in, bottom=1in, left=1.25in, right=1.25in]{geometry}
+\usepackage{setspace}
+\setstretch{1.15}
+\setlength{\parindent}{1em}
+\setlength{\parskip}{0.4em}
+
+% ---------------------------------------------------------------------------
+% Math
+% ---------------------------------------------------------------------------
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{mathtools}
+\usepackage{bm}
+
+% ---------------------------------------------------------------------------
+% Figures and tables
+% ---------------------------------------------------------------------------
+\usepackage{booktabs}
+\usepackage{float}
+\usepackage{array}
+\usepackage{tabularx}
+
+% ---------------------------------------------------------------------------
+% Colors and hyperlinks
+% ---------------------------------------------------------------------------
+\usepackage{xcolor}
+\usepackage[hidelinks]{hyperref}
+
+% ---------------------------------------------------------------------------
+% Lists
+% ---------------------------------------------------------------------------
+\usepackage{enumitem}
+\setlist[itemize]{nosep, topsep=0.3em, itemsep=0.2em}
+
+% ---------------------------------------------------------------------------
+% Section formatting
+% ---------------------------------------------------------------------------
+\usepackage{titlesec}
+\titlespacing*{\section}{0pt}{1.2em}{0.6em}
+\titlespacing*{\subsection}{0pt}{0.9em}{0.3em}
+
+% ---------------------------------------------------------------------------
+% Algorithms
+% ---------------------------------------------------------------------------
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+
+% ---------------------------------------------------------------------------
+% Custom commands
+% ---------------------------------------------------------------------------
+\newcommand{\vect}[1]{\mathbf{#1}}
+\newcommand{\mat}[1]{\mathbf{#1}}
+\newcommand{\Real}{\mathbb{R}}
+\newcommand{\ddt}[1]{\frac{\partial #1}{\partial t}}
+\newcommand{\dds}[1]{\frac{\partial #1}{\partial s}}
+\newcommand{\dd}[2]{\frac{d #1}{d #2}}
+\newcommand{\dtrl}{\Delta t_{\mathrm{RL}}}
+\newcommand{\dtsub}{\Delta t_{\mathrm{sub}}}
+\newcommand{\Nsub}{N_{\mathrm{sub}}}
+\newcommand{\Nrl}{N_{\mathrm{RL}}}
+\newcommand{\krest}{\bm{\kappa}_{\mathrm{rest}}}
+
+% ---------------------------------------------------------------------------
+\begin{document}
+% ---------------------------------------------------------------------------
+
+\begin{center}
+  {\Large\bfseries Valid Time Integration for PyElastica} \\[0.5em]
+  {\large Two-Level Stepping, Stability Constraints, and CPG Synchronization} \\[1.5em]
+  \textit{Snake-HRL Project --- Reference Document}
+\end{center}
+
+\vspace{1em}
+
+% ===================================================================
+\section{Overview}
+\label{sec:overview}
+% ===================================================================
+
+PyElastica simulates Cosserat rod dynamics using explicit symplectic integrators.
+In the Snake-HRL project, the simulation is embedded inside a reinforcement learning
+(RL) loop, producing a \emph{two-level time-stepping hierarchy}: a fast inner loop
+that integrates the rod mechanics, and a slower outer loop at which the RL agent
+selects actions.  A \emph{valid} time integration is one in which:
+\begin{enumerate}[nosep]
+  \item The inner substep $\dtsub$ is small enough for the symplectic integrator
+        to remain stable given the rod's material stiffness and geometry.
+  \item The CPG (Central Pattern Generator) curvature field is updated at every
+        substep, not just at RL boundaries, so the actuation is temporally smooth.
+  \item Friction forces are applied before each integration substep so they
+        participate in the force balance.
+  \item Numerical damping is low enough to preserve locomotion dynamics but
+        high enough to suppress spurious high-frequency modes.
+\end{enumerate}
+
+% ===================================================================
+\section{Cosserat Rod Equations of Motion}
+\label{sec:eom}
+% ===================================================================
+
+Let $\vect{r}(s,t) \in \Real^3$ denote the centerline position and
+$\mat{Q}(s,t) \in SO(3)$ the material frame of a Cosserat rod parameterized
+by arc length $s \in [0, L]$.  The governing PDEs are:
+
+\begin{align}
+  \rho A \, \ddot{\vect{r}}
+    &= \dds{\vect{n}} + \vect{f}_{\mathrm{ext}},
+    \label{eq:linear-momentum} \\[4pt]
+  \rho \vect{I} \, \dot{\bm{\omega}}
+    &= \dds{\vect{m}} + \dds{\vect{r}} \times \vect{n}
+       + \bm{\tau}_{\mathrm{ext}},
+    \label{eq:angular-momentum}
+\end{align}
+
+\noindent where $\vect{n}$ is the internal force resultant, $\vect{m}$ the
+internal moment, $\rho$ the density, $A$ the cross-sectional area,
+$\vect{I}$ the second moment of area tensor, $\bm{\omega}$ the angular
+velocity, and $\vect{f}_{\mathrm{ext}}$, $\bm{\tau}_{\mathrm{ext}}$ are
+external forces and torques (gravity, friction).
+
+The constitutive relations for an isotropic rod are:
+\begin{align}
+  \vect{m} &= \mat{B}\,(\bm{\kappa} - \krest), \label{eq:bending} \\
+  \vect{n} &= \mat{S}\,(\bm{\sigma} - \bm{\sigma}_0), \label{eq:shearing}
+\end{align}
+where $\mat{B} = \mathrm{diag}(EI_1, EI_2, GJ)$ is the bending/torsion
+stiffness matrix, $\mat{S}$ the shear/stretch stiffness, $\bm{\kappa}$ the
+curvature strain vector, and $\krest$ the \emph{rest curvature} that serves
+as the control input.
+
+The bending energy that drives actuation is:
+\begin{equation}
+  E_{\mathrm{bend}} = \int_0^L \frac{1}{2}\,
+    (\bm{\kappa} - \krest)^\top \mat{B}\, (\bm{\kappa} - \krest) \, ds.
+  \label{eq:bending-energy}
+\end{equation}
+Setting $\krest$ to a time-varying serpenoid profile makes the elastic
+restoring forces produce undulatory locomotion.
+
+% ===================================================================
+\section{Two-Level Time-Stepping Hierarchy}
+\label{sec:hierarchy}
+% ===================================================================
+
+\begin{table}[H]
+\centering
+\caption{Time-stepping levels and their default values.}
+\label{tab:timesteps}
+\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{@{}llll@{}}
+\toprule
+\textbf{Level} & \textbf{Symbol} & \textbf{Default} & \textbf{Description} \\
+\midrule
+Integration substep & $\dtsub$ & $0.001\;\mathrm{s}$ &
+  Smallest timestep passed to the symplectic integrator \\
+Intermediate block & $\Delta t$ & $0.05\;\mathrm{s}$ &
+  $\Nsub = 50$ substeps; legacy config unit \\
+RL action step & $\dtrl$ & $0.5\;\mathrm{s}$ &
+  $\Nrl = 500$ substeps per agent decision \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The relationships are:
+\begin{equation}
+  \dtsub = \frac{\Delta t}{\Nsub}, \qquad
+  \dtrl  = \Nrl \cdot \dtsub.
+  \label{eq:dt-relations}
+\end{equation}
+
+At each RL step the agent outputs action parameters (amplitude, frequency,
+wave number, phase, turn bias).  These parameters are held fixed for $\Nrl$
+substeps, but the resulting curvature field evolves continuously because the
+serpenoid curve depends on the running time $t$.
+
+% ===================================================================
+\section{Symplectic Integrators}
+\label{sec:integrators}
+% ===================================================================
+
+PyElastica provides two symplectic integrators:
+
+\subsection{Position Verlet (Default)}
+\label{sec:position-verlet}
+
+The St\"ormer--Verlet method is a second-order symplectic integrator.
+For a system $\dot{\vect{q}} = \vect{v}$, $\dot{\vect{v}} = \vect{a}(\vect{q})$,
+one full step from $t$ to $t + \dtsub$ is:
+\begin{align}
+  \vect{q}_{1/2} &\gets \vect{q}_n + \tfrac{1}{2}\dtsub\,\vect{v}_n, \label{eq:pv1} \\
+  \vect{v}_{n+1} &\gets \vect{v}_n + \dtsub\,\vect{a}(\vect{q}_{1/2}), \label{eq:pv2} \\
+  \vect{q}_{n+1} &\gets \vect{q}_{1/2} + \tfrac{1}{2}\dtsub\,\vect{v}_{n+1}. \label{eq:pv3}
+\end{align}
+
+\noindent This is time-reversible and preserves the symplectic structure,
+meaning energy drift is bounded over long integrations.
+
+\subsection{PEFRL (Position Extended Forest--Ruth--Like)}
+\label{sec:pefrl}
+
+A fourth-order symplectic integrator with optimized coefficients
+\cite{omelyan2002optimized}.  It uses four force evaluations per step
+(versus one for Verlet) but achieves much smaller energy error at the
+same $\dtsub$.  The update sequence is:
+\begin{align}
+  \vect{q}_1 &\gets \vect{q}_n + \xi\,\dtsub\,\vect{v}_n, \notag \\
+  \vect{v}_1 &\gets \vect{v}_n + (1-2\lambda)\tfrac{\dtsub}{2}\,\vect{a}(\vect{q}_1), \notag \\
+  \vect{q}_2 &\gets \vect{q}_1 + \chi\,\dtsub\,\vect{v}_1, \notag \\
+  \vect{v}_2 &\gets \vect{v}_1 + \lambda\,\dtsub\,\vect{a}(\vect{q}_2), \notag \\
+  \vect{q}_3 &\gets \vect{q}_2 + (1-2(\chi+\xi))\,\dtsub\,\vect{v}_2, \notag \\
+  \vect{v}_3 &\gets \vect{v}_2 + \lambda\,\dtsub\,\vect{a}(\vect{q}_3), \notag \\
+  \vect{q}_4 &\gets \vect{q}_3 + \chi\,\dtsub\,\vect{v}_3, \notag \\
+  \vect{v}_{n+1} &\gets \vect{v}_3 + (1-2\lambda)\tfrac{\dtsub}{2}\,\vect{a}(\vect{q}_4), \notag \\
+  \vect{q}_{n+1} &\gets \vect{q}_4 + \xi\,\dtsub\,\vect{v}_{n+1},
+  \label{eq:pefrl}
+\end{align}
+with $\xi \approx 0.1786$, $\lambda \approx -0.2123$, $\chi \approx -0.6626$.
+
+% ===================================================================
+\section{Stability Constraints}
+\label{sec:stability}
+% ===================================================================
+
+Since both integrators are explicit, the substep $\dtsub$ must satisfy
+a CFL-like condition dictated by the stiffest mode in the discretized rod.
+The critical timescale is set by bending wave propagation:
+\begin{equation}
+  \dtsub < C \sqrt{\frac{\rho A \, \Delta s^4}{E I}},
+  \label{eq:cfl}
+\end{equation}
+where $\Delta s = L / N_e$ is the element length, $N_e$ the number of
+elements, and $C$ is an order-unity constant that depends on the
+integrator (smaller for Verlet, larger for PEFRL).
+
+\begin{table}[H]
+\centering
+\caption{Default material and geometry parameters.}
+\label{tab:params}
+\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{@{}lll@{}}
+\toprule
+\textbf{Parameter} & \textbf{Symbol} & \textbf{Value} \\
+\midrule
+Young's modulus     & $E$           & $10^5\;\mathrm{Pa}$ \\
+Poisson ratio       & $\nu$         & $0.5$ \\
+Shear modulus       & $G = E/2(1+\nu)$ & $3.33 \times 10^4\;\mathrm{Pa}$ \\
+Density             & $\rho$        & $1200\;\mathrm{kg/m^3}$ \\
+Rod length          & $L$           & $0.5\;\mathrm{m}$ \\
+Rod radius          & $r$           & $0.02\;\mathrm{m}$ \\
+Number of elements  & $N_e$         & $20$ \\
+Element length      & $\Delta s$    & $0.025\;\mathrm{m}$ \\
+Second moment of area & $I = \pi r^4 / 4$ & $1.257 \times 10^{-7}\;\mathrm{m^4}$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Substituting the default parameters into (\ref{eq:cfl}):
+\begin{equation}
+  \sqrt{\frac{\rho A \, \Delta s^4}{E I}}
+  = \sqrt{\frac{1200 \times \pi (0.02)^2 \times (0.025)^4}
+               {10^5 \times 1.257 \times 10^{-7}}}
+  \approx 1.7 \times 10^{-3}\;\mathrm{s}.
+\end{equation}
+The default substep of $\dtsub = 10^{-3}\;\mathrm{s}$ sits safely below this
+limit, providing a stability margin of roughly $1.7\times$.
+
+\subsection{Numerical Damping}
+\label{sec:damping}
+
+PyElastica applies an \texttt{AnalyticalLinearDamper} with coefficient
+$\gamma$.  This adds a dissipative term $-\gamma \vect{v}$ to each node's
+velocity at every substep.
+
+\begin{itemize}
+  \item $\gamma = 0.002$: default for locomotion --- preserves undulatory
+        dynamics while suppressing numerical ringing.
+  \item $\gamma \geq 0.008$: \textbf{freezes the rod} completely; overdamped
+        regime where elastic restoring forces cannot overcome dissipation.
+\end{itemize}
+
+\noindent The valid range is therefore $\gamma \in (0,\; 0.008)$.
+
+% ===================================================================
+\section{CPG--Integrator Synchronization}
+\label{sec:cpg-sync}
+% ===================================================================
+
+The serpenoid curvature profile is:
+\begin{equation}
+  \kappa(s_j, t) = A \sin\!\bigl(k\, s_j + \omega\, t + \phi\bigr) + \kappa_{\mathrm{turn}},
+  \label{eq:serpenoid}
+\end{equation}
+where $s_j$ are joint arc-length positions, $A$ is amplitude, $k$ the
+spatial wave number, $\omega = 2\pi f$ the temporal frequency, $\phi$ a
+phase offset, and $\kappa_{\mathrm{turn}}$ a constant steering bias.
+
+A valid integration requires that $\krest$ in (\ref{eq:bending}) is updated
+from (\ref{eq:serpenoid}) \emph{at every substep}, not just at RL decision
+boundaries.  Between RL steps, the action parameters $(A, f, k, \phi,
+\kappa_{\mathrm{turn}})$ are held constant but $t$ advances by $\dtsub$
+each substep, so the curvature field evolves smoothly.
+
+% ===================================================================
+\section{Ground Friction at Each Substep}
+\label{sec:friction}
+% ===================================================================
+
+Anisotropic Resistive Force Theory (RFT) friction is applied before each
+integration substep:
+\begin{equation}
+  \vect{f}_{\mathrm{RFT}} = -c_t\,\vect{v}_t - c_n\,\vect{v}_n,
+  \label{eq:rft}
+\end{equation}
+where $\vect{v}_t$ and $\vect{v}_n$ are the tangential and normal
+components of node velocity, with default coefficients $c_t = 0.01$ and
+$c_n = 0.05$ (a $5{:}1$ anisotropy ratio enabling serpentine propulsion).
+
+The friction forces must be included in the external forcing term
+$\vect{f}_{\mathrm{ext}}$ of (\ref{eq:linear-momentum}) at every substep.
+Applying them only at RL boundaries would produce non-physical jerky
+dynamics and destabilize the integrator.
+
+% ===================================================================
+\section{Contrast: DisMech Implicit Time Integration}
+\label{sec:dismech}
+% ===================================================================
+
+The project supports a second physics backend, DisMech, which uses
+\emph{implicit} (backward Euler) time integration.  Understanding the
+differences clarifies why the validity conditions for Elastica exist.
+
+\subsection{Backward Euler Formulation}
+\label{sec:backward-euler}
+
+DisMech discretizes the equations of motion (\ref{eq:linear-momentum})--(\ref{eq:angular-momentum})
+using the backward Euler scheme.  Given the state vector
+$\vect{x} = [\vect{q}^\top,\, \vect{v}^\top]^\top$ (positions and velocities
+of all $N$ nodes), the update rule is:
+\begin{align}
+  \vect{v}_{n+1} &= \vect{v}_n + \Delta t\,\mat{M}^{-1}\vect{F}(\vect{q}_{n+1},\, \vect{v}_{n+1}),
+    \label{eq:be-vel} \\
+  \vect{q}_{n+1} &= \vect{q}_n + \Delta t\,\vect{v}_{n+1},
+    \label{eq:be-pos}
+\end{align}
+where $\mat{M}$ is the mass matrix and $\vect{F}$ includes all internal
+elastic forces, damping, and external forces.  Crucially, $\vect{F}$ is
+evaluated at the \emph{unknown} future state $(\vect{q}_{n+1}, \vect{v}_{n+1})$,
+making the system implicit.
+
+Substituting (\ref{eq:be-pos}) into (\ref{eq:be-vel}) and rearranging gives
+the nonlinear residual:
+\begin{equation}
+  \vect{g}(\vect{q}_{n+1})
+    \coloneqq \mat{M}\bigl(\vect{q}_{n+1} - 2\vect{q}_n + \vect{q}_{n-1}\bigr)
+    - \Delta t^2\,\vect{F}(\vect{q}_{n+1})
+    = \vect{0},
+  \label{eq:residual}
+\end{equation}
+which is solved via Newton's method at each timestep.
+
+\subsection{Newton Solver}
+\label{sec:newton}
+
+Each timestep requires iterating:
+\begin{equation}
+  \vect{q}^{(k+1)} = \vect{q}^{(k)}
+    - \mat{J}^{-1}(\vect{q}^{(k)})\,\vect{g}(\vect{q}^{(k)}),
+  \label{eq:newton}
+\end{equation}
+where $\mat{J} = \partial\vect{g}/\partial\vect{q}$ is the Jacobian
+(tangent stiffness matrix plus mass and damping contributions).
+Convergence is declared when:
+\begin{equation}
+  \|\vect{g}(\vect{q}^{(k)})\| < \epsilon_f
+  \quad\text{or}\quad
+  \|\vect{q}^{(k+1)} - \vect{q}^{(k)}\| < \epsilon_d,
+  \label{eq:convergence}
+\end{equation}
+with default tolerances $\epsilon_f = 10^{-4}$ (force) and
+$\epsilon_d = 10^{-2}$ (displacement), and a maximum of $25$ iterations.
+
+\subsection{Key Differences from PyElastica}
+\label{sec:comparison}
+
+\begin{table}[H]
+\centering
+\caption{Comparison of time integration approaches.}
+\label{tab:comparison}
+\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{@{}lll@{}}
+\toprule
+\textbf{Property} & \textbf{PyElastica (Explicit)} & \textbf{DisMech (Implicit)} \\
+\midrule
+Integration scheme
+  & Symplectic (Verlet / PEFRL)
+  & Backward Euler (Newton) \\
+Timestep per call
+  & $\dtsub = 0.001\;\mathrm{s}$
+  & $\Delta t = 0.05\;\mathrm{s}$ \\
+Steps per second
+  & $1000$
+  & $20$ \\
+Stability
+  & \emph{Conditional} ($\dtsub < \dtsub^{\max}$)
+  & \emph{Unconditional} \\
+Substep loop
+  & $\Nrl = 500$ substeps per RL action
+  & $1$ step per RL action \\
+Cost per step
+  & Low (explicit evaluation)
+  & High (Jacobian assembly + linear solve) \\
+Energy behavior
+  & Bounded drift (symplectic)
+  & Numerical dissipation (implicit) \\
+Curvature control
+  & \texttt{rest\_kappa} array
+  & Natural strain of bend springs \\
+Solver parameters
+  & $\dtsub$, $\gamma$ (damping)
+  & $\epsilon_f$, $\epsilon_d$, max\_iter \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\noindent The fundamental trade-off is:
+
+\begin{itemize}
+  \item \textbf{PyElastica} takes many cheap explicit steps.  Each substep
+        is a simple algebraic update with no matrix inversion, but the
+        timestep is constrained by the CFL condition~(\ref{eq:cfl}).
+        The symplectic structure ensures long-term energy conservation.
+  \item \textbf{DisMech} takes few expensive implicit steps.  Each step
+        requires assembling and factorizing the Jacobian $\mat{J}$
+        (typically sparse, solved via PARDISO in the C++ backend), but
+        the method is unconditionally stable so $\Delta t$ can be $50\times$
+        larger.  However, backward Euler introduces \emph{numerical
+        dissipation} that damps high-frequency modes --- acceptable for
+        locomotion but less faithful for energy-sensitive analyses.
+\end{itemize}
+
+\subsection{Why Validity Conditions Differ}
+\label{sec:why-differ}
+
+Because DisMech is unconditionally stable, many of the Elastica validity
+conditions in Section~\ref{sec:summary} do not apply:
+
+\begin{enumerate}[nosep]
+  \item \textbf{No CFL constraint} --- DisMech can use $\Delta t = 0.05\;\mathrm{s}$
+        directly, without substeps.
+  \item \textbf{No per-substep curvature update} --- with only one step per
+        RL action, curvature is set once at the step boundary (the CPG
+        profile is evaluated at $t_n$, not continuously during the step).
+  \item \textbf{No explicit damping coefficient} --- numerical dissipation
+        from backward Euler itself provides damping; an additional
+        damping viscosity is optional (default $0.0$).
+  \item \textbf{Convergence monitoring replaces stability monitoring} ---
+        the relevant diagnostic is the Newton residual norm
+        $\|\vect{g}\|$, not the energy drift.
+\end{enumerate}
+
+\noindent This means DisMech is simpler to configure but offers less
+temporal resolution of the CPG waveform within each RL step.  The
+continuous curvature evolution that Elastica captures across $500$
+substeps is collapsed to a single snapshot in DisMech.
+
+% ===================================================================
+\section{Algorithms}
+\label{sec:algorithms}
+% ===================================================================
+
+% -------------------------------------------------------------------
+\begin{algorithm}[t]
+\caption{Single RL Step with PyElastica Integration}\label{alg:rl-step}
+\begin{algorithmic}[1]
+\Require Action $\vect{a} = (A,\, f,\, k,\, \phi,\, \kappa_{\mathrm{turn}})$
+\Require Substep size $\dtsub$, substeps per action $\Nrl$
+\Require Rod state $(\vect{q},\, \vect{v})$, simulation time $t$
+\Ensure Updated state $(\vect{q}',\, \vect{v}')$, new time $t'$
+\State $\omega \gets 2\pi f$ \Comment{Angular frequency}
+\For{$i = 1$ \textbf{to} $\Nrl$}
+    \For{$j = 1$ \textbf{to} $N_e - 1$} \Comment{Update rest curvature}
+        \State $\kappa_{\mathrm{rest},j} \gets A \sin(k\, s_j + \omega\, t + \phi) + \kappa_{\mathrm{turn}}$
+    \EndFor
+    \State $\vect{f}_{\mathrm{ext}} \gets \Call{ComputeRFT}{\vect{v},\, c_t,\, c_n}$ \Comment{Friction}
+    \State $(\vect{q},\, \vect{v},\, t) \gets \Call{SymplecticStep}{\vect{q},\, \vect{v},\, t,\, \dtsub}$
+\EndFor
+\State \textbf{return} $(\vect{q},\, \vect{v},\, t)$
+\end{algorithmic}
+\end{algorithm}
+% -------------------------------------------------------------------
+
+% -------------------------------------------------------------------
+\begin{algorithm}[t]
+\caption{Position Verlet Substep (\textsc{SymplecticStep})}\label{alg:verlet}
+\begin{algorithmic}[1]
+\Require Positions $\vect{q}$, velocities $\vect{v}$, time $t$, substep $\dtsub$
+\Ensure Updated $(\vect{q}',\, \vect{v}',\, t')$
+\State $\vect{q}_{1/2} \gets \vect{q} + \frac{1}{2}\dtsub\,\vect{v}$
+    \Comment{Half-step position}
+\State $\vect{a} \gets \vect{a}(\vect{q}_{1/2})$
+    \Comment{Acceleration from internal + external forces}
+\State $\vect{v}' \gets \vect{v} + \dtsub\,\vect{a}$
+    \Comment{Full-step velocity}
+\State $\vect{q}' \gets \vect{q}_{1/2} + \frac{1}{2}\dtsub\,\vect{v}'$
+    \Comment{Half-step position}
+\State $\vect{v}' \gets \vect{v}' - \gamma\,\vect{v}'$
+    \Comment{Damping ($\gamma \ll 1$)}
+\State $t' \gets t + \dtsub$
+\State \textbf{return} $(\vect{q}',\, \vect{v}',\, t')$
+\end{algorithmic}
+\end{algorithm}
+% -------------------------------------------------------------------
+
+% -------------------------------------------------------------------
+\begin{algorithm}[t]
+\caption{Resistive Force Theory (\textsc{ComputeRFT})}\label{alg:rft}
+\begin{algorithmic}[1]
+\Require Node velocities $\vect{v} \in \Real^{3 \times N}$, drag coefficients $c_t, c_n$
+\Ensure External friction forces $\vect{f} \in \Real^{3 \times N}$
+\For{$i = 1$ \textbf{to} $N$}
+    \State $\hat{\vect{t}}_i \gets$ unit tangent at node $i$
+        \Comment{From adjacent positions}
+    \State $v_{t,i} \gets (\vect{v}_i \cdot \hat{\vect{t}}_i)\,\hat{\vect{t}}_i$
+        \Comment{Tangential component}
+    \State $v_{n,i} \gets \vect{v}_i - v_{t,i}$
+        \Comment{Normal component}
+    \State $\vect{f}_i \gets -c_t\, v_{t,i} - c_n\, v_{n,i}$
+\EndFor
+\State \textbf{return} $\vect{f}$
+\end{algorithmic}
+\end{algorithm}
+% -------------------------------------------------------------------
+
+% -------------------------------------------------------------------
+\begin{algorithm}[t]
+\caption{Single RL Step with DisMech Integration (Implicit)}\label{alg:dismech-step}
+\begin{algorithmic}[1]
+\Require Action $\vect{a} = (A,\, f,\, k,\, \phi,\, \kappa_{\mathrm{turn}})$
+\Require Timestep $\Delta t$, rod state $(\vect{q},\, \vect{v})$, time $t$
+\Require Tolerances $\epsilon_f$, $\epsilon_d$, max iterations $K$
+\Ensure Updated state $(\vect{q}',\, \vect{v}')$, residual norm $r$
+\State $\omega \gets 2\pi f$
+\For{$j = 1$ \textbf{to} $N_e - 1$} \Comment{Set curvature once per RL step}
+    \State $\kappa_{\mathrm{nat},j} \gets A \sin(k\, s_j + \omega\, t + \phi) + \kappa_{\mathrm{turn}}$
+\EndFor
+\State $\vect{q}^{(0)} \gets \vect{q} + \Delta t\,\vect{v}$ \Comment{Initial guess (explicit Euler)}
+\For{$k = 0$ \textbf{to} $K - 1$} \Comment{Newton iterations}
+    \State $\vect{g} \gets \mat{M}(\vect{q}^{(k)} - 2\vect{q} + \vect{q}_{\mathrm{prev}}) - \Delta t^2\,\vect{F}(\vect{q}^{(k)})$
+    \State $\mat{J} \gets \frac{\partial \vect{g}}{\partial \vect{q}}\big|_{\vect{q}^{(k)}}$
+        \Comment{Jacobian (sparse)}
+    \State $\delta\vect{q} \gets \mat{J}^{-1}\vect{g}$ \Comment{Sparse linear solve}
+    \State $\vect{q}^{(k+1)} \gets \vect{q}^{(k)} - \delta\vect{q}$
+    \If{$\|\vect{g}\| < \epsilon_f$ \textbf{or} $\|\delta\vect{q}\| < \epsilon_d$}
+        \State \textbf{break} \Comment{Converged}
+    \EndIf
+\EndFor
+\State $\vect{v}' \gets (\vect{q}^{(k+1)} - \vect{q}) / \Delta t$
+\State $r \gets \|\vect{g}\|$ \Comment{Final residual for diagnostics}
+\State \textbf{return} $(\vect{q}^{(k+1)},\, \vect{v}',\, r)$
+\end{algorithmic}
+\end{algorithm}
+% -------------------------------------------------------------------
+
+% ===================================================================
+\section{Summary of Validity Conditions}
+\label{sec:summary}
+% ===================================================================
+
+A time integration is \emph{valid} if and only if all conditions for the
+chosen backend are satisfied.
+
+\subsection{PyElastica (Explicit Symplectic)}
+
+\begin{enumerate}
+  \item \textbf{Substep stability:} $\dtsub < C\sqrt{\rho A \,\Delta s^4 / (EI)}$,
+        satisfied by $\dtsub = 10^{-3}\;\mathrm{s}$ with the default parameters.
+
+  \item \textbf{Symplectic integrator:} Either Position Verlet (second-order)
+        or PEFRL (fourth-order) is used.  Non-symplectic integrators
+        (e.g., forward Euler) would accumulate energy drift.
+
+  \item \textbf{Per-substep curvature update:} The serpenoid
+        $\kappa(s_j, t)$ is recomputed at every substep using the
+        current simulation time $t$, not cached from the RL boundary.
+
+  \item \textbf{Per-substep friction:} RFT (or Coulomb/Stribeck) forces
+        are computed and applied before each integrator substep.
+
+  \item \textbf{Bounded damping:} $\gamma \in (0,\; 0.008)$ to avoid
+        freezing the rod while suppressing numerical ringing.
+
+  \item \textbf{Consistent time accounting:} Both the integrator time
+        and CPG phase advance by exactly $\dtsub$ per substep; no
+        time desynchronization between actuation and physics.
+\end{enumerate}
+
+\subsection{DisMech (Implicit Backward Euler)}
+
+\begin{enumerate}
+  \item \textbf{Newton convergence:} The residual norm $\|\vect{g}\|$
+        must fall below $\epsilon_f$ (or displacement below $\epsilon_d$)
+        within the maximum iteration budget.  A diverging or stagnating
+        Newton solve indicates an invalid step.
+
+  \item \textbf{Timestep--material consistency:} While unconditionally
+        stable, excessively large $\Delta t$ degrades accuracy through
+        numerical dissipation.  The default $\Delta t = 0.05\;\mathrm{s}$
+        is validated against the locomotion frequency band.
+
+  \item \textbf{Curvature set before solve:} The natural strain of each
+        bend spring must be set to the target curvature \emph{before}
+        calling the Newton solver, so the elastic energy landscape
+        reflects the desired actuation.
+
+  \item \textbf{Residual monitoring:} The returned residual norm should
+        be logged; values above $\epsilon_f$ indicate incomplete
+        convergence and unreliable state.
+\end{enumerate}
+
+% ===================================================================
+% References
+% ===================================================================
+\begin{thebibliography}{9}
+
+\bibitem{gazzola2018forward}
+M.~Gazzola, L.~H. Dudte, A.~G. McCormick, and L.~Mahadevan,
+``Forward and inverse problems in the mechanics of soft filaments,''
+\textit{Royal Society Open Science}, vol.~5, no.~6, 2018.
+
+\bibitem{zhang2019pyelastica}
+X.~Zhang, F.~K. Chan, T.~Parthasarathy, and M.~Gazzola,
+``Modeling and simulation of complex dynamic musculoskeletal
+architectures,''
+\textit{Nature Communications}, vol.~10, 2019.
+
+\bibitem{omelyan2002optimized}
+I.~P. Omelyan, I.~M. Mryglod, and R.~Folk,
+``Optimized Forest--Ruth- and Suzuki-like algorithms for integration
+of motion in many-body systems,''
+\textit{Computer Physics Communications}, vol.~146, pp.~188--199, 2002.
+
+\bibitem{bergou2008discrete}
+M.~Bergou, M.~Wardetzky, S.~Robinson, B.~Audoly, and E.~Grinspun,
+``Discrete elastic rods,''
+\textit{ACM Transactions on Graphics (SIGGRAPH)}, vol.~27, no.~3, 2008.
+
+\bibitem{bergou2010discrete}
+M.~Bergou, B.~Audoly, E.~Vouga, M.~Wardetzky, and E.~Grinspun,
+``Discrete viscous threads,''
+\textit{ACM Transactions on Graphics (SIGGRAPH)}, vol.~29, no.~4, 2010.
+
+\end{thebibliography}
+
+\end{document}

@@ -10,43 +10,7 @@ For detailed project architecture, physics, and background, refer to `overview.t
 
 ## Directory Structure
 
-```
-snake-hrl/
-├── .claude/           # Claude Code settings, skills, and memory
-├── .git/              # Git version control
-├── .gitignore
-├── CLAUDE.md          # This file — project instructions for Claude
-├── pyproject.toml     # Package config and dependencies
-├── requirements.txt   # Pinned dependencies
-├── overview.tex       # Detailed project architecture and physics reference
-├── bing2019/          # Locomotion env package (Bing et al., IJCAI 2019)
-├── data/              # Datasets, demos, and saved experiences
-├── logs/              # One file per log entry (<topic>.md)
-├── experiments/       # One file per experiment (<topic>.md)
-├── issues/            # One file per issue (<topic>.md)
-├── knowledge/         # Domain knowledge and reference (<topic>.md)
-├── references/        # One file per reference (<topic>.md)
-├── tasks/             # PRDs and task specs (prd-<feature>.md)
-├── figures/           # Generated plots and figures
-├── media/             # Images, videos, and GIFs
-├── model/             # Saved model weights
-├── output/            # Training outputs and error logs
-├── script/            # Standalone shell scripts and examples
-├── src/
-│   ├── behavioral_cloning/ # Demo generation, buffers, and BC pretraining data
-│   ├── configs/       # Dataclass-based experiment configs
-│   ├── envs/          # Gymnasium environments
-│   ├── observations/  # Observation feature extractors
-│   ├── networks/      # Policy and value network architectures
-│   ├── physics/       # Snake physics, simulation, and CPG actuators
-│   │   └── cpg/       # Central Pattern Generator modules
-│   ├── rewards/       # Reward function definitions
-│   └── trainers/      # Training loop implementations
-├── snakebot-gym/      # Custom gym environment package
-├── dismech-python/    # DER simulation dependency (submodule)
-├── dismech-rods/      # C++ DER simulation (built from source, .gitignored)
-└── tests/             # Unit and integration tests
-```
+Source code lives in `src/` (configs, envs, networks, observations, physics, rewards, trainers, behavioral_cloning). Physics simulation has four backends: DisMech, PyElastica, dismech-rods, and MuJoCo — with CPG actuators in `src/physics/cpg/`. External dependencies `dismech-python/` (submodule) and `dismech-rods/` (built from source, .gitignored) should not be modified. Documentation is spread across `logs/`, `experiments/`, `issues/`, `knowledge/`, `references/`, and `tasks/` — each as one-file-per-entry Markdown.
 
 ## Do Not Modify
 
@@ -64,24 +28,17 @@ snake-hrl/
 
 ## Architecture
 
-- **Configs** (`src/configs/`): Dataclass-based hierarchical config for env, network, and training parameters
-- **Environments** (`src/envs/`): TorchRL environments for approach, coil, and HRL tasks
-- **Physics** (`src/physics/`): Snake body dynamics, contact simulation (four backends: DisMech, PyElastica, dismech-rods, MuJoCo), and CPG actuators (`physics/cpg/`)
-- **Networks** (`src/networks/`): Actor-critic network architectures
-- **Observations** (`src/observations/`): Feature extractors for compact state representations
-- **Rewards** (`src/rewards/`): Shaped reward functions for approach and coil tasks
-- **Trainers** (`src/trainers/`): TorchRL-based training loops for PPO and HRL
-- **Behavioral Cloning** (`src/behavioral_cloning/`): Demo generation, experience buffers, fitness evaluation, and BC pretraining data
-
-## Credentials
-
-- HuggingFace access token: set `HF_TOKEN` env var
-- WandB API key: set `WANDB_API_KEY` env var
-- Docker Hub (user `albatross679`): set `DOCKER_TOKEN` env var
+- Configs use **dataclass-based hierarchical config** (`src/configs/`), not YAML/JSON.
+- Three TorchRL environment types: **approach**, **coil**, and **HRL** (meta-controller).
+- Behavioral cloning pipeline in `src/behavioral_cloning/` generates demos, stores in experience buffers, and evaluates fitness — it is separate from the RL training loop.
 
 ## Todoist
 
 - Project ID: `6fxH85hJ3hvWq8hh`
+
+## LaTeX Report
+
+Report is in `report/report.tex`, compiled with Tectonic. Plots go in `media/` and are included with `\includegraphics`.
 
 ## Documentation (IMPORTANT)
 
@@ -112,6 +69,16 @@ In addition, each type has specific properties that MUST be set:
 - **`task`**: `status` (planned | in-progress | complete | cancelled)
 
 **Threshold for logging:** A change warrants a log if it modifies behavior, fixes a bug, or changes configuration. Trivial edits (typos, whitespace, comment-only changes) do not need a log entry.
+
+## GPU Task Safety
+
+Before launching any task that requires GPU (training, validation, inference, sweeps), Claude Code MUST:
+
+1. **Check for existing GPU processes** — run `nvidia-smi` to see if any GPU-consuming process is already running.
+2. **If a process is running:**
+   - **Zombie/stale process** (e.g., defunct, no parent, stuck at 0% utilization for extended time): kill it with `kill -9 <PID>` and proceed.
+   - **Legitimate running task**: do NOT kill it. Wait for it to finish before launching the new task. Inform the user that a GPU task is already in progress.
+3. **Only then** launch the new GPU task.
 
 ## Active Mode ("Stay Active" / Long-Running Tasks)
 

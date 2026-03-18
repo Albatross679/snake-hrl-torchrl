@@ -1,0 +1,121 @@
+<mxlibrary title="Neural Network Components" tags="neural network machine learning deep learning transformer">[
+  {
+    "xml": "&lt;mxGraphModel&gt;&lt;root&gt;&lt;mxCell id=\"0\"/&gt;&lt;mxCell id=\"1\" parent=\"0\"/&gt;&lt;mxCell id=\"2\" value=\"&amp;lt;b&amp;gt;Input/Output&amp;lt;/b&amp;gt;&amp;lt;br&amp;gt;&amp;lt;font style=&amp;quot;font-size:9px;opacity:0.7&amp;quot;&amp;gt;(B, T, d)&amp;lt;/font&amp;gt;\" style=\"rounded=1;whiteSpace=wrap;html=1;fillColor=#2196F3;strokeColor=#1565C0;fontColor=#ffffff;fontSize=12;arcSize=20;\" vertex=\"1\" parent=\"1\"&gt;&lt;mxGeometry width=\"200\" height=\"50\" as=\"geometry\"/&gt;&lt;/mxCell&gt;&lt;/root&gt;&lt;/mxGraphModel&gt;",
+    "w": 200,
+    "h": 50,
+    "title": "Input / Output",
+    "tags": "input output io tensor"
+  },
+  {
+    "xml": "&lt;mxGraphModel&gt;&lt;root&gt;&lt;mxCell id=\"0\"/&gt;&lt;mxCell id=\"1\" parent=\"0\"/&gt;&lt;mxCell id=\"2\" value=\"&amp;lt;b&amp;gt;Token Embedding&amp;lt;/b&amp;gt;&amp;lt;br&amp;gt;&amp;lt;font style=&amp;quot;font-size:9px;opacity:0.7&amp;quot;&amp;gt;(B, T) → (B, T, d)&amp;lt;/font&amp;gt;\" style=\"rounded=1;whiteSpace=wrap;html=1;fillColor=#4CAF50;strokeColor=#2E7D32;fontColor=#ffffff;fontSize=12;arcSize=20;\" vertex=\"1\" parent=\"1\"&gt;&lt;mxGeometry width=\"200\" height=\"60\" as=\"geometry\"/&gt;&lt;/mxCell&gt;&lt;/root&gt;&lt;/mxGraphModel&gt;",
+    "w": 200,
+    "h": 60,
+    "title": "Token Embedding",
+    "tags": "embedding token word"
+  },
+  {
+    "xml": "&lt;mxGraphModel&gt;&lt;root&gt;&lt;mxCell id=\"0\"/&gt;&lt;mxCell id=\"1\" parent=\"0\"/&gt;&lt;mxCell id=\"2\" value=\"&amp;lt;b&amp;gt;Multi-Head Attention&amp;lt;/b&amp;gt;&amp;lt;br&amp;gt;&amp;lt;font style=&amp;quot;font-size:9px;opacity:0.7&amp;quot;&amp;gt;(B, T, d) → (B, T, d)&amp;lt;/font&amp;gt;\" style=\"rounded=1;whiteSpace=wrap;html=1;fillColor=#E91E63;strokeColor=#AD1457;fontColor=#ffffff;fontSize=12;arcSize=20;\" vertex=\"1\" parent=\"1\"&gt;&lt;mxGeometry width=\"200\" height=\"70\" as=\"geometry\"/&gt;&lt;/mxCell&gt;&lt;/root&gt;&lt;/mxGraphModel&gt;",
+    "w": 200,
+    "h": 70,
+    "title": "Multi-Head Self-Attention",
+    "tags": "attention self-attention multi-head transformer mha"
+  },
+  {
+    "xml": "&lt;mxGraphModel&gt;&lt;root&gt;&lt;mxCell id=\"0\"/&gt;&lt;mxCell id=\"1\" parent=\"0\"/&gt;&lt;mxCell id=\"2\" value=\"&amp;lt;b&amp;gt;Masked Multi-Head Attention&amp;lt;/b&amp;gt;&amp;lt;br&amp;gt;&amp;lt;font style=&amp;quot;font-size:9px;opacity:0.7&amp;quot;&amp;gt;(B, T, d) → (B, T, d)&amp;lt;/font&amp;gt;\" style=\"rounded=1;whiteSpace=wrap;html=1;fillColor=#E91E63;strokeColor=#AD1457;fontColor=#ffffff;fontSize=12;arcSize=20;\" vertex=\"1\" parent=\"1\"&gt;&lt;mxGeometry width=\"200\" height=\"70\" as=\"geometry\"/&gt;&lt;/mxCell&gt;&lt;/root&gt;&lt;/mxGraphModel&gt;",
+    "w": 200,
+    "h": 70,
+    "title": "Masked Multi-Head Attention",
+    "tags": "attention masked causal decoder"
+  },
+  {
+    "xml": "&lt;mxGraphModel&gt;&lt;root&gt;&lt;mxCell id=\"0\"/&gt;&lt;mxCell id=\"1\" parent=\"0\"/&gt;&lt;mxCell id=\"2\" value=\"&amp;lt;b&amp;gt;Cross-Attention&amp;lt;/b&amp;gt;&amp;lt;br&amp;gt;&amp;lt;font style=&amp;quot;font-size:9px;opacity:0.7&amp;quot;&amp;gt;Q from decoder, K/V from encoder&amp;lt;/font&amp;gt;\" style=\"rounded=1;whiteSpace=wrap;html=1;fillColor=#EC407A;strokeColor=#C2185B;fontColor=#ffffff;fontSize=12;arcSize=20;\" vertex=\"1\" parent=\"1\"&gt;&lt;mxGeometry width=\"200\" height=\"70\" as=\"geometry\"/&gt;&lt;/mxCell&gt;&lt;/root&gt;&lt;/mxGraphModel&gt;",
+    "w": 200,
+    "h": 70,
+    "title": "Cross-Attention",
+    "tags": "attention cross encoder-decoder"
+  },
+  {
+    "xml": "&lt;mxGraphModel&gt;&lt;root&gt;&lt;mxCell id=\"0\"/&gt;&lt;mxCell id=\"1\" parent=\"0\"/&gt;&lt;mxCell id=\"2\" value=\"&amp;lt;b&amp;gt;LayerNorm&amp;lt;/b&amp;gt;\" style=\"rounded=1;whiteSpace=wrap;html=1;fillColor=#00BCD4;strokeColor=#00838F;fontColor=#ffffff;fontSize=11;arcSize=20;\" vertex=\"1\" parent=\"1\"&gt;&lt;mxGeometry width=\"200\" height=\"35\" as=\"geometry\"/&gt;&lt;/mxCell&gt;&lt;/root&gt;&lt;/mxGraphModel&gt;",
+    "w": 200,
+    "h": 35,
+    "title": "Layer Normalization",
+    "tags": "layernorm normalization norm"
+  },
+  {
+    "xml": "&lt;mxGraphModel&gt;&lt;root&gt;&lt;mxCell id=\"0\"/&gt;&lt;mxCell id=\"1\" parent=\"0\"/&gt;&lt;mxCell id=\"2\" value=\"&amp;lt;b&amp;gt;Feed-Forward Network&amp;lt;/b&amp;gt;&amp;lt;br&amp;gt;&amp;lt;font style=&amp;quot;font-size:9px;opacity:0.7&amp;quot;&amp;gt;(B, T, d) → (B, T, d)&amp;lt;/font&amp;gt;\" style=\"rounded=1;whiteSpace=wrap;html=1;fillColor=#FF9800;strokeColor=#EF6C00;fontColor=#ffffff;fontSize=12;arcSize=20;\" vertex=\"1\" parent=\"1\"&gt;&lt;mxGeometry width=\"200\" height=\"60\" as=\"geometry\"/&gt;&lt;/mxCell&gt;&lt;/root&gt;&lt;/mxGraphModel&gt;",
+    "w": 200,
+    "h": 60,
+    "title": "Feed-Forward Network",
+    "tags": "ffn mlp feedforward linear"
+  },
+  {
+    "xml": "&lt;mxGraphModel&gt;&lt;root&gt;&lt;mxCell id=\"0\"/&gt;&lt;mxCell id=\"1\" parent=\"0\"/&gt;&lt;mxCell id=\"2\" value=\"&amp;lt;b&amp;gt;Linear Projection&amp;lt;/b&amp;gt;&amp;lt;br&amp;gt;&amp;lt;font style=&amp;quot;font-size:9px;opacity:0.7&amp;quot;&amp;gt;(B, T, d) → (B, T, V)&amp;lt;/font&amp;gt;\" style=\"rounded=1;whiteSpace=wrap;html=1;fillColor=#9C27B0;strokeColor=#6A1B9A;fontColor=#ffffff;fontSize=12;arcSize=20;\" vertex=\"1\" parent=\"1\"&gt;&lt;mxGeometry width=\"200\" height=\"60\" as=\"geometry\"/&gt;&lt;/mxCell&gt;&lt;/root&gt;&lt;/mxGraphModel&gt;",
+    "w": 200,
+    "h": 60,
+    "title": "Linear Projection",
+    "tags": "linear projection dense"
+  },
+  {
+    "xml": "&lt;mxGraphModel&gt;&lt;root&gt;&lt;mxCell id=\"0\"/&gt;&lt;mxCell id=\"1\" parent=\"0\"/&gt;&lt;mxCell id=\"2\" value=\"&amp;lt;b&amp;gt;+&amp;lt;/b&amp;gt;\" style=\"ellipse;whiteSpace=wrap;html=1;fillColor=#607D8B;strokeColor=#37474F;fontColor=#ffffff;fontSize=18;fontStyle=1;\" vertex=\"1\" parent=\"1\"&gt;&lt;mxGeometry width=\"40\" height=\"40\" as=\"geometry\"/&gt;&lt;/mxCell&gt;&lt;/root&gt;&lt;/mxGraphModel&gt;",
+    "w": 40,
+    "h": 40,
+    "title": "Residual Add (+)",
+    "tags": "residual add skip connection"
+  },
+  {
+    "xml": "&lt;mxGraphModel&gt;&lt;root&gt;&lt;mxCell id=\"0\"/&gt;&lt;mxCell id=\"1\" parent=\"0\"/&gt;&lt;mxCell id=\"2\" value=\"&amp;lt;b&amp;gt;Softmax&amp;lt;/b&amp;gt;\" style=\"rounded=1;whiteSpace=wrap;html=1;fillColor=#009688;strokeColor=#00695C;fontColor=#ffffff;fontSize=12;arcSize=20;\" vertex=\"1\" parent=\"1\"&gt;&lt;mxGeometry width=\"200\" height=\"40\" as=\"geometry\"/&gt;&lt;/mxCell&gt;&lt;/root&gt;&lt;/mxGraphModel&gt;",
+    "w": 200,
+    "h": 40,
+    "title": "Softmax",
+    "tags": "softmax activation output"
+  },
+  {
+    "xml": "&lt;mxGraphModel&gt;&lt;root&gt;&lt;mxCell id=\"0\"/&gt;&lt;mxCell id=\"1\" parent=\"0\"/&gt;&lt;mxCell id=\"2\" value=\"&amp;lt;b&amp;gt;Dropout&amp;lt;/b&amp;gt;&amp;lt;br&amp;gt;&amp;lt;font style=&amp;quot;font-size:9px;opacity:0.7&amp;quot;&amp;gt;p = 0.1&amp;lt;/font&amp;gt;\" style=\"rounded=1;whiteSpace=wrap;html=1;fillColor=#795548;strokeColor=#4E342E;fontColor=#ffffff;fontSize=11;arcSize=20;\" vertex=\"1\" parent=\"1\"&gt;&lt;mxGeometry width=\"200\" height=\"40\" as=\"geometry\"/&gt;&lt;/mxCell&gt;&lt;/root&gt;&lt;/mxGraphModel&gt;",
+    "w": 200,
+    "h": 40,
+    "title": "Dropout",
+    "tags": "dropout regularization"
+  },
+  {
+    "xml": "&lt;mxGraphModel&gt;&lt;root&gt;&lt;mxCell id=\"0\"/&gt;&lt;mxCell id=\"1\" parent=\"0\"/&gt;&lt;mxCell id=\"2\" value=\"&amp;lt;b&amp;gt;ReLU&amp;lt;/b&amp;gt;\" style=\"rounded=1;whiteSpace=wrap;html=1;fillColor=#FF5722;strokeColor=#D84315;fontColor=#ffffff;fontSize=12;arcSize=20;\" vertex=\"1\" parent=\"1\"&gt;&lt;mxGeometry width=\"200\" height=\"40\" as=\"geometry\"/&gt;&lt;/mxCell&gt;&lt;/root&gt;&lt;/mxGraphModel&gt;",
+    "w": 200,
+    "h": 40,
+    "title": "ReLU Activation",
+    "tags": "relu activation gelu silu"
+  },
+  {
+    "xml": "&lt;mxGraphModel&gt;&lt;root&gt;&lt;mxCell id=\"0\"/&gt;&lt;mxCell id=\"1\" parent=\"0\"/&gt;&lt;mxCell id=\"2\" value=\"&amp;lt;b&amp;gt;Positional Encoding&amp;lt;/b&amp;gt;\" style=\"rounded=1;whiteSpace=wrap;html=1;fillColor=#CDDC39;strokeColor=#9E9D24;fontColor=#333333;fontSize=12;arcSize=20;\" vertex=\"1\" parent=\"1\"&gt;&lt;mxGeometry width=\"200\" height=\"40\" as=\"geometry\"/&gt;&lt;/mxCell&gt;&lt;/root&gt;&lt;/mxGraphModel&gt;",
+    "w": 200,
+    "h": 40,
+    "title": "Positional Encoding",
+    "tags": "positional encoding position sinusoidal rope"
+  },
+  {
+    "xml": "&lt;mxGraphModel&gt;&lt;root&gt;&lt;mxCell id=\"0\"/&gt;&lt;mxCell id=\"1\" parent=\"0\"/&gt;&lt;mxCell id=\"2\" value=\"&amp;lt;b&amp;gt;Loss Function&amp;lt;/b&amp;gt;&amp;lt;br&amp;gt;&amp;lt;font style=&amp;quot;font-size:9px;opacity:0.7&amp;quot;&amp;gt;Cross-Entropy&amp;lt;/font&amp;gt;\" style=\"rounded=1;whiteSpace=wrap;html=1;fillColor=#F44336;strokeColor=#C62828;fontColor=#ffffff;fontSize=12;arcSize=20;\" vertex=\"1\" parent=\"1\"&gt;&lt;mxGeometry width=\"200\" height=\"50\" as=\"geometry\"/&gt;&lt;/mxCell&gt;&lt;/root&gt;&lt;/mxGraphModel&gt;",
+    "w": 200,
+    "h": 50,
+    "title": "Loss Function",
+    "tags": "loss cross-entropy mse objective"
+  },
+  {
+    "xml": "&lt;mxGraphModel&gt;&lt;root&gt;&lt;mxCell id=\"0\"/&gt;&lt;mxCell id=\"1\" parent=\"0\"/&gt;&lt;mxCell id=\"2\" value=\"&amp;lt;b&amp;gt;⊕&amp;lt;/b&amp;gt;\" style=\"ellipse;whiteSpace=wrap;html=1;fillColor=#78909C;strokeColor=#455A64;fontColor=#ffffff;fontSize=18;fontStyle=1;\" vertex=\"1\" parent=\"1\"&gt;&lt;mxGeometry width=\"40\" height=\"40\" as=\"geometry\"/&gt;&lt;/mxCell&gt;&lt;/root&gt;&lt;/mxGraphModel&gt;",
+    "w": 40,
+    "h": 40,
+    "title": "Concatenation",
+    "tags": "concatenation concat merge"
+  },
+  {
+    "xml": "&lt;mxGraphModel&gt;&lt;root&gt;&lt;mxCell id=\"0\"/&gt;&lt;mxCell id=\"1\" parent=\"0\"/&gt;&lt;mxCell id=\"2\" value=\"Encoder Layer\" style=\"swimlane;startSize=30;fillColor=#FAFAFA;strokeColor=#E0E0E0;fontColor=#333333;fontSize=13;fontStyle=1;rounded=1;arcSize=8;swimlaneLine=0;shadow=0;\" vertex=\"1\" parent=\"1\"&gt;&lt;mxGeometry width=\"320\" height=\"420\" as=\"geometry\"/&gt;&lt;/mxCell&gt;&lt;/root&gt;&lt;/mxGraphModel&gt;",
+    "w": 320,
+    "h": 420,
+    "title": "Layer Container (Encoder)",
+    "tags": "layer container encoder block group"
+  },
+  {
+    "xml": "&lt;mxGraphModel&gt;&lt;root&gt;&lt;mxCell id=\"0\"/&gt;&lt;mxCell id=\"1\" parent=\"0\"/&gt;&lt;mxCell id=\"2\" value=\"Decoder Layer\" style=\"swimlane;startSize=30;fillColor=#FAFAFA;strokeColor=#E0E0E0;fontColor=#333333;fontSize=13;fontStyle=1;rounded=1;arcSize=8;swimlaneLine=0;shadow=0;\" vertex=\"1\" parent=\"1\"&gt;&lt;mxGeometry width=\"340\" height=\"570\" as=\"geometry\"/&gt;&lt;/mxCell&gt;&lt;/root&gt;&lt;/mxGraphModel&gt;",
+    "w": 340,
+    "h": 570,
+    "title": "Layer Container (Decoder)",
+    "tags": "layer container decoder block group"
+  }
+]</mxlibrary>

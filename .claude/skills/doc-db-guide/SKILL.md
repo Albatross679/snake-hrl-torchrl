@@ -1,11 +1,11 @@
 ---
-name: pkm-guide
+name: doc-db-guide
 description: Guide for the Doc Database VSCode extension. Use when the user asks to modify, extend, debug, or understand the doc-db extension, add new commands or features, change the webview UI, update the database schema, or fix extension bugs. Also use when asked about "doc-db", "doc database", or "doc plugin" development.
 ---
 
 # Doc Database - Agent Guide
 
-VSCode extension at `/home/coder/snake-hrl-torchrl/doc-db/` that indexes project documentation frontmatter into SQLite for querying, editing, and validation.
+VSCode extension that indexes project documentation frontmatter into SQLite for querying, editing, and validation.
 
 ## Source Layout
 
@@ -103,7 +103,7 @@ All edits flow: webview `postMessage` → extension handler → `updateField()`/
 ## Build & Install
 
 ```bash
-cd /home/coder/snake-hrl-torchrl/doc-db
+cd <project-root>/doc-db
 npx tsc -p ./                                          # TypeScript → out/
 npx @vscode/vsce package --allow-missing-repository    # → doc-db-0.1.0.vsix
 code --install-extension doc-db-0.1.0.vsix --force     # Install

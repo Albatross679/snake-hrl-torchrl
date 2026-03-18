@@ -1,5 +1,5 @@
 ---
-name: pkm-query
+name: doc-db-query
 description: Generate SQLite queries for the Doc Database VSCode extension. Use when the user asks to query, search, filter, or list documentation entries using SQL, mentions "doc-db query", "run query", "sqlite", or wants to find/filter docs by frontmatter properties. Also use when the user asks "show me all X" or "find docs where Y" about their project documentation.
 ---
 
@@ -48,12 +48,12 @@ Read [references/schema.md](references/schema.md) for the full table/column refe
 
 | Table | Folder | Extra Columns |
 |---|---|---|
-| `log` | `logs/` | `status` (draft, complete), `subtype` (fix, training, tuning, research, refactor, setup, feature) |
+| `log` | `logs/` | `status` (draft, complete), `subtype` (fix, feature, refactor, setup, training, tuning, prompting) |
 | `experiment` | `experiments/` | `status` (planned, running, complete, failed) |
-| `issue` | `issues/` | `status` (open, investigating, resolved, wontfix), `severity` (low, medium, high, critical), `subtype` (training, physics, compatibility, system, performance) |
+| `issue` | `issues/` | `status` (open, investigating, resolved, wontfix), `severity` (low, medium, high, critical), `subtype` (training, data, model, evaluation, compatibility, performance) |
 | `knowledge` | `knowledge/` | — |
 | `reference` | `references/` | `source`, `url` + junction: `reference_authors` |
-| `idea` | `ideas/` | `status` (draft, exploring, implemented, abandoned), `priority` (low, medium, high) |
+| `task` | `tasks/` | `status` (planned, in-progress, complete, cancelled) |
 
 All tables share: `_file_path` (PK), `id`, `name`, `description`, `created`, `updated` + junctions `{table}_tags`, `{table}_aliases`.
 
@@ -109,11 +109,11 @@ ORDER BY last_modified DESC
 LIMIT 20
 ```
 
-### Ideas by priority
+### Active tasks
 ```sql
-SELECT i._file_path, i.name, i.status, i.priority,
-  (SELECT GROUP_CONCAT(value, ' | ') FROM idea_tags WHERE file_path = i._file_path) AS tags
-FROM idea i
-WHERE i.status != 'abandoned'
-ORDER BY CASE i.priority WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END
+SELECT t._file_path, t.name, t.status, t.created,
+  (SELECT GROUP_CONCAT(value, ' | ') FROM task_tags WHERE file_path = t._file_path) AS tags
+FROM task t
+WHERE t.status IN ('planned', 'in-progress')
+ORDER BY t.created DESC
 ```

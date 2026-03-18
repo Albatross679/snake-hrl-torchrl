@@ -104,6 +104,10 @@ class PPOConfig(RLConfig):
     lr_schedule: str = "linear"  # constant, linear, cosine
     lr_end: float = 1e-5
 
+    # Early stopping (patience-based, measured in batches without reward improvement)
+    # 0 = disabled. Default 200 batches.
+    patience_batches: int = 200
+
 
 @dataclass
 class SACConfig(RLConfig):

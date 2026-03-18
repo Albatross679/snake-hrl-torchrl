@@ -90,7 +90,7 @@ class RegularizerTrainConfig:
     val_fraction: float = 0.1
 
     # Model
-    hidden_dims: str = "512,512,512"
+    hidden_dims: str = "1024,1024,1024"
     use_residual: bool = False
 
     # Physics regularizer
@@ -102,6 +102,8 @@ class RegularizerTrainConfig:
     num_epochs: int = 9999
     lr: float = 1e-3
     batch_size: int = 4096
+    auto_batch_size: bool = True
+    gradient_accumulation_steps: int = 1
     patience: int = 30
     grad_clip: float = 1.0
 
@@ -138,6 +140,9 @@ class RegularizerTrainConfig:
         p.add_argument("--curriculum-warmup", type=float)
         p.add_argument("--patience", type=int)
         p.add_argument("--batch-size", type=int)
+        p.add_argument("--no-auto-batch", action="store_true", default=False)
+        p.add_argument("--grad-accum", type=int, default=None, dest="grad_accum")
+        p.add_argument("--resume", type=str, default=None)
         p.add_argument("--sweep", action="store_true", default=False)
         p.add_argument("--val-fraction", type=float)
         p.add_argument("--seed", type=int)
@@ -173,12 +178,17 @@ class RegularizerTrainConfig:
             cfg.val_fraction = args.val_fraction
         if args.seed is not None:
             cfg.seed = args.seed
+        if args.no_auto_batch:
+            cfg.auto_batch_size = False
+        if args.grad_accum is not None:
+            cfg.gradient_accumulation_steps = args.grad_accum
         if args.sweep:
             cfg.sweep = True
         if args.no_wandb:
             cfg.wandb.enabled = False
         if args.run_name is not None:
             cfg.name = args.run_name
+        cfg._resume_dir = args.resume
 
         return cfg
 
@@ -245,6 +255,93 @@ def per_component_rmse(
         "yaw_rad": _rmse(pred_deltas[:, YAW], true_deltas[:, YAW]),
         "omega_z_rad_s": _rmse(pred_deltas[:, OMEGA_Z], true_deltas[:, OMEGA_Z]),
     }
+
+
+def probe_auto_batch_size(
+    model: nn.Module,
+    regularizer: nn.Module,
+    normalizer,
+    sample_input: dict,
+    device: str,
+    amp_ctx,
+    start_bs: int = 4096,
+    vram_target: float = 0.55,
+) -> int:
+    """Find the largest batch size that fits within vram_target of total GPU memory.
+
+    Two-phase search: coarse (powers of 2) then fine (binary search).
+    """
+    if not torch.cuda.is_available() or "cuda" not in device:
+        print(f"  Auto-batch: CPU mode, using default {start_bs}")
+        return start_bs
+
+    total_vram = torch.cuda.get_device_properties(device).total_memory
+    target_bytes = int(total_vram * vram_target)
+
+    _ensure_papers_path()
+    from aprx_model_elastica.state import relative_to_raw
+
+    def _try_batch(bs: int) -> bool:
+        try:
+            torch.cuda.empty_cache()
+            torch.cuda.reset_peak_memory_stats(device)
+
+            state = sample_input["state"].unsqueeze(0).expand(bs, -1).to(device)
+            action = sample_input["action"].unsqueeze(0).expand(bs, -1).to(device)
+            serp_time = sample_input["t_start"].unsqueeze(0).expand(bs).to(device)
+            delta = sample_input["delta"].unsqueeze(0).expand(bs, -1).to(device)
+
+            state_norm = normalizer.normalize_state(state)
+            delta_norm = normalizer.normalize_delta(delta)
+            time_enc = _encode_time(action, serp_time)
+
+            ctx = amp_ctx if amp_ctx is not None else nullcontext()
+            with ctx:
+                pred = model(state_norm, action, time_enc)
+                loss_data = F.mse_loss(pred, delta_norm)
+
+                # Simulate physics loss overhead
+                pred_delta_rel = normalizer.denormalize_delta(pred)
+                pred_next_rel = state + pred_delta_rel
+                pred_next_raw = relative_to_raw(pred_next_rel)
+                raw_state_batch = relative_to_raw(state.detach())
+                delta_pred_raw = pred_next_raw - raw_state_batch
+                loss_phys = regularizer(raw_state_batch, delta_pred_raw)
+                loss = loss_data + loss_phys
+
+            loss.backward()
+            model.zero_grad()
+
+            peak = torch.cuda.max_memory_allocated(device)
+            return peak <= target_bytes
+        except torch.cuda.OutOfMemoryError:
+            torch.cuda.empty_cache()
+            model.zero_grad()
+            return False
+
+    # Phase 1: Coarse (powers of 2)
+    last_pass = start_bs
+    bs = start_bs
+    while _try_batch(bs):
+        last_pass = bs
+        bs *= 2
+    first_fail = bs
+
+    # Phase 2: Fine (binary search)
+    lo, hi = last_pass, first_fail
+    while hi - lo > max(256, lo // 8):
+        mid = (lo + hi) // 2
+        mid = (mid // 256) * 256
+        if mid <= lo:
+            break
+        if _try_batch(mid):
+            lo = mid
+        else:
+            hi = mid
+
+    torch.cuda.empty_cache()
+    model.zero_grad()
+    return lo
 
 
 def _ensure_papers_path():
@@ -376,6 +473,24 @@ def train_single_lambda(
     # Loss balancer
     balancer = ReLoBRaLo(n_losses=2) if cfg.use_relobralo else None
 
+    # AMP context (needed for auto-batch probe)
+    amp_ctx = get_amp_context(device)
+
+    # Auto batch size probing
+    if cfg.auto_batch_size and "cuda" in device:
+        print("Probing auto batch size...")
+        sample = train_ds[0]
+        probed_bs = probe_auto_batch_size(
+            model, regularizer, normalizer, sample, device, amp_ctx,
+            start_bs=cfg.batch_size,
+        )
+        print(f"  Auto-batch: {cfg.batch_size} -> {probed_bs}")
+        cfg.batch_size = probed_bs
+
+    # Gradient accumulation
+    grad_accum = cfg.gradient_accumulation_steps
+    effective_batch = cfg.batch_size * grad_accum
+
     # Optimizer + scheduler
     optimizer = torch.optim.AdamW(
         model.parameters(), lr=cfg.lr, weight_decay=1e-4
@@ -414,6 +529,10 @@ def train_single_lambda(
         **param_info,
         "num_train_samples": len(train_ds),
         "num_dev_samples": len(val_ds),
+        "batch_size": cfg.batch_size,
+        "auto_batch_size": cfg.auto_batch_size,
+        "gradient_accumulation_steps": grad_accum,
+        "effective_batch_size": effective_batch,
         **hw_info,
     })
 
@@ -421,14 +540,29 @@ def train_single_lambda(
     _ensure_papers_path()
     from aprx_model_elastica.state import relative_to_raw
 
-    # AMP context
-    amp_ctx = get_amp_context(device)
+    print(f"  Batch size: {cfg.batch_size} x {grad_accum} accum = {effective_batch} effective")
 
     # Training loop
     best_val_loss = float("inf")
     patience_counter = 0
+    start_epoch = 1
 
-    for epoch in range(1, cfg.num_epochs + 1):
+    # Resume from checkpoint if requested
+    resume_dir = getattr(cfg, '_resume_dir', None)
+    if resume_dir is not None:
+        state_path = Path(resume_dir) / "training_state.pt"
+        if state_path.exists():
+            print(f"Resuming from {state_path}...")
+            ckpt = torch.load(str(state_path), map_location=device, weights_only=False)
+            model.load_state_dict(ckpt["model_state_dict"])
+            optimizer.load_state_dict(ckpt["optimizer_state_dict"])
+            scheduler.load_state_dict(ckpt["scheduler_state_dict"])
+            start_epoch = ckpt["epoch"] + 1
+            best_val_loss = ckpt["best_val_loss"]
+            patience_counter = ckpt["patience_counter"]
+            print(f"  Resumed at epoch {start_epoch}, best_val={best_val_loss:.6f}, patience={patience_counter}")
+
+    for epoch in range(start_epoch, cfg.num_epochs + 1):
         # Check graceful stop
         if _check_stop(run_dir):
             print(f"  Stop requested at epoch {epoch} — saving and exiting.")
@@ -444,7 +578,9 @@ def train_single_lambda(
             epoch, cfg.num_epochs, lambda_phys, cfg.curriculum_warmup
         )
 
-        for batch in train_loader:
+        optimizer.zero_grad()
+
+        for batch_idx, batch in enumerate(train_loader):
             state = batch["state"].to(device)
             action = batch["action"].to(device)
             serp_time = batch["t_start"].to(device)
@@ -478,12 +614,15 @@ def train_single_lambda(
                 else:
                     loss = loss_data + phys_weight * loss_phys
 
-            # Backward OUTSIDE AMP context
-            optimizer.zero_grad()
-            loss.backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), cfg.grad_clip)
-            optimizer.step()
-            scheduler.step()
+            # Scale loss for gradient accumulation, backward OUTSIDE AMP
+            (loss / grad_accum).backward()
+
+            # Step optimizer every grad_accum batches (or at end of epoch)
+            if (batch_idx + 1) % grad_accum == 0 or (batch_idx + 1) == len(train_loader):
+                torch.nn.utils.clip_grad_norm_(model.parameters(), cfg.grad_clip)
+                optimizer.step()
+                scheduler.step()
+                optimizer.zero_grad()
 
             epoch_data_loss += loss_data.item()
             epoch_phys_loss += loss_phys.item()
@@ -523,6 +662,16 @@ def train_single_lambda(
         else:
             patience_counter += 1
         torch.save(model.state_dict(), str(run_dir / "model_last.pt"))
+
+        # Save training state for resume (every epoch, overwrites previous)
+        torch.save({
+            "epoch": epoch,
+            "model_state_dict": model.state_dict(),
+            "optimizer_state_dict": optimizer.state_dict(),
+            "scheduler_state_dict": scheduler.state_dict(),
+            "best_val_loss": best_val_loss,
+            "patience_counter": patience_counter,
+        }, str(run_dir / "training_state.pt"))
 
         lr = optimizer.param_groups[0]["lr"]
 

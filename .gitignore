@@ -80,3 +80,9 @@ temp.md
 doc-db/
 .claude/settings.local.json
 .claude/.pytest_cache/
+
+# W&B run data
+wandb/
+
+# Training logs
+training_output.log

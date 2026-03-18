@@ -1,11 +1,14 @@
 ---
-created: 2026-03-05T00:00:00
-updated: 2026-03-05T00:00:00
-tags: [torchrl, compatibility, v0.11, deprecation, collector]
+name: TorchRL v0.11 SyncDataCollector deprecation (removal in v0.13)
+description: SyncDataCollector is deprecated in TorchRL v0.11 and will be removed in v0.13; needs migration to Collector
 type: issue
 status: open
 severity: low
 subtype: compatibility
+created: 2026-03-05T00:00:00
+updated: 2026-03-05T00:00:00
+tags: [torchrl, compatibility, v0.11, deprecation, collector]
+aliases: []
 ---
 
 # TorchRL v0.11 SyncDataCollector Deprecation

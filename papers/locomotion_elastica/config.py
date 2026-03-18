@@ -16,7 +16,7 @@ Composable pieces:
 import os
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Tuple
+from typing import Dict, Tuple
 
 from src.configs.network import ActorConfig, CriticConfig, NetworkConfig
 from src.configs.physics import ElasticaConfig, FrictionConfig, FrictionModel, GeometryConfig
@@ -253,8 +253,132 @@ class LocomotionElasticaConfig(PPOConfig):
     # Parallelism (default: CPU cores - 1, minimum 1)
     num_envs: int = field(default_factory=lambda: min(max(1, os.cpu_count() - 1), 40))
 
+    # Early stopping: high patience since RL reward is noisy
+    # Set total_frames high so early stopping is the binding constraint
+    patience_batches: int = 200  # ~1.6M frames at 8192 fpb
+
     def __post_init__(self):
         """Set name from gait type."""
         gait = self.env.gait.value if isinstance(self.env.gait, GaitType) else self.env.gait
         self.name = f"locomotion_elastica_{gait}"
         self.experiment_name = self.name
+
+
+# ---------------------------------------------------------------------------
+# Config variants (design space exploration)
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class LocomotionElasticaConfig_high_lr(LocomotionElasticaConfig):
+    """Higher learning rate variant — faster convergence, potentially less stable."""
+
+    learning_rate: float = 3e-4
+    lr_end: float = 3e-5
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.name += "_high_lr"
+        self.experiment_name = self.name
+
+
+@dataclass
+class LocomotionElasticaConfig_large_net(LocomotionElasticaConfig):
+    """Larger network (3x512) — more capacity for complex gait patterns."""
+
+    network: LocomotionElasticaNetworkConfig = field(
+        default_factory=lambda: LocomotionElasticaNetworkConfig(
+            actor=ActorConfig(
+                hidden_dims=[512, 512, 512],
+                activation="tanh",
+                ortho_init=True,
+                init_gain=0.01,
+                min_std=0.1,
+                max_std=1.0,
+                init_std=0.5,
+            ),
+            critic=CriticConfig(
+                hidden_dims=[512, 512, 512],
+                activation="tanh",
+                ortho_init=True,
+                init_gain=1.0,
+            ),
+        )
+    )
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.name += "_large_net"
+        self.experiment_name = self.name
+
+
+@dataclass
+class LocomotionElasticaConfig_high_entropy(LocomotionElasticaConfig):
+    """Higher entropy — more exploration, may help escape local optima."""
+
+    entropy_coef: float = 0.05
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.name += "_high_entropy"
+        self.experiment_name = self.name
+
+
+@dataclass
+class LocomotionElasticaConfig_large_batch(LocomotionElasticaConfig):
+    """Larger batch (16384 frames) — lower variance gradient estimates."""
+
+    frames_per_batch: int = 16384
+    mini_batch_size: int = 1024
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.name += "_large_batch"
+        self.experiment_name = self.name
+
+
+@dataclass
+class LocomotionElasticaConfig_aggressive(LocomotionElasticaConfig):
+    """Aggressive variant — higher LR, more epochs, larger network, more entropy.
+
+    Pushes multiple dimensions simultaneously for fast exploration.
+    """
+
+    learning_rate: float = 3e-4
+    num_epochs: int = 8
+    entropy_coef: float = 0.04
+    network: LocomotionElasticaNetworkConfig = field(
+        default_factory=lambda: LocomotionElasticaNetworkConfig(
+            actor=ActorConfig(
+                hidden_dims=[512, 512, 512],
+                activation="tanh",
+                ortho_init=True,
+                init_gain=0.01,
+                min_std=0.1,
+                max_std=1.0,
+                init_std=0.5,
+            ),
+            critic=CriticConfig(
+                hidden_dims=[512, 512, 512],
+                activation="tanh",
+                ortho_init=True,
+                init_gain=1.0,
+            ),
+        )
+    )
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.name += "_aggressive"
+        self.experiment_name = self.name
+
+
+# Registry for --config CLI flag
+CONFIG_REGISTRY: Dict[str, type] = {
+    "baseline": LocomotionElasticaConfig,
+    "high_lr": LocomotionElasticaConfig_high_lr,
+    "large_net": LocomotionElasticaConfig_large_net,
+    "high_entropy": LocomotionElasticaConfig_high_entropy,
+    "large_batch": LocomotionElasticaConfig_large_batch,
+    "aggressive": LocomotionElasticaConfig_aggressive,
+}

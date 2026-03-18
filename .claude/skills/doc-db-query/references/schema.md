@@ -31,7 +31,7 @@ Folder: `logs/`
 | _file_path | TEXT PK |
 | id, name, description, created, updated | TEXT |
 | status | Select: draft, complete |
-| subtype | Select: fix, training, tuning, research, refactor, setup, feature |
+| subtype | Select: fix, feature, refactor, setup, training, tuning, prompting |
 Junction: `log_tags`, `log_aliases`
 
 ### experiment
@@ -51,7 +51,7 @@ Folder: `issues/`
 | id, name, description, created, updated | TEXT |
 | status | Select: open, investigating, resolved, wontfix |
 | severity | Select: low, medium, high, critical |
-| subtype | Select: training, physics, compatibility, system, performance |
+| subtype | Select: training, data, model, evaluation, compatibility, performance |
 Junction: `issue_tags`, `issue_aliases`
 
 ### knowledge
@@ -72,15 +72,14 @@ Folder: `references/`
 | url | TEXT |
 Junction: `reference_tags`, `reference_aliases`, `reference_authors`
 
-### idea
-Folder: `ideas/`
+### task
+Folder: `tasks/`
 | Column | Type |
 |--------|------|
 | _file_path | TEXT PK |
 | id, name, description, created, updated | TEXT |
-| status | Select: draft, exploring, implemented, abandoned |
-| priority | Select: low, medium, high |
-Junction: `idea_tags`, `idea_aliases`
+| status | Select: planned, in-progress, complete, cancelled |
+Junction: `task_tags`, `task_aliases`
 
 ## Meta Tables
 

@@ -32,3 +32,7 @@ Batch files are written every 50,000 transitions. If a worker stalls at 45,000 t
 1. Reduce flush interval from 50k to 10k transitions (increases file count but limits max loss to ~10k per respawn)
 2. Add a signal handler (SIGTERM) to flush the current buffer before exit
 3. Consider shared-memory or file-based ring buffer so the parent can recover data from dead workers
+
+## Related
+
+See [worker-respawn-investigation-needed.md](worker-respawn-investigation-needed.md) for the consolidated root cause analysis (Numba thread pool deadlock) and full investigation plan.

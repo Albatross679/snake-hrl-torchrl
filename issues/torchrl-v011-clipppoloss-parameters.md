@@ -1,11 +1,14 @@
 ---
-created: 2026-03-05T00:00:00
-updated: 2026-03-05T00:00:00
-tags: [torchrl, compatibility, v0.11, bug, ppo]
+name: TorchRL v0.11 ClipPPOLoss parameter renames (critic_coef → critic_coeff)
+description: TorchRL v0.11 renamed critic_coef to critic_coeff and entropy_coef to entropy_coeff on ClipPPOLoss constructor
 type: issue
 status: resolved
 severity: medium
 subtype: compatibility
+created: 2026-03-05T00:00:00
+updated: 2026-03-05T00:00:00
+tags: [torchrl, compatibility, v0.11, bug, ppo]
+aliases: []
 ---
 
 # TorchRL v0.11 ClipPPOLoss Parameter Renames

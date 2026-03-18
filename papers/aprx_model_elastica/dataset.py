@@ -164,20 +164,26 @@ class SurrogateDataset(Dataset):
             data = torch.load(bf, map_location="cpu", weights_only=True)
             all_states.append(data["states"])
             all_actions.append(data["actions"])
-            all_serp_times.append(data["serpenoid_times"])
+            # Support both key conventions: serpenoid_times / t_start
+            serp_key = "serpenoid_times" if "serpenoid_times" in data else "t_start"
+            all_serp_times.append(data[serp_key])
             all_next_states.append(data["next_states"])
             all_episode_ids.append(data["episode_ids"] + episode_offset)
-            all_step_indices.append(data["step_indices"])
+            # Support both key conventions: step_indices / step_ids
+            step_key = "step_indices" if "step_indices" in data else "step_ids"
+            all_step_indices.append(data[step_key])
             episode_offset = all_episode_ids[-1].max().item() + 1
 
         for bf in pq_files:
             data = _load_parquet_batch(bf)
             all_states.append(data["states"])
             all_actions.append(data["actions"])
-            all_serp_times.append(data["serpenoid_times"])
+            serp_key = "serpenoid_times" if "serpenoid_times" in data else "t_start"
+            all_serp_times.append(data[serp_key])
             all_next_states.append(data["next_states"])
             all_episode_ids.append(data["episode_ids"] + episode_offset)
-            all_step_indices.append(data["step_indices"])
+            step_key = "step_indices" if "step_indices" in data else "step_ids"
+            all_step_indices.append(data[step_key])
             episode_offset = all_episode_ids[-1].max().item() + 1
 
         self.states = torch.cat(all_states, dim=0)

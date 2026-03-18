@@ -235,7 +235,7 @@ def _print_config_table(configs: list, output_base: str) -> None:
 
 
 def run_sweep(args: argparse.Namespace) -> None:
-    repo_root = Path(__file__).resolve().parent.parent
+    repo_root = Path(__file__).resolve().parent.parent.parent
     output_base = Path(args.output_base)
 
     print("=" * 70)

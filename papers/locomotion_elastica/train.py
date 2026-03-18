@@ -1,9 +1,14 @@
 """Training script for free-body snake locomotion via PPO (PyElastica backend).
 
 Usage:
-    python -m locomotion_elastica.train --gait forward --total-frames 2000000
-    python -m locomotion_elastica.train --gait turn_left --seed 0
-    python -m locomotion_elastica.train --gait u_turn --max-wall-time 30m
+    # Single config (baseline)
+    python -m locomotion_elastica.train --gait forward --total-frames 5000000 --wandb
+
+    # Select a specific config variant
+    python -m locomotion_elastica.train --config high_lr --gait forward --wandb
+
+    # Sequential auto-batch: run multiple configs in one process
+    python -m locomotion_elastica.train --batch baseline,high_lr,large_net --gait forward --wandb
 """
 
 import os
@@ -17,10 +22,12 @@ import re
 
 from src.configs import setup_run_dir, ConsoleLogger
 from src.configs.base import resolve_device
+from src.utils.cleanup import cleanup_vram
 from locomotion_elastica.config import (
     GaitType,
     LocomotionElasticaConfig,
     LocomotionElasticaEnvConfig,
+    CONFIG_REGISTRY,
 )
 from locomotion_elastica.env import LocomotionElasticaEnv
 from src.trainers.ppo import PPOTrainer
@@ -68,6 +75,19 @@ def parse_args() -> argparse.Namespace:
         description="Train snake locomotion via PPO (PyElastica)"
     )
     parser.add_argument(
+        "--config",
+        type=str,
+        default="baseline",
+        choices=list(CONFIG_REGISTRY.keys()),
+        help=f"Config variant to use (choices: {', '.join(CONFIG_REGISTRY.keys())})",
+    )
+    parser.add_argument(
+        "--batch",
+        type=str,
+        default=None,
+        help="Comma-separated config names for sequential auto-batch (e.g. baseline,high_lr,large_net)",
+    )
+    parser.add_argument(
         "--gait",
         type=str,
         default="forward",
@@ -105,14 +125,13 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def main():
-    args = parse_args()
-
+def build_config(args: argparse.Namespace, config_name: str) -> LocomotionElasticaConfig:
+    """Build a config from a registry name + CLI overrides."""
+    ConfigClass = CONFIG_REGISTRY[config_name]
     device = resolve_device(args.device)
 
-    # Build config
     env_config = LocomotionElasticaEnvConfig(gait=GaitType(args.gait), device=device)
-    config = LocomotionElasticaConfig(seed=args.seed, device=device, env=env_config)
+    config = ConfigClass(seed=args.seed, device=device, env=env_config)
 
     if args.total_frames is not None:
         config.total_frames = args.total_frames
@@ -128,17 +147,17 @@ def main():
         if args.wandb_entity:
             config.wandb.entity = args.wandb_entity
 
-    # Setup consolidated run directory
-    run_dir = setup_run_dir(config)
+    return config
 
-    # Create environment with episode tracking transforms
+
+def create_env(config: LocomotionElasticaConfig, device: str):
+    """Create the TorchRL environment (single or parallel)."""
     from torchrl.envs import TransformedEnv
     from torchrl.envs.transforms import StepCounter, RewardSum
 
     if config.num_envs > 1:
         from torchrl.envs import ParallelEnv
 
-        # ParallelEnv workers must use CPU; collector moves data to training device
         base_env = ParallelEnv(
             config.num_envs,
             _EnvFactory(config.env, "cpu"),
@@ -149,9 +168,21 @@ def main():
     env = TransformedEnv(base_env)
     env.append_transform(StepCounter())
     env.append_transform(RewardSum())
+    return env
+
+
+def run_single_config(args: argparse.Namespace, config_name: str) -> dict:
+    """Train a single config variant. Returns results dict."""
+    config = build_config(args, config_name)
+    device = resolve_device(args.device)
+
+    # Setup consolidated run directory
+    run_dir = setup_run_dir(config)
+
+    # Create environment
+    env = create_env(config, device)
 
     with ConsoleLogger(run_dir, config.console):
-        # Create trainer
         trainer = PPOTrainer(
             env=env,
             config=config,
@@ -160,21 +191,53 @@ def main():
             run_dir=run_dir,
         )
 
-        # Train
         wall_msg = ""
         if config.max_wall_time is not None:
             mins = config.max_wall_time / 60
             wall_msg = f", max wall time {mins:.0f}min"
         print(
-            f"Training {args.gait} locomotion (PyElastica) "
+            f"Training [{config_name}] {config.env.gait.value} locomotion (PyElastica) "
             f"with {config.total_frames} frames{wall_msg}"
         )
         print(f"  Device: {device}")
         print(f"  Parallel envs: {config.num_envs}")
         print(f"  Run directory: {run_dir}")
         results = trainer.train()
-        print(f"Done: {results['total_episodes']} episodes, best={results['best_reward']:.2f}")
+        print(f"Done [{config_name}]: {results['total_episodes']} episodes, "
+              f"best={results['best_reward']:.2f}, stop_reason={results['stop_reason']}")
+
+    return results
+
+
+def main():
+    args = parse_args()
+
+    # Determine which configs to run
+    if args.batch:
+        config_names = [name.strip() for name in args.batch.split(",")]
+        for name in config_names:
+            if name not in CONFIG_REGISTRY:
+                raise ValueError(
+                    f"Unknown config '{name}'. Available: {', '.join(CONFIG_REGISTRY.keys())}"
+                )
+    else:
+        config_names = [args.config]
+
+    # Sequential auto-batch: run configs one by one with VRAM cleanup
+    for i, config_name in enumerate(config_names):
+        if i > 0:
+            print(f"\n{'='*60}")
+            print(f"Cleaning VRAM before config {i+1}/{len(config_names)}: {config_name}")
+            print(f"{'='*60}\n")
+            cleanup_vram()
+
+        run_single_config(args, config_name)
+
+    if len(config_names) > 1:
+        print(f"\nAll {len(config_names)} configs completed.")
 
 
 if __name__ == "__main__":
-    main()
+    from src.utils.gpu_lock import GpuLock
+    with GpuLock():
+        main()

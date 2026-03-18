@@ -1,0 +1,144 @@
+% Academic Poster Template — tikzposter
+% Compile: cd poster && latexmk -pdf poster.tex
+%
+% Placeholders marked with {{PLACEHOLDER}} should be replaced.
+% Blocks can be added, removed, or reordered as needed.
+
+\documentclass[25pt, a0paper, landscape]{tikzposter}
+
+% ── Packages ──────────────────────────────────────────────
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage[dvipsnames]{xcolor}
+\usepackage{amsmath}
+\usepackage{enumitem}
+
+% ── Metadata ──────────────────────────────────────────────
+\title{ {{TITLE}} }
+\author{ {{AUTHOR}} }
+\institute{ {{INSTITUTE}} }
+
+% ── Theme & Colors ────────────────────────────────────────
+% Built-in themes: Default, Wave, Basic, Simple, Board, Envelope
+\usetheme{Default}
+
+% Built-in color styles: Default, Denmark, Britain, Sweden, Australia
+% Or define a custom palette below and use \usecolorstyle{Custom}
+\usecolorstyle{Denmark}
+
+% Custom palette example (uncomment and modify to use):
+% \definecolorstyle{Custom}{
+%   \definecolor{colorOne}{HTML}{BB0000}   % primary (title, block headers)
+%   \definecolor{colorTwo}{HTML}{666666}   % secondary (frames, accents)
+%   \definecolor{colorThree}{HTML}{F5F5F5} % background
+% }{
+%   \colorlet{backgroundcolor}{colorThree}
+%   \colorlet{framecolor}{colorTwo}
+%   \colorlet{titlebgcolor}{colorOne}
+%   \colorlet{titlefgcolor}{white}
+%   \colorlet{blocktitlebgcolor}{colorOne}
+%   \colorlet{blocktitlefgcolor}{white}
+%   \colorlet{blockbodybgcolor}{white}
+%   \colorlet{blockbodyfgcolor}{black}
+% }
+
+\begin{document}
+\maketitle
+
+\begin{columns}
+
+  % ══════════════════════════════════════════════════════════
+  % LEFT COLUMN — Problem, motivation, background
+  % ══════════════════════════════════════════════════════════
+  \column{0.33}
+
+  \block{Problem \& Motivation}{
+    {{MOTIVATION_CONTENT}}
+
+    % Example: include an illustrative input/output pair
+    % \textbf{Example:}\\
+    % \textit{``Natural language query''} \\
+    % $\rightarrow$ \texttt{SELECT ...}
+  }
+
+  \block{Dataset \& Evaluation}{
+    \begin{itemize}[nosep, leftmargin=*]
+      \item {{DATASET_DESCRIPTION}}
+      \item {{METRIC_1}}
+      \item {{METRIC_2}}
+    \end{itemize}
+  }
+
+  % ══════════════════════════════════════════════════════════
+  % CENTER COLUMN — Methods / approaches
+  % ══════════════════════════════════════════════════════════
+  \column{0.34}
+
+  \block{Approach 1: {{APPROACH_1_NAME}} }{
+    % Optional architecture figure:
+    % \begin{center}
+    %   \includegraphics[width=0.85\linewidth]{../media/architecture.pdf}
+    % \end{center}
+    \begin{itemize}[nosep, leftmargin=*]
+      \item {{APPROACH_1_DETAIL_A}}
+      \item {{APPROACH_1_DETAIL_B}}
+    \end{itemize}
+  }
+
+  \block{Approach 2: {{APPROACH_2_NAME}} }{
+    \begin{itemize}[nosep, leftmargin=*]
+      \item {{APPROACH_2_DETAIL_A}}
+      \item {{APPROACH_2_DETAIL_B}}
+    \end{itemize}
+  }
+
+  \block{Approach 3: {{APPROACH_3_NAME}} }{
+    \begin{itemize}[nosep, leftmargin=*]
+      \item {{APPROACH_3_DETAIL_A}}
+      \item {{APPROACH_3_DETAIL_B}}
+    \end{itemize}
+  }
+
+  % ══════════════════════════════════════════════════════════
+  % RIGHT COLUMN — Results, findings, references
+  % ══════════════════════════════════════════════════════════
+  \column{0.33}
+
+  \block{Results}{
+    % Figure (use vector PDF for print quality):
+    % \begin{center}
+    %   \includegraphics[width=0.95\linewidth]{../media/results_figure.pdf}
+    % \end{center}
+
+    \begin{center}
+    \large
+    \begin{tabular}{lccc}
+      \toprule
+      \textbf{Approach} & \textbf{Metric 1} & \textbf{Metric 2} & \textbf{Metric 3} \\
+      \midrule
+      {{APPROACH_1_NAME}}  & XX.X & XX.X & XX.X \\
+      {{APPROACH_2_NAME}}  & XX.X & XX.X & XX.X \\
+      {{APPROACH_3_NAME}}  & XX.X & XX.X & XX.X \\
+      \bottomrule
+    \end{tabular}
+    \end{center}
+  }
+
+  \block{Key Findings}{
+    \begin{enumerate}[nosep, leftmargin=*]
+      \item {{FINDING_1}}
+      \item {{FINDING_2}}
+      \item {{FINDING_3}}
+    \end{enumerate}
+  }
+
+  \block{References}{
+    {\small
+    [1] {{REF_1}} \\
+    [2] {{REF_2}} \\
+    [3] {{REF_3}}
+    }
+  }
+
+\end{columns}
+\end{document}

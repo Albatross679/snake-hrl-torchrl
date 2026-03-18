@@ -145,7 +145,7 @@ def probe_auto_batch_size(
     device: str,
     use_amp: bool,
     start_bs: int = 4096,
-    vram_target: float = 0.70,
+    vram_target: float = 0.55,
 ) -> int:
     """Find the largest batch size that fits within vram_target of total GPU memory.
 
@@ -153,9 +153,9 @@ def probe_auto_batch_size(
       1. Coarse: double batch size until OOM (powers of 2 from start_bs)
       2. Fine: binary search between last passing and first failing
 
-    Note: vram_target is set conservatively (0.70) because the training loop
-    allocates additional tensors for per-component loss monitoring and
-    denormalization that are not captured by the probe's forward+backward pass.
+    Note: vram_target is set conservatively (0.55) because the training loop
+    allocates additional tensors for per-component loss monitoring (9 separate
+    MSE calls on denormalized outputs) that are not fully captured by the probe.
 
     Args:
         model: The surrogate model.
@@ -203,10 +203,13 @@ def probe_auto_batch_size(
                 loss = nn.functional.mse_loss(pred, delta_norm)
             loss.backward()
 
-            # Simulate per-component monitoring overhead (denormalize + component losses)
+            # Simulate per-component monitoring overhead (denormalize + 9 component losses)
             with torch.no_grad():
                 pred_denorm = normalizer.denormalize_delta(pred) if normalizer else pred
                 _ = nn.functional.mse_loss(pred_denorm, delta)
+                # Simulate the 9 per-component MSE calls (each creates intermediate tensors)
+                for i in range(9):
+                    _ = nn.functional.mse_loss(pred_denorm[:, i*14:(i+1)*14], delta[:, i*14:(i+1)*14])
 
             model.zero_grad()
 

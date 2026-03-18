@@ -1,11 +1,14 @@
 ---
-created: 2026-03-05T00:00:00
-updated: 2026-03-05T00:00:00
-tags: [bug, ppo, lr-scheduler, training]
+name: LR scheduler division by zero when total_frames < frames_per_batch
+description: Linear LR scheduler divides by zero when total_frames is smaller than frames_per_batch, crashing smoke tests and short runs
 type: issue
 status: resolved
 severity: medium
 subtype: training
+created: 2026-03-05T00:00:00
+updated: 2026-03-05T00:00:00
+tags: [bug, ppo, lr-scheduler, training]
+aliases: []
 ---
 
 # LR Scheduler Division by Zero
