@@ -26,7 +26,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [ ] **Phase 10: Tunnel/pipe navigation** - Train RL agent for snake traversal of building infrastructure
 - [ ] **Phase 11: Model-based RL** - Explore surrogate as world model for planning and policy optimization
 - [ ] **Phase 12: Hamiltonian/Lagrangian NNs** - Explore physics-informed neural networks for snake dynamics
-- [ ] **Phase 13: PINN and DD-PINN surrogates** - Implement physics-informed neural network surrogates with physics regularizer, DD-PINN ansatz, and full Cosserat rod physics residual
+- [x] **Phase 13: PINN and DD-PINN surrogates** - Implement physics-informed neural network surrogates with physics regularizer, DD-PINN ansatz, and full Cosserat rod physics residual (completed 2026-03-18)
 
 ## Phase Details
 
@@ -211,7 +211,7 @@ Plans:
 **Goal:** Implement physics-informed neural network approaches as alternative surrogate models for snake robot Cosserat rod dynamics. Three stages: (1) physics regularizer on existing MLP surrogates, (2) DD-PINN prototype with damped sinusoidal ansatz and full RFT friction, (3) full DD-PINN with adaptive collocation, loss balancing, and comprehensive comparison. Human checkpoints gate each stage.
 **Requirements**: PINN-01, PINN-02, PINN-03, PINN-04, PINN-05, PINN-07, PINN-08, PINN-09, PINN-10, PINN-11
 **Depends on:** Phase 3 (uses Phase 3 best model as baseline for comparison)
-**Plans:** 1/6 plans executed
+**Plans:** 6/6 plans complete
 
 Plans:
 - [ ] 13-01-PLAN.md — Create src/pinn/ package: physics regularizer, ReLoBRaLo loss balancing, nondimensionalization, unit tests
@@ -246,4 +246,4 @@ Phases 9-12 are future research directions.
 | 10. Tunnel/Pipe Navigation | 0/0 | Not planned | - |
 | 11. Model-Based RL | 0/0 | Not planned | - |
 | 12. Hamiltonian/Lagrangian NNs | 0/0 | Researched | - |
-| 13. PINN/DD-PINN Surrogates | 1/6 | In Progress|  |
+| 13. PINN/DD-PINN Surrogates | 6/6 | Complete   | 2026-03-18 |
