@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-03-09)
 Phase: 03 (Train Surrogate Model) — IN PROGRESS (2/4 plans done)
 Current Plan: 03-03 (analyze sweep results)
 Status: 15-config sweep launched in tmux gsd-sweep; waiting for completion before analysis
-Last activity: 2026-03-17 - Completed 03-02-PLAN.md (smoke test + sweep launch)
+Last activity: 2026-03-18 - Completed quick task 260318-h2e: Add PINN and DD-PINN chapter to report
 
 Progress: [████████░░] 76%
 
@@ -167,6 +167,7 @@ None currently.
 | 260317-l6p | restructure report sections 2.2 and 2.3 | 2026-03-17 | 1642e0e | [260317-l6p-restructure-report-sections-2-2-and-2-3-](./quick/260317-l6p-restructure-report-sections-2-2-and-2-3-/) |
 | 260317-lcq | set all GSD quality profile agents to opus | 2026-03-17 | 5e96373 | [260317-lcq-make-sure-all-the-gsd-agents-use-opus-wi](./quick/260317-lcq-make-sure-all-the-gsd-agents-use-opus-wi/) |
 | 260317-lb3 | integrate method-of-lines explanation into report | 2026-03-17 | b323dc9 | [260317-lb3-integrate-explicit-integration-method-of](./quick/260317-lb3-integrate-explicit-integration-method-of/) |
+| 260318-h2e | Add PINN and DD-PINN chapter to report using existing codebase content | 2026-03-18 | 21c6170 | [260318-h2e-add-pinn-and-dd-pinn-chapter-to-report-u](./quick/260318-h2e-add-pinn-and-dd-pinn-chapter-to-report-u/) |
 
 ## Session Continuity
 
