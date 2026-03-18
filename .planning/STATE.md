@@ -4,8 +4,8 @@ milestone: v1.0
 milestone_name: milestone
 current_plan: 03-03 (analyze sweep results)
 status: 15-config sweep launched in tmux gsd-sweep; waiting for completion before analysis
-stopped_at: Completed 13-02-PLAN.md
-last_updated: "2026-03-18T12:03:23.238Z"
+stopped_at: Completed quick-260318-h2e (PINN/DD-PINN report chapter)
+last_updated: "2026-03-18T12:34:34.964Z"
 last_activity: 2026-03-17 - Completed 03-02-PLAN.md (smoke test + sweep launch)
 progress:
   total_phases: 17
@@ -124,6 +124,7 @@ Progress: [████████░░] 76%
 - [Phase 13]: PhysicsRegularizer uses trapezoidal integration for kinematic constraints with 4 constraint types
 - [Phase 13]: NondimScales: L_ref=1.0m, t_ref=0.5s, F_ref=E*I/L^2 (physics-based, not z-score)
 - [Phase 13]: Inextensible rod approximation: omit stretching, keep bending + RFT friction for 2D snake
+- [Phase quick-260318-h2e]: PINN section uses \mathbf{} (not \bm{}) to match report convention; ansatz params named \avec to avoid action vector conflict
 
 ### Pending Todos
 
@@ -169,5 +170,5 @@ None currently.
 
 ## Session Continuity
 
-Last session: 2026-03-18T12:03:23.232Z
-Stopped at: Completed 13-02-PLAN.md
+Last session: 2026-03-18T12:34:26.496Z
+Stopped at: Completed quick-260318-h2e (PINN/DD-PINN report chapter)
