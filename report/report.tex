@@ -38,6 +38,18 @@
 \graphicspath{{../figures/}}
 
 % ---------------------------------------------------------------------------
+% TikZ for diagrams
+% ---------------------------------------------------------------------------
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta, positioning, calc, fit, backgrounds}
+
+% ---------------------------------------------------------------------------
+% Bold math vectors and landscape tables
+% ---------------------------------------------------------------------------
+\usepackage{bm}
+\usepackage{pdflscape}
+
+% ---------------------------------------------------------------------------
 % Colors
 % ---------------------------------------------------------------------------
 \usepackage{xcolor}
@@ -241,125 +253,33 @@ The present work differs in architecture (MLP vs.\ LSTM), prediction target (ful
 % formerly sec:related:snake
 
 \Cref{tab:related-rl-snake} consolidates RL approaches for snake and soft robot control, spanning kinematic, rigid-body, and continuum-mechanics platforms.
-Entries marked with a checkmark in the \emph{Replicated} column were reimplemented as baselines to validate our simulation pipeline and contextualize the surrogate approach.
 
 \begin{table}[H]
   \centering
-  \small
-  \renewcommand{\arraystretch}{1.35}
-  \caption{RL methods for snake and soft robot control. Entries marked with $\checkmark$ were reimplemented as baselines.}
+  \footnotesize
+  \renewcommand{\arraystretch}{1.2}
+  \caption{RL methods for snake and soft robot control.}
   \label{tab:related-rl-snake}
-  \begin{tabular}{@{}p{2.0cm}p{1.8cm}p{2.0cm}p{1.2cm}p{1.5cm}p{0.8cm}p{3.5cm}@{}}
+  \begin{tabular*}{\textwidth}{@{\extracolsep{\fill}}p{2.8cm}p{2.1cm}p{2.0cm}lp{1.6cm}p{3.5cm}@{}}
     \toprule
-    \textbf{Reference} & \textbf{Robot type} & \textbf{Action space} & \textbf{RL algo.} & \textbf{Simulator} & \textbf{Repl.} & \textbf{Key finding} \\
+    \textbf{Reference} & \textbf{Robot} & \textbf{Actions} & \textbf{Algo.} & \textbf{Simulator} & \textbf{Key contribution} \\
     \midrule
-    %% --- Snake/soft robot baselines (replicated) ---
-    \citet{Shi2020}
-      & 3-link kinematic
-      & Joint vel.\ (discrete)
-      & DQN
-      & Analytical
-      & $\checkmark$
-      & Geometric mechanics (SE(2) fiber bundle) reduces state 5D$\to$3D \\
-    \addlinespace
-    \citet{Liu2021}
-      & 4-link soft
-      & CPG tonic + option (6-dim)
-      & PPO
-      & Custom
-      & $\checkmark$
-      & Cooperative multi-agent game for contact-aware obstacle navigation \\
-    \addlinespace
-    \citet{Liu2022}
-      & 9-link wheeled
-      & Gait offset $\phi_o$ (1-dim)
-      & PPO
-      & MuJoCo
-      & $\checkmark$
-      & RL modulates lateral undulation for path following with onboard camera \\
-    \addlinespace
-    \citet{Liu2023}
-      & 4-link soft
-      & CPG tonic (4-dim)
-      & PPO
-      & MuJoCo
-      & $\checkmark$
-      & 12-level distance curriculum with domain randomization for sim-to-real \\
-    \addlinespace
-    \citet{Zheng2022}
-      & 7-link rigid (underwater)
-      & CPG (5-dim)
-      & PPO
-      & MuJoCo (fluid)
-      & $\checkmark$
-      & Two-phase curriculum; stiffness sweep for series elastic actuators \\
-    \addlinespace
-    \citet{Jiang2024}
-      & 11-joint COBRA
-      & Dual CPG (7-dim)
-      & DDPG
-      & MuJoCo
-      & $\checkmark$
-      & Four-layer hierarchy: A* planner $\to$ RL navigator $\to$ CPG $\to$ PID \\
-    \addlinespace
-    \citet{Schaffer2024}
-      & Biohybrid lattice worm
-      & Muscle act.\ (42-dim)
-      & PPO
-      & PyElastica
-      & $\checkmark$
-      & Adaptive muscle force ceilings strengthen with exercise \\
-    \addlinespace
-    \citet{Choi2025}
-      & Soft manipulator
-      & $\Delta$ curvature (5 CPs)
-      & SAC
-      & DisMech
-      & $\checkmark$
-      & Implicit Euler enables rapid learning for contact-rich tasks \\
-    \addlinespace
-    %% --- General soft robot / model-based entries ---
-    \citet{Bing2019}
-      & Soft snake
-      & CPG (5-dim)
-      & PPO
-      & PyElastica
-      & ---
-      & CPG action space reduces exploration burden vs.\ per-joint control \\
-    \addlinespace
-    \citet{Hong2026}
-      & Soft robot
-      & Joint torques
-      & PPO
-      & FEM (custom)
-      & ---
-      & Accurate physics essential for sim-to-real; FEM training environment \\
-    \addlinespace
-    MBPO \newline \citep{Janner2019}
-      & Rigid articulated
-      & Joint torques
-      & SAC+model
-      & MuJoCo
-      & ---
-      & Model-based short-horizon planning; assumes rigid-body dynamics \\
-    \addlinespace
-    GNN Sim.\ \newline \citep{SanchezGonzalez2020}
-      & Particle system
-      & Forces
-      & ---
-      & Custom particle
-      & ---
-      & Graph network learns complex physics; mesh-based simulation \\
+    \citet{Shi2020}      & 3-link kinem.    & Joint vel.\ (disc.)  & DQN       & Analytical  & SE(2) fiber bundle reduces state 5D$\to$3D \\
+    \citet{Liu2021}      & 4-link soft      & CPG + option (6)     & PPO       & Custom      & Multi-agent game for contact-aware nav. \\
+    \citet{Liu2022}      & 9-link wheeled   & Gait offset (1)      & PPO       & MuJoCo      & RL modulates undulation for path following \\
+    \citet{Liu2023}      & 4-link soft      & CPG tonic (4)        & PPO       & MuJoCo      & 12-level curriculum + domain randomization \\
+    \citet{Zheng2022}    & 7-link rigid     & CPG (5)              & PPO       & MuJoCo      & Two-phase curriculum; series elastic act. \\
+    \citet{Jiang2024}    & 11-joint COBRA   & Dual CPG (7)         & DDPG      & MuJoCo      & A*$\to$RL$\to$CPG$\to$PID hierarchy \\
+    \citet{Schaffer2024} & Biohybrid worm   & Muscle act.\ (42)    & PPO       & PyElastica  & Adaptive muscle force ceilings \\
+    \citet{Choi2025}     & Soft manip.      & $\Delta\kappa$ (5)   & SAC       & DisMech     & Implicit Euler for contact-rich tasks \\
+    \citet{Bing2019}     & Soft snake       & CPG (5)              & PPO       & PyElastica  & CPG reduces exploration vs.\ per-joint \\
+    \citet{Hong2026}     & Soft robot       & Joint torques        & PPO       & FEM         & FEM essential for sim-to-real fidelity \\
+    \citet{Janner2019}   & Rigid artic.     & Joint torques        & SAC+M     & MuJoCo      & Model-based short-horizon planning \\
+    \citet{SanchezGonzalez2020} & Particles  & Forces               & ---       & Custom      & Graph network learns mesh-based physics \\
     \midrule
-    \textbf{This work}
-      & Soft snake
-      & CPG (5-dim)
-      & PPO
-      & PyElastica / DisMech / Surrogate
-      & ---
-      & Surrogate replaces simulator for $4$--$5$ OOM speedup \\
+    \textbf{This work}   & Soft snake       & CPG (5)              & PPO       & Elast./DM   & Surrogate for 4--5 OOM speedup \\
     \bottomrule
-  \end{tabular}
+  \end{tabular*}
 \end{table}
 
 \noindent
@@ -1277,6 +1197,44 @@ A health monitor tracks the output rate of each worker and respawns any worker t
   \end{tabular}
 \end{table}
 
+\subsection{Dataset Quality}
+\label{sec:datacollection:quality}
+
+The final dataset contains 4,336,600 single-step transitions stored across 43,366 batch files.
+An automated validation pipeline checks the dataset against quality thresholds before surrogate training; the results are summarized in \cref{tab:data-quality}.
+
+\begin{table}[H]
+  \centering
+  \small
+  \renewcommand{\arraystretch}{1.3}
+  \caption{Data quality validation results.}
+  \label{tab:data-quality}
+  \begin{tabular}{@{}llll@{}}
+    \toprule
+    \textbf{Metric} & \textbf{Value} & \textbf{Threshold} & \textbf{Status} \\
+    \midrule
+    NaN/Inf rate & 0.00\% & $<0.1\%$ & Pass \\
+    Duplicate transitions & 3.84\% (166,518) & $<1\%$ & Fail \\
+    Constant features & 0 & 0 & Pass \\
+    Outlier rate ($>5\sigma$) & 0.096\% & $<0.5\%$ & Pass \\
+    Action 5D fill fraction & 74.5\% & $>5\%$ & Pass \\
+    Per-dim action fill & 100\% (all dims) & $>90\%$ & Pass \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\noindent
+Action coverage is excellent: Sobol quasi-random sampling achieves 100\% per-dimension fill (20 bins) and 74.5\% 5D joint fill across 3.2M bins, substantially better than pseudo-random sampling for the same budget.
+All five action dimensions (amplitude, frequency, wave number, phase offset, direction bias) have uniform marginal distributions (mean~${\approx}\,0$, std~${\approx}\,0.577$, consistent with $\mathcal{U}(-1,1)$).
+
+The 3.84\% duplicate rate is attributed to the 1-step episode structure: workers that reset to identical initial conditions and receive the same Sobol action produce identical transitions.
+Deduplication yields 4,170,082 unique transitions.
+While the duplicate rate exceeds the automated threshold, these duplicates amount to implicit oversampling of common initial conditions and do not introduce label noise, so the dataset was used for training without deduplication.
+
+Outlier analysis reveals that velocity ($\dot{x}$, $\dot{y}$) and angular velocity ($\omega_z$) components account for 97\% of all $>5\sigma$ outliers.
+These arise from contact-induced velocity spikes during friction interactions and are physically plausible, so they were retained in the training set.
+The surrogate's difficulty predicting these components (\cref{sec:surrogate:results}) is consistent with their high variance and heavy-tailed distributions in the training data.
+
 % ---------------------------------------------------------------------------
 \section{Neural Surrogate Model}
 \label{sec:surrogate}
@@ -1497,33 +1455,54 @@ Weights are clipped at $10\times$ the mean to prevent rare samples from dominati
 \subsubsection{Hyperparameters}
 \label{sec:surrogate:training:hyperparams}
 
-The best configuration, identified through an architecture sweep (see \cref{sec:discussion:arch}), is summarized in \cref{tab:hyperparams}.
+Training configurations are summarized in \cref{tab:hyperparams-common,tab:hyperparams-runs}.
 All experiments were logged to Weights \& Biases for tracking and comparison.
 
 \begin{table}[H]
   \centering
   \small
   \renewcommand{\arraystretch}{1.3}
-  \caption{Surrogate training hyperparameters.}
-  \label{tab:hyperparams}
+  \caption{Surrogate training hyperparameters (shared across all runs).}
+  \label{tab:hyperparams-common}
   \begin{tabular}{@{}ll@{}}
     \toprule
     \textbf{Hyperparameter} & \textbf{Value} \\
     \midrule
-    Optimizer & Adam ($\beta_1{=}0.9$, $\beta_2{=}0.999$) \\
-    Learning rate & $1 \times 10^{-3}$ \\
-    Batch size & 4096 \\
-    Hidden dimension & 512 \\
-    Number of hidden layers & 3 \\
+    Architecture & 4-layer MLP ($4 \times 1024$) \\
     Activation & SiLU \\
     Normalization & LayerNorm (pre-activation) \\
     Output initialization & Zero \\
-    Phase 1 epochs & 20 (single-step MSE only) \\
-    Phase 2 rollout length $L$ & 8 steps \\
-    Rollout loss weight $\lambda_r$ & 0.1 \\
-    Density weight clipping & $10\times$ mean \\
-    Early stopping & Validation MSE \\
-    Total parameters & ${\sim}659$K \\
+    Prediction target & Residual ($\Delta \mathbf{s}$) \\
+    Optimizer & Adam ($\beta_1{=}0.9$, $\beta_2{=}0.999$) \\
+    Learning rate & $1 \times 10^{-4}$ (cosine schedule, 5-epoch warmup) \\
+    Batch size & 4096 (auto-scaled to ${\sim}245$K effective) \\
+    Mixed precision & bfloat16 \\
+    Input/target normalization & Yes (per-feature) \\
+    Density weighting & Yes (20-bin histogram, $10\times$ clip) \\
+    State noise & $\sigma = 0.001$ \\
+    Early stopping & Patience 30 (validation MSE) \\
+    Action dim & 5 \\
+    Total parameters & ${\sim}3.43$M \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\begin{table}[H]
+  \centering
+  \small
+  \renewcommand{\arraystretch}{1.3}
+  \caption{Per-run configuration differences and results.}
+  \label{tab:hyperparams-runs}
+  \begin{tabular}{@{}lccc@{}}
+    \toprule
+    & \textbf{Run A} & \textbf{Run B (best)} & \textbf{Run C} \\
+    \midrule
+    State dim & 128 & 128 & 130 \\
+    Dropout & 0.0 & 0.1 & 0.1 \\
+    Weight decay & $10^{-5}$ & $10^{-4}$ & $10^{-4}$ \\
+    Epochs trained & 80 & 110 & 57 \\
+    Best val.\ loss & 0.712 & \textbf{0.601} & 0.733 \\
+    Overall $R^2$ & --- & \textbf{0.393} & 0.258 \\
     \bottomrule
   \end{tabular}
 \end{table}
@@ -1556,39 +1535,65 @@ Alternative approaches --- SIREN (periodic activations), Snake activations, Neur
 \subsection{Results}
 \label{sec:surrogate:results}
 
-\placeholder{Surrogate validation against held-out PyElastica trajectories: single-step MSE, multi-step rollout RMSE, per-state-component accuracy breakdown, and the effect of per-element phase encoding on angular velocity prediction.}
+The best surrogate (Run~B) was trained for 110 epochs on 3.9M transitions (10\% held out for validation), reaching a validation loss of 0.601 and an overall $R^2$ of 0.393.
+\Cref{fig:training-loss} shows the training and validation loss curves alongside the overall $R^2$ evolution.
+The validation loss decreases steadily throughout training, with the train--validation gap widening after epoch~40, indicating mild overfitting.
+Adding dropout ($p{=}0.1$) and stronger weight decay ($10^{-4}$) in Run~B reduced overfitting compared to Run~A (val.\ loss 0.601 vs.\ 0.712).
+
+\paragraph{Per-component accuracy.}
+Prediction accuracy varies substantially across state components (\cref{tab:surrogate-accuracy,fig:component-r2}).
+Center-of-mass position is predicted well ($R^2 = 0.852$), followed by relative element positions ($R^2 = 0.773$).
+These geometric quantities change smoothly and are directly constrained by the inextensibility of the rod.
+Angular velocity ($\omega_z$, $R^2 = 0.320$) and heading ($\theta$, $R^2 = 0.287$) are moderately predicted, while per-element yaw ($\psi_e$, $R^2 = 0.173$) and linear velocities ($\dot{x}, \dot{y}$, $R^2 = 0.145$) remain difficult.
+The velocity components exhibit the highest absolute MSE (0.081 and 0.213 for $\dot{x}$ and $\dot{y}$ respectively), reflecting both their high variance in the training data and their sensitivity to contact and friction forces that are discontinuous across simulation substeps.
+
+\Cref{fig:r2-evolution} shows the per-component $R^2$ evolution during training.
+CoM position and relative positions converge rapidly (within 20 epochs), while angular and velocity components improve gradually and have not plateaued by epoch~110, suggesting that longer training or architectural changes could yield further gains.
+
+\paragraph{Rollout loss.}
+The two-phase training scheme described in \cref{sec:surrogate:training:phase1} was not activated in the best run: the rollout loss weight $\lambda_r$ remained at zero, and all reported metrics reflect single-step prediction accuracy only.
+Multi-step rollout evaluation and the effect of the rollout loss on autoregressive error accumulation are deferred to future work alongside the architecture sweep (\cref{sec:discussion:arch}).
 
 \begin{table}[H]
   \centering
   \small
-  \caption{Surrogate prediction accuracy by state component (placeholder).}
+  \caption{Surrogate single-step prediction accuracy by state component (Run~B, epoch~110).}
   \label{tab:surrogate-accuracy}
-  \begin{tabular}{lcc}
+  \begin{tabular}{lrr}
     \toprule
-    State component & Single-step $R^2$ & 8-step rollout RMSE \\
+    State component & $R^2$ & MSE \\
     \midrule
-    Positions ($x_i, y_i$) & \placeholder{---} & \placeholder{---} \\
-    Velocities ($\dot{x}_i, \dot{y}_i$) & \placeholder{---} & \placeholder{---} \\
-    Yaw ($\psi_e$) & \placeholder{---} & \placeholder{---} \\
-    Angular velocity ($\omega_{z,e}$) & \placeholder{---} & \placeholder{---} \\
+    CoM position ($\bar{x}, \bar{y}$) & 0.852 & $2.81 \times 10^{-7}$ \\
+    Relative positions ($\Delta x_i, \Delta y_i$) & 0.773 & ${\sim}3.2 \times 10^{-5}$ \\
+    Angular velocity ($\omega_{z,e}$) & 0.320 & 1.442 \\
+    Heading ($\theta$) & 0.287 & $2.49 \times 10^{-3}$ \\
+    Yaw ($\psi_e$) & 0.173 & $4.78 \times 10^{-2}$ \\
+    Velocities ($\dot{x}_i, \dot{y}_i$) & 0.145 & $8.10 \times 10^{-2}$ / $2.13 \times 10^{-1}$ \\
     \midrule
-    Overall & \placeholder{---} & \placeholder{---} \\
+    Overall & \textbf{0.393} & 0.601 \\
     \bottomrule
   \end{tabular}
 \end{table}
 
 \begin{figure}[H]
   \centering
-  \placeholder{Multi-step rollout comparison: surrogate predictions vs.\ ground-truth PyElastica trajectories for representative initial conditions. Show position RMSE growth over 50--100 steps.}
-  \caption{Surrogate rollout accuracy (placeholder).}
-  \label{fig:rollout-accuracy}
+  \includegraphics[width=\textwidth]{../figures/surrogate_training_curves.pdf}
+  \caption{Training and validation MSE loss (left) and overall $R^2$ (right) over 110 epochs for the best surrogate run (Run~B). The persistent train--validation gap indicates mild overfitting despite dropout and weight decay regularization.}
+  \label{fig:training-loss}
 \end{figure}
 
 \begin{figure}[H]
   \centering
-  \placeholder{Training loss curves: single-step MSE and rollout loss over epochs, showing the Phase 1 $\to$ Phase 2 transition at epoch 20.}
-  \caption{Training loss evolution (placeholder).}
-  \label{fig:training-loss}
+  \includegraphics[width=0.75\textwidth]{../figures/surrogate_component_r2.pdf}
+  \caption{Per-component $R^2$ at epoch~110 (Run~B). Geometric quantities (CoM, relative positions) are well predicted, while velocity-related components remain challenging.}
+  \label{fig:component-r2}
+\end{figure}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.85\textwidth]{../figures/surrogate_r2_evolution.pdf}
+  \caption{Per-component $R^2$ evolution during training. Position components converge within 20 epochs; angular and velocity components improve gradually and have not saturated by epoch~110.}
+  \label{fig:r2-evolution}
 \end{figure}
 
 % ---------------------------------------------------------------------------
@@ -1611,6 +1616,101 @@ The reward is based on forward displacement potential:
 where $x_{\text{CoM}}$ is the center-of-mass $x$-coordinate of the rod.
 This potential-based reward avoids the noise issues encountered with velocity-based rewards (\cref{tab:issues-training}).
 
+\subsubsection{Hyperparameters}
+\label{sec:rl:direct:hyperparams}
+
+\Cref{tab:ppo-hyperparams} summarizes the PPO hyperparameters.
+Training was conducted over 10 sessions with iterative hyperparameter tuning.
+The best results (Session~10) used conservative settings: a lower learning rate ($10^{-4}$ vs.\ $3 \times 10^{-4}$) and fewer PPO epochs per batch (4 vs.\ 10) compared to earlier sessions, which prevented the entropy collapse observed in Session~9.
+
+\begin{table}[H]
+  \centering
+  \small
+  \renewcommand{\arraystretch}{1.3}
+  \caption{PPO training hyperparameters (Session~10, best).}
+  \label{tab:ppo-hyperparams}
+  \begin{tabular}{@{}ll@{}}
+    \toprule
+    \textbf{Hyperparameter} & \textbf{Value} \\
+    \midrule
+    Parallel environments & 16 \\
+    Total frames & $2 \times 10^6$ \\
+    Frames per batch & 8192 \\
+    Mini-batch size & 256 \\
+    PPO clip $\epsilon$ & 0.2 \\
+    PPO epochs per batch & 4 \\
+    Learning rate & $1 \times 10^{-4}$ (linear decay to $10^{-5}$) \\
+    Discount $\gamma$ & 0.99 \\
+    GAE $\lambda$ & 0.95 \\
+    Entropy coefficient & 0.02 \\
+    Value coefficient & 0.5 \\
+    Max gradient norm & 0.5 \\
+    Target KL (early stop) & 0.01 \\
+    Max episode steps & 500 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\subsubsection{Results}
+\label{sec:rl:direct:results}
+
+\Cref{fig:rl-training} shows the 10-batch rolling average reward over 2M training steps.
+Training exhibits three distinct phases:
+(1)~a \emph{learning phase} (0--164k steps) where rewards rise rapidly to a peak of 140.0;
+(2)~a \emph{decline phase} (164k--574k steps) where the policy temporarily degrades, likely due to policy updates overshooting in the CPG parameter space; and
+(3)~a \emph{steady state} (574k--2M steps) where the rolling average stabilizes around 102.
+The best checkpoint (reward~$= 156.66$) was saved at step~155,648 during the peak.
+
+Compared to Session~9 (aggressive hyperparameters: $\text{lr} = 3 \times 10^{-4}$, 10 PPO epochs), Session~10 achieved a 17\% higher peak (140.0 vs.\ 119.5 rolling average) and maintained healthy entropy throughout training, whereas Session~9 suffered entropy collapse and reward decline after 200k steps.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.9\textwidth]{../figures/rl_training_curves.pdf}
+  \caption{PPO training curves showing 10-batch rolling average reward. Session~10 (conservative hyperparameters) achieves higher peak reward and more stable steady-state behavior than Session~9 (aggressive hyperparameters). The best checkpoint is saved during the early peak.}
+  \label{fig:rl-training}
+\end{figure}
+
+\paragraph{Evaluation.}
+The best checkpoint was evaluated over 20 episodes with deterministic actions and randomized initial headings (\cref{fig:rl-eval}).
+The policy produces reliable serpentine locomotion with a mean displacement of $1.495 \pm 0.13$\,m per 500-step episode, corresponding to a speed of ${\sim}0.003$\,m/step ($0.006$\,m/s at $\Delta t = 0.5$\,s per RL step).
+Locomotion is consistent across all heading directions, confirming that the policy generalizes across orientations.
+
+No episodes reached the 2.0\,m goal: at the observed speed, the snake requires ${\sim}667$ steps to cover 2.0\,m, exceeding the 500-step episode limit (75\% completion).
+The 2.4$\times$ gap between training reward (156.66) and evaluation reward ($64.90 \pm 1.44$) is attributed to
+(i)~stochastic actions during training providing exploration bonuses,
+(ii)~favorable heading distributions in some training episodes, and
+(iii)~goal-reaching bonuses that inflate training-time rewards.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\textwidth]{../figures/rl_evaluation.pdf}
+  \caption{Evaluation of the best Session~10 checkpoint. Left: displacement per episode (all 20 episodes hit the 500-step limit). Right: training vs.\ evaluation reward gap.}
+  \label{fig:rl-eval}
+\end{figure}
+
+\begin{table}[H]
+  \centering
+  \small
+  \caption{Direct Elastica RL training and evaluation summary (Session~10).}
+  \label{tab:rl-direct-results}
+  \begin{tabular}{@{}lr@{}}
+    \toprule
+    \textbf{Metric} & \textbf{Value} \\
+    \midrule
+    Training time & ${\sim}9$\,h \\
+    Throughput & ${\sim}55$--60\,FPS \\
+    Peak rolling reward (10-batch) & 140.0 \\
+    Best checkpoint reward & 156.66 \\
+    Steady-state reward & ${\sim}95$--108 \\
+    \midrule
+    Eval mean displacement & $1.495 \pm 0.13$\,m \\
+    Eval mean reward & $64.90 \pm 1.44$ \\
+    Eval speed & ${\sim}0.003$\,m/step \\
+    Goal success rate & 0/20 (0\%) \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
 \subsection{Surrogate Environment Training}
 \label{sec:rl:surrogate}
 
@@ -1621,25 +1721,9 @@ The projected speedup of $4$--$5$ orders of magnitude enables large-scale hyperp
 \subsubsection{Results}
 \label{sec:rl:surrogate:results}
 
-\placeholder{PPO training in the surrogate environment: learning curves, wall-clock time comparison with direct Elastica training, policy performance evaluated on both surrogate and real Elastica environments, and the transfer gap attributable to surrogate modeling error.}
-
-\begin{table}[H]
-  \centering
-  \small
-  \caption{RL training comparison: surrogate vs.\ direct simulation (placeholder).}
-  \label{tab:rl-comparison}
-  \begin{tabular}{@{}lcc@{}}
-    \toprule
-    \textbf{Metric} & \textbf{Surrogate} & \textbf{Direct Elastica} \\
-    \midrule
-    Wall-clock time for $2 \times 10^6$ steps & \placeholder{---} & ${\sim}36$\,h \\
-    Steps per second & \placeholder{---} & ${\sim}350$ \\
-    Final policy reward (surrogate eval) & \placeholder{---} & --- \\
-    Final policy reward (Elastica eval) & \placeholder{---} & \placeholder{---} \\
-    Transfer gap & \placeholder{---} & --- \\
-    \bottomrule
-  \end{tabular}
-\end{table}
+Surrogate-based RL training has not yet been conducted.
+While the surrogate model achieves reasonable single-step prediction accuracy for geometric state components (\cref{sec:surrogate:results}), the moderate overall $R^2 = 0.393$ and the poor velocity prediction ($R^2 = 0.145$) raise concerns about multi-step rollout fidelity.
+Training an RL policy inside the surrogate environment is planned as the next step; the key risk is that the policy may exploit surrogate artifacts (particularly in $\omega_z$ and velocity predictions) rather than learning physically grounded gaits that transfer back to the Elastica simulator.
 
 \subsection{Challenges}
 \label{sec:rl:challenges}
