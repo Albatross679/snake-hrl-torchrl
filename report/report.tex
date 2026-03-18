@@ -97,6 +97,15 @@
 \newcommand{\mytodo}[1]{\textcolor{red}{\textbf{[TODO: #1]}}}
 
 % ---------------------------------------------------------------------------
+% PINN/DD-PINN notation (Section 6)
+% ---------------------------------------------------------------------------
+\newcommand{\xhat}{\hat{\mathbf{x}}}
+\newcommand{\avec}{\mathbf{a}_{\mathrm{ans}}}
+\newcommand{\fssm}{\mathbf{f}_{\mathrm{SSM}}}
+\newcommand{\fnn}{\mathbf{f}_{\mathrm{NN}}}
+\newcommand{\phig}{\phi_g}
+
+% ---------------------------------------------------------------------------
 % Bibliography (natbib — before hyperref)
 % ---------------------------------------------------------------------------
 \usepackage[round, sort, authoryear]{natbib}
@@ -1595,6 +1604,363 @@ Multi-step rollout evaluation and the effect of the rollout loss on autoregressi
   \caption{Per-component $R^2$ evolution during training. Position components converge within 20 epochs; angular and velocity components improve gradually and have not saturated by epoch~110.}
   \label{fig:r2-evolution}
 \end{figure}
+
+% ===========================================================================
+\section{Physics-Informed Surrogate}
+\label{sec:pinn}
+% ===========================================================================
+
+The data-driven surrogate of \cref{sec:surrogate} treats the simulator as a black box, learning state transitions purely from input--output examples.
+An alternative family of methods---\emph{physics-informed neural networks} (PINNs)---embeds the known governing equations directly into the training loss, reducing data requirements and improving physical consistency of predictions.
+This section introduces the standard PINN formulation, its domain-decoupled variant (DD-PINN), the implementation developed in this project, and a comparative analysis.
+
+% ---------------------------------------------------------------------------
+\subsection{Standard PINN}
+\label{sec:pinn:standard}
+% ---------------------------------------------------------------------------
+
+Physics-informed neural networks \citep{Raissi2019} augment the purely data-driven loss with a \emph{physics residual} term derived from the governing equations.
+Consider the state-space model
+\begin{equation}
+  \dot{\mathbf{x}}(t) = \fssm\bigl(\mathbf{x}(t),\, \mathbf{u}(t)\bigr), \qquad \mathbf{x}(0) = \mathbf{x}_0,
+  \label{eq:pinn:ssm}
+\end{equation}
+where $\mathbf{x}(t) \in \mathbb{R}^m$ is the state, $\mathbf{u}(t) \in \mathbb{R}^p$ is the input, and $\fssm$ encodes the known (but expensive) physics---for the snake robot, the Cosserat rod equations of \cref{sec:physics:formulation}.
+A feedforward network $\mathbf{h}_\theta$ predicts the state at time~$t$:
+\begin{equation}
+  \xhat_t = \mathbf{h}_\theta(\mathbf{x}_0,\, \mathbf{u},\, t).
+  \label{eq:pinn:pred}
+\end{equation}
+The PINN loss combines three objectives:
+\begin{equation}
+  \mathcal{L}(\theta)
+    = \underbrace{\lambda_{\mathrm{IC}} \bigl\| \xhat_0 - \mathbf{x}_0 \bigr\|^2}_{\mathcal{L}_{\mathrm{IC}}}
+    + \underbrace{\lambda_{\mathrm{phys}} \frac{1}{N_c}\sum_{k=1}^{N_c}
+      \left\| \frac{\partial \xhat_{t_k}}{\partial t} - \fssm(\xhat_{t_k},\, \mathbf{u}_{t_k}) \right\|^2}_{\mathcal{L}_{\mathrm{phys}}}
+    + \underbrace{\lambda_{\mathrm{data}} \frac{1}{N_d}\sum_{k=1}^{N_d}
+      \left\| \xhat_{t_k} - \mathbf{x}_{\mathrm{data},k} \right\|^2}_{\mathcal{L}_{\mathrm{data}}}.
+  \label{eq:pinn:loss}
+\end{equation}
+The physics residual is evaluated at $N_c$ \emph{collocation points}---randomly sampled time instants where the governing equations are enforced without requiring simulation data.
+The time derivative $\partial \xhat_t / \partial t$ is obtained via \emph{automatic differentiation} (autodiff) through the network with respect to the input~$t$.
+
+While PINNs can train with little or no observed data, three practical bottlenecks limit their scalability:
+\begin{enumerate}
+  \item \textbf{Expensive autodiff.} Computing $\partial \xhat_t / \partial t$ requires an additional backward pass through the entire computational graph for each collocation point, adding significant cost for large state spaces.
+  \item \textbf{Loss balancing.} The three loss terms ($\mathcal{L}_{\mathrm{IC}}$, $\mathcal{L}_{\mathrm{phys}}$, $\mathcal{L}_{\mathrm{data}}$) compete during training and require careful weighting schemes.
+  \item \textbf{Training instability.} For systems with many coupled states ($m \gg 1$), PINN predictions can diverge.
+\end{enumerate}
+
+% ---------------------------------------------------------------------------
+\subsection{DD-PINN Method}
+\label{sec:pinn:ddpinn}
+% ---------------------------------------------------------------------------
+
+The \emph{domain-decoupled} PINN (DD-PINN) \citep{Krauss2024,Licher2025} resolves all three bottlenecks through a single architectural change: \textbf{remove time as a network input} and instead let the network output the parameters of an analytically differentiable \emph{ansatz function}.
+
+\paragraph{Core idea.}
+The predicted state is decomposed as
+\begin{equation}
+  \boxed{\xhat_t = \mathbf{g}(\avec, t) + \mathbf{x}_0, \qquad \avec = \fnn(\mathbf{x}_0, \mathbf{u}_0;\, \theta),}
+  \label{eq:pinn:ddpinn-core}
+\end{equation}
+where $\fnn$ is a feedforward network and $\mathbf{g}$ is the ansatz.
+The ansatz must satisfy two properties: (i)~differentiable in closed form for all $t \in [0, T_s]$, so $\dot{\mathbf{g}}$ can be computed analytically; and (ii)~$\mathbf{g}(\avec, 0) \equiv \mathbf{0}$, which guarantees $\xhat_0 = \mathbf{x}_0$ exactly.
+
+\paragraph{Ansatz function.}
+For each state variable $j \in \{1, \ldots, m\}$, the ansatz is a sum of $n_g$ damped sinusoidal basis functions:
+\begin{equation}
+  g_j(t) = \sum_{i=1}^{n_g} \alpha_{ij}\, e^{-\delta_{ij} t}
+    \bigl[\phig(\beta_{ij}\, t + \gamma_{ij}) - \phig(\gamma_{ij})\bigr],
+  \label{eq:pinn:ansatz}
+\end{equation}
+where $\phig(x) = \sin(x)$ and the subtraction $\phig(\gamma_{ij})$ ensures $g_j(0) = 0$.
+The network outputs the parameter vector
+$\avec = (\bm{\alpha},\, \bm{\beta},\, \bm{\gamma},\, \bm{\delta}) \in \mathbb{R}^{4 m n_g}$,
+with each parameter playing an interpretable role: $\alpha_{ij}$ (amplitude), $\beta_{ij}$ (frequency), $\gamma_{ij}$ (phase offset), $\delta_{ij} \geq 0$ (damping rate).
+
+\paragraph{Closed-form gradients.}
+The time derivative is computed analytically:
+\begin{equation}
+  \dot{g}_j(t) = \sum_{i=1}^{n_g} \alpha_{ij}\, e^{-\delta_{ij} t}
+    \bigl[\beta_{ij}\, \cos(\beta_{ij}\, t + \gamma_{ij})
+    - \delta_{ij}\, \sin(\beta_{ij}\, t + \gamma_{ij})\bigr].
+  \label{eq:pinn:closed-form}
+\end{equation}
+These are elementary operations---no computational graph is constructed, and the cost scales linearly with $n_g \cdot m$ regardless of network depth.
+
+\paragraph{Simplified loss.}
+Since $\mathcal{L}_{\mathrm{IC}} \equiv 0$ by construction, the training loss reduces to two terms:
+\begin{equation}
+  \mathcal{L}(\theta) = \lambda_{\mathrm{phys}}\, \mathcal{L}_{\mathrm{phys}}
+    + \lambda_{\mathrm{data}}\, \mathcal{L}_{\mathrm{data}},
+  \label{eq:pinn:ddpinn-loss}
+\end{equation}
+where $\mathcal{L}_{\mathrm{phys}}$ and $\mathcal{L}_{\mathrm{data}}$ follow the same form as in~\eqref{eq:pinn:loss} but with $\dot{\mathbf{g}}(\avec, t_k)$ replacing the autodiff-based derivative.
+Because gradient evaluation is cheap, DD-PINN uses 10--25$\times$ more collocation points than standard PINNs, improving physics enforcement.
+
+\paragraph{Inference pipeline.}
+\Cref{fig:pinn:architecture} illustrates the DD-PINN inference flow.
+The neural network is evaluated \emph{once} per prediction to produce ansatz parameters; the ansatz is then evaluated at arbitrarily many time points without additional network calls.
+
+\begin{figure}[H]
+\centering
+\resizebox{\textwidth}{!}{%
+\begin{tikzpicture}[
+    >=Stealth,
+    block/.style={draw, rounded corners=3pt, minimum height=1cm, minimum width=2cm,
+                  align=center, font=\footnotesize},
+    arrow/.style={->, thick},
+    lbl/.style={font=\scriptsize, text=gray!70!black}
+]
+    % Input
+    \node[block, fill=blue!8] (input) {$\mathbf{x}_0,\; \mathbf{u}_0$};
+
+    % NN
+    \node[block, fill=orange!12, right=1.2cm of input] (nn) {Feedforward NN\\$\fnn(\cdot;\, \theta)$};
+
+    % Parameters
+    \node[block, fill=green!10, right=1.2cm of nn] (params) {$\avec = (\bm{\alpha}, \bm{\beta}, \bm{\gamma}, \bm{\delta})$};
+
+    % Ansatz
+    \node[block, fill=red!8, right=1.2cm of params] (ansatz) {Ansatz\\$\mathbf{g}(\avec, t)$};
+
+    % Output
+    \node[block, fill=blue!8, right=1.2cm of ansatz] (output) {$\xhat_t = \mathbf{g} + \mathbf{x}_0$};
+
+    % Time input to ansatz
+    \node[below=0.6cm of ansatz, font=\small] (time) {$t \in [0, T_s]$};
+
+    % Arrows
+    \draw[arrow] (input) -- (nn);
+    \draw[arrow] (nn) -- (params);
+    \draw[arrow] (params) -- (ansatz);
+    \draw[arrow] (ansatz) -- (output);
+    \draw[arrow] (time) -- (ansatz);
+
+    % Labels
+    \node[lbl, above=0.15cm of nn] {called once};
+    \node[lbl, above=0.15cm of ansatz] {evaluated at $N_c$ points};
+\end{tikzpicture}}
+\caption{DD-PINN inference pipeline. The neural network is evaluated once per prediction to produce ansatz parameters $\avec$. The ansatz $\mathbf{g}(\avec, t)$ is then evaluated at arbitrarily many time points without additional network calls.}
+\label{fig:pinn:architecture}
+\end{figure}
+
+% ---------------------------------------------------------------------------
+\subsection{Implementation}
+\label{sec:pinn:implementation}
+% ---------------------------------------------------------------------------
+
+Three physics-informed approaches were implemented in \texttt{src/pinn/}:
+
+\paragraph{1. Physics-regularized surrogate.}
+The simplest approach adds Cosserat rod physics constraints as soft regularizers to the existing MLP surrogate of \cref{sec:surrogate}.
+The \texttt{PhysicsRegularizer} module computes four algebraic constraint losses: kinematic consistency in $x$ and $y$ (predicted displacement matches velocity-integrated displacement via the trapezoidal rule), angular consistency (yaw change matches integrated angular velocity), curvature--moment consistency (bending moment proportional to curvature), and energy conservation (kinetic energy change bounded).
+These constraints are weighted adaptively using \emph{ReLoBRaLo} (Random Lookback with ReLU Balancing), which adjusts per-term weights via softmax over relative loss changes with exponential moving average smoothing.
+A lambda sweep over $\{0.001, 0.01, 0.1, 1.0\}$ was conducted to determine the optimal regularization strength.
+
+\paragraph{2. Differentiable Cosserat RHS.}
+For the full PINN and DD-PINN approaches, a differentiable \texttt{CosseratRHS} module computes the time derivative $\dot{\mathbf{x}} = \fssm(\mathbf{x})$ for the 124-dimensional rod state, extending prior PINN work on static Cosserat rod approximation \citep{Bensch2024} to the dynamic case.
+The module implements elastic bending moments via discrete curvature and full anisotropic resistive force theory (RFT) friction following the same formulation as the PyElastica backend (\cref{sec:physics:elastica}).
+An inextensible rod approximation is used: stretching stiffness is omitted since bending dominates for planar snake locomotion.
+Gradient stability near zero element length is ensured by regularized tangent normalization $\hat{\mathbf{t}} = \Delta\mathbf{r} / \sqrt{\|\Delta\mathbf{r}\|^2 + \varepsilon^2}$, which provides smooth gradients where the standard normalization would be singular.
+
+\paragraph{3. DD-PINN ansatz and model.}
+The \texttt{DampedSinusoidalAnsatz} implements \cref{eq:pinn:ansatz} with softplus-enforced positive damping coefficients and exact initial condition satisfaction by construction.
+The \texttt{DDPINNModel} wraps a feedforward network with the ansatz and exposes the same \texttt{forward(state, action, time\_encoding)} interface as the data-driven \texttt{SurrogateModel}, enabling drop-in substitution.
+A \texttt{FourierFeatureEmbedding} layer mitigates spectral bias by projecting inputs through random Fourier features before the hidden layers.
+The output layer is zero-initialized so that the initial prediction is zero displacement (i.e., $\xhat_t = \mathbf{x}_0$).
+
+\paragraph{Collocation and nondimensionalization.}
+Temporal collocation points are sampled using Sobol quasi-random sequences for uniform coverage of the prediction interval, with residual-based adaptive refinement (RAR) concentrating additional points where the physics residual is largest.
+All quantities are nondimensionalized using physics-based reference scales ($L_{\mathrm{ref}} = 1.0$\,m, $t_{\mathrm{ref}} = 0.5$\,s, $F_{\mathrm{ref}} = EI/L^2$) to balance the magnitudes of position, velocity, and force terms in the residual loss.
+
+% ---------------------------------------------------------------------------
+\subsection{Results and Comparison}
+\label{sec:pinn:results}
+% ---------------------------------------------------------------------------
+
+\Cref{fig:pinn:comparison,fig:pinn:residual,fig:pinn:r2} present the PINN and DD-PINN results alongside the data-driven surrogate baseline.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\textwidth]{pinn/final_comparison.png}
+  \caption{Per-component RMSE comparison across surrogate approaches. \mytodo{Fill in wall-clock training times after full runs.}}
+  \label{fig:pinn:comparison}
+\end{figure}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.85\textwidth]{pinn/physics_residual_convergence.png}
+  \caption{Physics residual loss convergence during training. The DD-PINN converges faster than the standard PINN due to cheap closed-form gradient evaluation enabling more collocation points per epoch.}
+  \label{fig:pinn:residual}
+\end{figure}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.85\textwidth]{pinn/predicted_vs_actual.png}
+  \caption{Per-component predicted vs.\ actual $R^2$ for the DD-PINN model. \mytodo{Report final R2 values from completed training.}}
+  \label{fig:pinn:r2}
+\end{figure}
+
+\paragraph{Four-way comparison.}
+\Cref{tab:pinn:four-way-a,tab:pinn:four-way-b} present a systematic comparison of four approaches for predicting Cosserat rod dynamics: the numerical PDE solver, the data-driven neural surrogate (\cref{sec:surrogate}), the standard PINN, and the DD-PINN.
+
+\begin{landscape}
+
+\begin{table}[H]
+\centering
+\caption{Comparison of four approaches---formulation and training.}
+\label{tab:pinn:four-way-a}
+\footnotesize
+\renewcommand{\arraystretch}{1.2}
+\begin{tabular}{@{} p{2.8cm} p{4.2cm} p{4.2cm} p{4.2cm} p{4.2cm} @{}}
+\toprule
+\textbf{Aspect}
+    & \textbf{PDE Solver}
+    & \textbf{Data-Driven NN}
+    & \textbf{PINN}
+    & \textbf{DD-PINN} \\
+\midrule
+
+\textbf{Core idea}
+    & Numerically integrate governing PDEs
+    & Learn input$\to$output from data only
+    & Embed PDE residual in training loss
+    & Learn ansatz parameters; time enters analytically \\
+
+\textbf{Physics knowledge}
+    & Full (equations solved exactly)
+    & None
+    & Embedded in loss ($\mathcal{L}_{\mathrm{phys}}$)
+    & Embedded in loss ($\mathcal{L}_{\mathrm{phys}}$) \\
+
+\textbf{Training data}
+    & Not applicable
+    & Large dataset required
+    & Small or zero (physics supervises)
+    & Small or zero \\
+
+\textbf{Prediction}
+    & $\mathbf{x}_t = \text{ODE/PDE solve}$
+    & $\xhat_t = \mathbf{h}_\theta(\mathbf{x}_0, \mathbf{u}, t)$
+    & $\xhat_t = \mathbf{h}_\theta(\mathbf{x}_0, \mathbf{u}, t)$
+    & $\xhat_t = \mathbf{g}(\fnn(\mathbf{x}_0,\mathbf{u};\theta),\, t) + \mathbf{x}_0$ \\
+
+\textbf{Time handling}
+    & Stepwise numerical integration
+    & Network input
+    & Network input
+    & Ansatz argument (not a network input) \\
+
+\textbf{Time derivative}
+    & Finite differences / implicit solve
+    & Not computed
+    & Autodiff w.r.t.\ $t$ (expensive)
+    & Closed-form $\dot{\mathbf{g}}(\avec, t)$ (cheap) \\
+
+\textbf{Loss function}
+    & N/A
+    & $\mathcal{L}_{\mathrm{data}}$
+    & $\mathcal{L}_{\mathrm{IC}} + \mathcal{L}_{\mathrm{phys}} + \mathcal{L}_{\mathrm{data}}$
+    & $\mathcal{L}_{\mathrm{phys}} + \mathcal{L}_{\mathrm{data}}$ \\
+
+\textbf{Loss balancing}
+    & N/A
+    & 1 term---none needed
+    & 3 terms ($\lambda_1, \lambda_2, \lambda_3$)
+    & 2 terms ($\lambda_{\mathrm{phys}}, \lambda_{\mathrm{data}}$) \\
+
+\textbf{Initial condition}
+    & Exact (boundary condition)
+    & Not enforced
+    & Via loss penalty $\mathcal{L}_{\mathrm{IC}}$ (approximate)
+    & Exact by construction ($\mathbf{g}(\avec,0) \equiv \mathbf{0}$) \\
+
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[H]
+\centering
+\caption{Comparison of four approaches---performance and practical aspects.}
+\label{tab:pinn:four-way-b}
+\footnotesize
+\renewcommand{\arraystretch}{1.2}
+\begin{tabular}{@{} p{2.8cm} p{4.2cm} p{4.2cm} p{4.2cm} p{4.2cm} @{}}
+\toprule
+\textbf{Aspect}
+    & \textbf{PDE Solver}
+    & \textbf{Data-Driven NN}
+    & \textbf{PINN}
+    & \textbf{DD-PINN} \\
+\midrule
+
+\textbf{Physical consistency}
+    & Exact (up to discretization)
+    & Not guaranteed
+    & Enforced at collocation points
+    & Enforced at collocation points \\
+
+\textbf{Inference speed}
+    & Slow ($\sim$seconds/step)
+    & Fast ($\sim\!\mu$s)
+    & Fast ($\sim\!\mu$s)
+    & Fast ($\sim\!\mu$s) \\
+
+\textbf{Training cost}
+    & N/A
+    & Low
+    & High (autodiff overhead)
+    & Medium ($5$--$38\times$ faster than PINN) \\
+
+\textbf{Collocation points}
+    & N/A
+    & N/A
+    & $\sim$20k--40k
+    & $\sim$250k--1M (cheap to evaluate) \\
+
+\textbf{Generalization}
+    & Exact for any valid input
+    & Poor outside training distribution
+    & Good (physics constrains extrapolation)
+    & Good (physics constrains extrapolation) \\
+
+\textbf{Stability}
+    & Depends on integrator
+    & Can overfit or diverge
+    & Can diverge for $m \gg 1$
+    & Stable (demonstrated for $m = 72$) \\
+
+\textbf{Speedup vs.\ solver}
+    & $1\times$ (baseline)
+    & $\sim$10k--100k$\times$
+    & $\sim$10k--100k$\times$
+    & $\sim$44,000$\times$ (demonstrated) \\
+
+\textbf{Real-time MPC}
+    & No (too slow)
+    & Yes (but no physics guarantees)
+    & Yes
+    & Yes (70\,Hz demonstrated) \\
+
+\textbf{Key limitation}
+    & Computational cost
+    & Needs large data; no physics guarantees
+    & Autodiff cost; loss balancing; IC approximate
+    & Ansatz must be designed a priori \\
+
+\bottomrule
+\end{tabular}
+\end{table}
+
+\end{landscape}
+
+\paragraph{Summary.}
+The data-driven surrogate (\cref{sec:surrogate}) achieves the highest throughput and simplest training but provides no physics guarantees.
+The physics-regularized variant adds soft constraints at minimal training overhead.
+The DD-PINN satisfies initial conditions exactly, eliminates autodiff cost for time derivatives, and enforces the governing equations at collocation points---at the cost of designing an appropriate ansatz.
+Full limitations are discussed in \cref{sec:discussion}.
 
 % ---------------------------------------------------------------------------
 \section{Reinforcement Learning}
