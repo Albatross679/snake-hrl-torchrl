@@ -113,6 +113,44 @@ class PPOConfig(RLConfig):
 
 
 @dataclass
+class OTPGConfig(RLConfig):
+    """Operator-Theoretic Policy Gradient configuration.
+
+    Based on MM-RKHS algorithm (Gupta & Mahajan, 2026, arXiv:2603.17875).
+    Adapts the majorization-minimization framework to continuous action
+    spaces with neural network function approximation.
+
+    Loss = -E[ratio * A] + beta * MMD^2(pi_new, pi_old) + (1/eta) * KL + value_coef * critic_loss
+    """
+
+    # Majorization bound coefficient (beta in paper Eq 6.1)
+    beta: float = 1.0
+
+    # Mirror descent step size (eta_k in paper Eq 7.1)
+    eta: float = 1.0
+
+    # MMD kernel configuration
+    mmd_kernel: str = "rbf"
+    mmd_bandwidth: float = 1.0
+    mmd_num_samples: int = 16
+
+    # GAE (shared with PPO)
+    gae_lambda: float = 0.95
+    normalize_advantage: bool = True
+
+    # Critic loss weight
+    value_coef: float = 0.5
+
+    # Learning rate schedule
+    lr_schedule: str = "linear"  # constant, linear, cosine
+    lr_end: float = 1e-5
+
+    # Early stopping (patience-based, measured in batches without reward improvement)
+    # 0 = disabled. Default 200 batches.
+    patience_batches: int = 200
+
+
+@dataclass
 class SACConfig(RLConfig):
     """SAC-specific training configuration."""
 
