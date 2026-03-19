@@ -56,9 +56,9 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Choi2025 Soft Robot Replication (Phase 14)
 
-- [ ] **CHOI-01**: PPO config dataclass — `Choi2025PPOConfig(PPOConfig)` with clip=0.2, epochs=10, minibatch=64, 3x256 ReLU MLP, W&B project `choi2025-replication`
-- [ ] **CHOI-02**: PPO training entry point — `train_ppo.py` with same CLI interface as SAC `train.py`, using `PPOTrainer` from `src/trainers/ppo.py`
-- [ ] **CHOI-03**: Experiment matrix runner — `run_experiment.py` orchestrating 8 sequential runs (4 tasks x 2 algos) with GPU cleanup between runs, `--quick` flag for 100K validation
+- [x] **CHOI-01**: PPO config dataclass — `Choi2025PPOConfig(PPOConfig)` with clip=0.2, epochs=10, minibatch=64, 3x256 ReLU MLP, W&B project `choi2025-replication`
+- [x] **CHOI-02**: PPO training entry point — `train_ppo.py` with same CLI interface as SAC `train.py`, using `PPOTrainer` from `src/trainers/ppo.py`
+- [x] **CHOI-03**: Experiment matrix runner — `run_experiment.py` orchestrating 8 sequential runs (4 tasks x 2 algos) with GPU cleanup between runs, `--quick` flag for 100K validation
 - [ ] **CHOI-04**: Quick validation — all 8 configs run for 100K frames without crashes, W&B runs visible in `choi2025-replication` project
 - [ ] **CHOI-05**: Full training — all 8 configs run for 1M frames, launched in tmux with wall-time limits
 - [ ] **CHOI-06**: Video rollouts — 1-2 episode videos per task from best SAC and PPO checkpoints, saved to `media/choi2025/`

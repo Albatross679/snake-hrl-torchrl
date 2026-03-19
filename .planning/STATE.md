@@ -2,17 +2,14 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-current_plan: 03-03 (analyze sweep results)
-status: 15-config sweep launched in tmux gsd-sweep; waiting for completion before analysis
-stopped_at: Completed quick-260319-3kt (Markdown report mirror)
-last_updated: "2026-03-19T03:04:29.511Z"
-last_activity: "2026-03-19 - Completed quick task 260319-3kt: Create Markdown report mirroring LaTeX report"
+status: unknown
+stopped_at: Completed 14-01-PLAN.md
+last_updated: "2026-03-19T03:52:02.540Z"
 progress:
   total_phases: 18
   completed_phases: 5
   total_plans: 28
-  completed_plans: 19
-  percent: 76
+  completed_plans: 20
 ---
 
 # Project State
@@ -22,16 +19,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-09)
 
 **Core value:** Train and validate a surrogate model of snake robot dynamics for use in RL training
-**Current focus:** Phase 3: Train Surrogate Model — Plan 03 (analyze sweep results)
+**Current focus:** Phase 14 — replicate-choi2025-soft-robot-control-paper-using-ml-workflow
 
 ## Current Position
 
-Phase: 03 (Train Surrogate Model) — IN PROGRESS (2/4 plans done)
-Current Plan: 03-03 (analyze sweep results)
-Status: 15-config sweep launched in tmux gsd-sweep; waiting for completion before analysis
-Last activity: 2026-03-19 - Completed quick task 260319-3kt: Create Markdown report mirroring LaTeX report
-
-Progress: [████████░░] 76%
+Phase: 14 (replicate-choi2025-soft-robot-control-paper-using-ml-workflow) — EXECUTING
+Plan: 2 of 3
 
 ## Dataset Summary
 
@@ -76,6 +69,7 @@ Progress: [████████░░] 76%
 | Phase 03 P02 | 95 min | 2 tasks | 3 files |
 | Phase 13 P01 | 3 min | 1 tasks | 5 files |
 | Phase 13 P02 | 3 min | 1 tasks | 4 files |
+| Phase 14 P01 | 8 min | 3 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -126,6 +120,9 @@ Progress: [████████░░] 76%
 - [Phase 13]: Inextensible rod approximation: omit stretching, keep bending + RFT friction for 2D snake
 - [Phase quick-260318-h2e]: PINN section uses \mathbf{} (not \bm{}) to match report convention; ansatz params named \avec to avoid action vector conflict
 - [Phase quick-260319-3kt]: Markdown report (report/report.md) created as single source of truth for content edits; edit-Markdown-first workflow established
+- [Phase 14]: 3x1024 network (scaled up from paper's 3x256) to maximize GPU utilization
+- [Phase 14]: SAC switched from direct wandb.init to wandb_utils.setup_run for consistency
+- [Phase 14]: Watchdog timeout in run_experiment.py: wall_time + 10min, exit 137/143 = hung
 
 ### Pending Todos
 
@@ -175,5 +172,5 @@ None currently.
 
 ## Session Continuity
 
-Last session: 2026-03-19T03:04:25.315Z
-Stopped at: Completed quick-260319-3kt (Markdown report mirror)
+Last session: 2026-03-19T03:52:02.534Z
+Stopped at: Completed 14-01-PLAN.md
