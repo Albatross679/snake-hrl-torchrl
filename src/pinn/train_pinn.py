@@ -92,6 +92,7 @@ class DDPINNTrainConfig:
     # Data
     data_dir: str = "data/surrogate_rl_step"
     val_fraction: float = 0.1
+    use_relative: bool = False  # False=124D raw state (proper for PINN); True=130D relative
 
     # DD-PINN architecture
     n_basis: int = 5
@@ -166,6 +167,8 @@ class DDPINNTrainConfig:
         p.add_argument("--rar-interval", type=int)
         p.add_argument("--rar-fraction", type=float)
         p.add_argument("--curriculum-warmup", type=float)
+        p.add_argument("--use-relative", action="store_true", default=False,
+                        help="Train in 130D relative space (default: 124D raw)")
         p.add_argument("--no-auto-batch", action="store_true", default=False)
         p.add_argument("--grad-accum", type=int, default=None, dest="grad_accum")
         p.add_argument("--resume", type=str, default=None)
@@ -194,6 +197,8 @@ class DDPINNTrainConfig:
                 setattr(cfg, attr, cli_val)
         if args.use_lbfgs is not None:
             cfg.use_lbfgs = True
+        if args.use_relative:
+            cfg.use_relative = True
         if args.no_auto_batch:
             cfg.auto_batch_size = False
         if args.grad_accum is not None:
@@ -366,11 +371,11 @@ def _ensure_papers_path():
             sys.modules[pkg].__package__ = pkg
 
 
-def _load_data_and_normalizer(data_dir, val_fraction, device):
+def _load_data_and_normalizer(data_dir, val_fraction, device, use_relative=False):
     _ensure_papers_path()
     from aprx_model_elastica.dataset import FlatStepDataset
     from aprx_model_elastica.state import (
-        StateNormalizer, raw_to_relative, REL_STATE_DIM,
+        StateNormalizer, raw_to_relative, REL_STATE_DIM, RAW_STATE_DIM,
     )
 
     train_ds = FlatStepDataset(data_dir, split="train", val_fraction=val_fraction)
@@ -379,16 +384,22 @@ def _load_data_and_normalizer(data_dir, val_fraction, device):
     raw_train_states = train_ds.states.clone()
     raw_val_states = val_ds.states.clone()
 
-    if train_ds.states.shape[-1] == 124:
-        for ds in (train_ds, val_ds):
-            ds.states = raw_to_relative(ds.states)
-            ds.next_states = raw_to_relative(ds.next_states)
+    if use_relative:
+        # Convert to 130D relative state for training
+        if train_ds.states.shape[-1] == 124:
+            for ds in (train_ds, val_ds):
+                ds.states = raw_to_relative(ds.states)
+                ds.next_states = raw_to_relative(ds.next_states)
+        state_dim = REL_STATE_DIM  # 130
+    else:
+        # Keep 124D raw state — proper for physics-informed training
+        state_dim = RAW_STATE_DIM  # 124
 
-    normalizer = StateNormalizer(state_dim=REL_STATE_DIM, device=device)
+    normalizer = StateNormalizer(state_dim=state_dim, device=device)
     deltas = train_ds.next_states - train_ds.states
     normalizer.fit(train_ds.states, deltas)
 
-    return train_ds, val_ds, normalizer, raw_train_states, raw_val_states
+    return train_ds, val_ds, normalizer, raw_train_states, raw_val_states, state_dim
 
 
 def _encode_time(action, serp_time):
@@ -416,20 +427,22 @@ def train_single_config(cfg: DDPINNTrainConfig, run_dir: Path) -> dict:
     metrics_file = open(run_dir / "metrics.jsonl", "w")
 
     print(f"\n{'='*60}")
-    print(f"DD-PINN Training: n_basis={cfg.n_basis}, lambda={cfg.lambda_phys}")
+    state_mode = "relative-130D" if cfg.use_relative else "raw-124D"
+    print(f"DD-PINN Training: n_basis={cfg.n_basis}, lambda={cfg.lambda_phys}, state={state_mode}")
     print(f"Run dir: {run_dir}")
     print(f"{'='*60}")
 
     # Load data
-    train_ds, val_ds, normalizer, raw_train_states, raw_val_states = (
-        _load_data_and_normalizer(cfg.data_dir, cfg.val_fraction, device)
+    train_ds, val_ds, normalizer, raw_train_states, raw_val_states, state_dim = (
+        _load_data_and_normalizer(cfg.data_dir, cfg.val_fraction, device,
+                                  use_relative=cfg.use_relative)
     )
     print(f"Train: {len(train_ds):,} | Val: {len(val_ds):,}")
     normalizer.save(str(run_dir / "normalizer.pt"))
 
     # Build model
     model = DDPINNModel(
-        state_dim=130, action_dim=5, time_encoding_dim=4,
+        state_dim=state_dim, action_dim=5, time_encoding_dim=4,
         n_basis=cfg.n_basis, hidden_dim=cfg.hidden_dim,
         n_layers=cfg.n_layers, n_fourier=cfg.n_fourier,
         fourier_sigma=cfg.fourier_sigma, dt=0.5,
@@ -590,35 +603,44 @@ def train_single_config(cfg: DDPINNTrainConfig, run_dir: Path) -> dict:
                     g, g_dot = model.forward_trajectory(
                         phys_state, phys_action, phys_time_enc, t_batch
                     )
-                    # g: (B_phys, N_c, 130), g_dot: (B_phys, N_c, 130)
+                    # g: (B_phys, N_c, state_dim), g_dot: same
 
-                    # Reconstruct state at collocation times in raw space
-                    # g is deviation in normalized relative space
+                    # Denormalize g to physical units
                     g_denorm = normalizer.denormalize_delta(
-                        g.reshape(-1, 130)
-                    ).reshape(g.shape[0], g.shape[1], 130)
+                        g.reshape(-1, state_dim)
+                    ).reshape(g.shape[0], g.shape[1], state_dim)
 
-                    # state_at_t_rel = relative_state + g_denorm
-                    rel_state_base = state[phys_idx]  # (B_phys, 130)
-                    state_at_t_rel = rel_state_base[:, None, :] + g_denorm  # (B_phys, N_c, 130)
+                    # Reconstruct state at collocation times
+                    state_base = state[phys_idx]  # (B_phys, state_dim)
+                    state_at_t = state_base[:, None, :] + g_denorm
 
-                    # Convert to raw for physics
-                    B_phys, N_c = state_at_t_rel.shape[:2]
-                    state_at_t_raw = relative_to_raw(
-                        state_at_t_rel.reshape(-1, 130)
-                    ).reshape(B_phys, N_c, RAW_STATE_DIM)
+                    B_phys, N_c = state_at_t.shape[:2]
+
+                    if cfg.use_relative:
+                        # Convert 130D relative → 124D raw for physics RHS
+                        state_at_t_raw = relative_to_raw(
+                            state_at_t.reshape(-1, state_dim)
+                        ).reshape(B_phys, N_c, RAW_STATE_DIM)
+                    else:
+                        # Already in 124D raw space — no conversion needed
+                        state_at_t_raw = state_at_t
 
                     # Physics RHS: f(x) at each collocation point
                     f_physics = rhs(state_at_t_raw.reshape(-1, RAW_STATE_DIM))
                     f_physics = f_physics.reshape(B_phys, N_c, RAW_STATE_DIM)
 
-                    # Convert g_dot from normalized relative to raw derivative space
+                    # Denormalize g_dot to physical units
                     g_dot_denorm = normalizer.denormalize_delta(
-                        g_dot.reshape(-1, 130)
-                    ).reshape(g.shape[0], g.shape[1], 130)
+                        g_dot.reshape(-1, state_dim)
+                    ).reshape(g.shape[0], g.shape[1], state_dim)
 
-                    # g_dot_denorm is 130-dim relative; take first 124 dims as raw approx
-                    g_dot_raw = g_dot_denorm.reshape(-1, 130)[:, :RAW_STATE_DIM]
+                    if cfg.use_relative:
+                        # Lossy: take first 124 dims as raw approximation
+                        g_dot_raw = g_dot_denorm.reshape(-1, state_dim)[:, :RAW_STATE_DIM]
+                    else:
+                        # Exact: g_dot is already 124D raw derivatives
+                        g_dot_raw = g_dot_denorm.reshape(-1, RAW_STATE_DIM)
+
                     f_phys_flat = f_physics.reshape(-1, RAW_STATE_DIM)
 
                     # Nondimensionalize both sides for balanced comparison
@@ -851,16 +873,22 @@ def train_single_config(cfg: DDPINNTrainConfig, run_dir: Path) -> dict:
             with amp_ctx:
                 pred_delta_norm = model(state_norm, action, time_enc)
 
-            pred_delta_rel = normalizer.denormalize_delta(pred_delta_norm)
+            pred_delta = normalizer.denormalize_delta(pred_delta_norm)
 
-            pred_next_rel = state + pred_delta_rel
-            true_next_rel = state + delta
+            pred_next = state + pred_delta
+            true_next = state + delta
 
-            _ensure_papers_path()
-            from aprx_model_elastica.state import relative_to_raw
-            pred_next_raw = relative_to_raw(pred_next_rel)
-            true_next_raw = relative_to_raw(true_next_rel)
-            raw_state_batch = relative_to_raw(state)
+            if cfg.use_relative:
+                _ensure_papers_path()
+                from aprx_model_elastica.state import relative_to_raw
+                pred_next_raw = relative_to_raw(pred_next)
+                true_next_raw = relative_to_raw(true_next)
+                raw_state_batch = relative_to_raw(state)
+            else:
+                # Already in raw space
+                pred_next_raw = pred_next
+                true_next_raw = true_next
+                raw_state_batch = state
 
             all_pred_raw.append(pred_next_raw - raw_state_batch)
             all_true_raw.append(true_next_raw - raw_state_batch)
@@ -900,7 +928,7 @@ def train_single_config(cfg: DDPINNTrainConfig, run_dir: Path) -> dict:
     # Save ansatz config for Phase 4 compatibility
     ansatz_config = {
         "arch": "ddpinn",
-        "state_dim": 130,
+        "state_dim": state_dim,
         "action_dim": 5,
         "time_encoding_dim": 4,
         "n_basis": cfg.n_basis,

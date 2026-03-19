@@ -42,7 +42,25 @@ Model profiles control which Claude model each GSD agent uses. This allows balan
 **inherit** - Follow the current session model
 - All agents resolve to `inherit`
 - Best when you switch models interactively (for example OpenCode `/model`)
+- **Required when using non-Anthropic providers** (OpenRouter, local models, etc.) — otherwise GSD may call Anthropic models directly, incurring unexpected costs
 - Use when: you want GSD to follow your currently selected runtime model
+
+## Using Non-Anthropic Models (OpenRouter, Local, etc.)
+
+If you're using Claude Code with OpenRouter, a local model, or any non-Anthropic provider, set the `inherit` profile to prevent GSD from calling Anthropic models for subagents:
+
+```bash
+# Via settings command
+/gsd:settings
+# → Select "Inherit" for model profile
+
+# Or manually in .planning/config.json
+{
+  "model_profile": "inherit"
+}
+```
+
+Without `inherit`, GSD's default `balanced` profile spawns specific Anthropic models (`opus`, `sonnet`, `haiku`) for each agent type, which can result in additional API costs through your non-Anthropic provider.
 
 ## Resolution Logic
 
@@ -92,6 +110,9 @@ Executors follow explicit PLAN.md instructions. The plan already contains the re
 
 **Why Sonnet (not Haiku) for verifiers in balanced?**
 Verification requires goal-backward reasoning - checking if code *delivers* what the phase promised, not just pattern matching. Sonnet handles this well; Haiku may miss subtle gaps.
+
+**Why Haiku for gsd-codebase-mapper?**
+Read-only exploration and pattern extraction. No reasoning required, just structured output from file contents.
 
 **Why `inherit` instead of passing `opus` directly?**
 Claude Code's `"opus"` alias maps to a specific model version. Organizations may block older opus versions while allowing newer ones. GSD returns `"inherit"` for opus-tier agents, causing them to use whatever opus version the user has configured in their session. This avoids version conflicts and silent fallbacks to Sonnet.

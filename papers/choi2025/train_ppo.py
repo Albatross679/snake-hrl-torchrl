@@ -7,6 +7,14 @@ Usage:
 """
 
 import argparse
+import os
+
+# Limit thread spawning for parallel envs to avoid pthread exhaustion
+os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
+os.environ.setdefault("MKL_NUM_THREADS", "1")
+os.environ.setdefault("OMP_NUM_THREADS", "1")
+
+from torchrl.envs import RewardSum
 
 from choi2025.config import Choi2025PPOConfig, Choi2025EnvConfig, TaskType
 from choi2025.env import SoftManipulatorEnv
@@ -36,7 +44,7 @@ def parse_args() -> argparse.Namespace:
         "--total-frames", type=int, default=None, help="Total training frames"
     )
     parser.add_argument(
-        "--num-envs", type=int, default=1, help="Number of parallel envs"
+        "--num-envs", type=int, default=32, help="Number of parallel envs"
     )
     parser.add_argument(
         "--max-wall-time",
@@ -84,6 +92,9 @@ def main():
         )
     else:
         env = SoftManipulatorEnv(config.env, device=device)
+
+    # Accumulate per-step rewards into episode_reward for monitoring
+    env = env.append_transform(RewardSum())
 
     try:
         with ConsoleLogger(run_dir, config.console):

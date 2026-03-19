@@ -183,7 +183,7 @@ class Choi2025NetworkConfig(NetworkConfig):
             activation="relu",
             ortho_init=True,
             init_gain=0.01,
-            min_std=0.01,
+            min_std=0.1,
             max_std=1.0,
             init_std=0.5,
         )
@@ -257,8 +257,8 @@ class Choi2025PPOConfig(PPOConfig):
     learning_rate: float = 3e-4
     clip_epsilon: float = 0.2
     num_epochs: int = 10
-    mini_batch_size: int = 64
-    frames_per_batch: int = 4096
+    mini_batch_size: int = 1024
+    frames_per_batch: int = 8192
     gae_lambda: float = 0.95
     entropy_coef: float = 0.01
     value_coef: float = 0.5

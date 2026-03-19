@@ -454,6 +454,7 @@ class PPOTrainer:
         }
 
         # Multiple epochs over the batch
+        kl_break = False
         for epoch in range(self.config.num_epochs):
             # Shuffle and create mini-batches
             indices = torch.randperm(batch.numel())
@@ -466,19 +467,26 @@ class PPOTrainer:
 
                 mini_batch = batch[mb_indices]
 
-                # Compute loss with AMP context
-                with amp_ctx:
-                    loss_dict = self.loss_module(mini_batch)
+                # Compute loss in f32 — bf16 causes catastrophic precision
+                # loss in TanhNormal log-prob / importance ratio computation
+                loss_dict = self.loss_module(mini_batch)
 
-                    # Total loss
-                    loss = (
-                        loss_dict["loss_objective"]
-                        + self.config.value_coef * loss_dict["loss_critic"]
-                        + self.config.entropy_coef * loss_dict.get("loss_entropy", 0.0)
-                    )
+                # Total loss
+                loss = (
+                    loss_dict["loss_objective"]
+                    + self.config.value_coef * loss_dict["loss_critic"]
+                    + self.config.entropy_coef * loss_dict.get("loss_entropy", 0.0)
+                )
 
                 # Backward pass (OUTSIDE amp context)
                 self.optimizer.zero_grad()
+
+                # NaN guard layer 1: skip backward if loss is NaN/inf
+                if not torch.isfinite(loss):
+                    print(f"  [WARNING] NaN/inf loss detected at step {self.total_frames}, skipping update")
+                    grad_norm = None
+                    continue
+
                 loss.backward()
 
                 # Gradient clipping
@@ -488,7 +496,17 @@ class PPOTrainer:
                         self.config.max_grad_norm,
                     )
                 else:
-                    grad_norm = None
+                    # Compute grad norm for NaN check even without clipping
+                    grad_norm = torch.nn.utils.clip_grad_norm_(
+                        self.loss_module.parameters(),
+                        float('inf'),
+                    )
+
+                # NaN guard layer 2: skip step if gradients are NaN/inf
+                if grad_norm is not None and not torch.isfinite(grad_norm):
+                    print(f"  [WARNING] NaN/inf gradients (norm={grad_norm:.4f}) at step {self.total_frames}, skipping update")
+                    self.optimizer.zero_grad()
+                    continue
 
                 self.optimizer.step()
 
@@ -509,7 +527,16 @@ class PPOTrainer:
                     # Estimate clip fraction from effective sample size if available
                     pass
 
+                # Per-batch KL early stopping: break inner loop on KL spike
+                if self.config.target_kl and "kl_approx" in loss_dict:
+                    batch_kl = loss_dict["kl_approx"].item()
+                    if batch_kl > 1.5 * self.config.target_kl:
+                        kl_break = True
+                        break
+
             # Early stopping on KL divergence (compare average, not accumulated sum)
+            if kl_break:
+                break
             updates_so_far = (epoch + 1) * num_batches
             avg_kl = metrics["kl_divergence"] / max(1, updates_so_far)
             if self.config.target_kl and avg_kl > self.config.target_kl:

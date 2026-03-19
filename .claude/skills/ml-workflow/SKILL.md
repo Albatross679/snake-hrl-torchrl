@@ -62,13 +62,31 @@ Structured checklist for building and verifying ML training pipelines. Every tra
 - [ ] **Metric key namespacing** followed:
   - *(no prefix)*: per-epoch (`train_loss`, `dev_loss`, eval metrics, `gradient_norm`, `lr`)
   - `batch/`: per-batch (`loss`, `gradient_norm`, `lr`, step = global batch counter)
-  - `timing/`: per-epoch (`epoch_seconds`, `wall_clock_seconds`, `train_epoch_seconds`, `train_tokens_per_sec`)
+  - `timing/`: per-epoch (`epoch_seconds`, `wall_clock_seconds`, `train_epoch_seconds`, `train_tokens_per_sec`) plus per-section breakdown (see Phase 3.5)
   - `tracking/`: per-epoch (`best_{metric}`, `epochs_since_improvement`)
   - `system/`: per-epoch (GPU/CPU/RAM when `log_system_metrics=True`)
 - [ ] **One-time params** logged: `total_params`, `trainable_params`, `num_train_samples`, `num_dev_samples`, `gpu_name`.
 - [ ] `wandb.finish()` called before starting a new run (critical for auto-batch sequential mode).
 - [ ] Resume supported via `wandb.init(resume="allow", id=run_id)`.
 - [ ] **Model artifact**: best model checkpoint uploaded to W&B as versioned artifact via `log_model_artifact()` — once per run at end of training (not per improvement).
+
+## Phase 3.5: Training Loop Profiling
+
+- [ ] **Per-section elapsed time** tracked in the training loop. Each iteration measures wall-clock time for each major section using `time.monotonic()` pairs. Sections to instrument:
+  - `timing/env_step_seconds` — environment stepping (physics simulation, e.g., DisMech). For RL: time inside `env.step()` or `collector.rollout()`.
+  - `timing/inference_seconds` — policy forward pass (actor inference for action selection). For off-policy (SAC): time in `actor(obs)`. For on-policy (PPO): included in rollout collection.
+  - `timing/backward_seconds` — loss computation + backward pass + optimizer step. For SAC: critic + actor + alpha updates combined. For PPO: all minibatch epochs combined.
+  - `timing/data_seconds` — data loading, replay buffer sampling, or batch preparation.
+  - `timing/overhead_seconds` — everything else (logging, checkpointing, metric computation).
+- [ ] **Timing metrics logged to W&B** under `timing/` namespace, per batch or per epoch depending on granularity.
+- [ ] **(conditional: RL with parallel envs)** `timing/env_step_seconds` measures the full `ParallelEnv.step()` call including inter-process communication — this is the key number for diagnosing CPU-bound bottlenecks.
+- [ ] **Timing fraction logged** — compute and log `timing/env_step_pct`, `timing/backward_pct` etc. as percentage of total iteration time. Allows quick identification of bottleneck on W&B dashboard.
+  ```python
+  total = env_dt + inference_dt + backward_dt + data_dt + overhead_dt
+  metrics["timing/env_step_pct"] = env_dt / total * 100
+  metrics["timing/backward_pct"] = backward_dt / total * 100
+  # etc.
+  ```
 
 ## Phase 4: Mixed Precision (bf16)
 
@@ -85,6 +103,20 @@ Structured checklist for building and verifying ML training pipelines. Every tra
 - [ ] Inference wrapped in `torch.inference_mode()` + AMP context.
 - [ ] **No GradScaler** in the codebase (bf16 doesn't need it).
 - [ ] **(conditional: pre-Ampere GPU)** `use_amp=False` is set.
+
+## Phase 4.5: Async Environment Stepping (RL)
+
+- [ ] **(conditional: RL with num_envs > 1)** Use `ParallelEnv` (not `SerialEnv`) to pipeline CPU env stepping with GPU policy inference. `SerialEnv` blocks the GPU while each env steps sequentially on CPU.
+  ```python
+  from torchrl.envs import ParallelEnv
+  env = ParallelEnv(
+      num_workers=config.num_envs,
+      create_env_fn=lambda: make_env(config),
+  )
+  ```
+- [ ] Env creation function must be **picklable** — use a top-level function or `CloudpickleWrapper`, not a lambda capturing local state.
+- [ ] `env.close()` called during cleanup to terminate worker processes (prevents zombie processes).
+- [ ] **(conditional: CPU-bound physics like DisMech)** `ParallelEnv` is especially critical — GPU sits idle during serial physics stepping. With parallel stepping, GPU can process the previous batch while envs compute the next.
 
 ## Phase 5: VRAM Management
 

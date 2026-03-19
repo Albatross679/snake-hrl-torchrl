@@ -97,9 +97,12 @@ class DDPINNModel(nn.Module):
             nn.Linear(hidden_dim, hidden_dim) for _ in range(n_layers)
         ])
 
-        # Output layer: zero-init so initial prediction = zero params = zero delta
+        # Output layer: small random init to avoid gradient deadlock.
+        # The ansatz guarantees g(a,0)=0 for ANY params, so zero-init is not
+        # needed for IC satisfaction. Zero-init causes all ansatz params to be
+        # zero, making alpha=0 which blocks all gradient flow (∂g/∂params = 0).
         self.output = nn.Linear(hidden_dim, self.ansatz.param_dim)
-        nn.init.zeros_(self.output.weight)
+        nn.init.normal_(self.output.weight, std=0.01)
         nn.init.zeros_(self.output.bias)
 
         # Init hidden layers

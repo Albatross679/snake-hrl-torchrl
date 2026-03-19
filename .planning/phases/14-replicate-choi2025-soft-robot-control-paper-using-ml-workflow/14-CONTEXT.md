@@ -21,11 +21,12 @@ Replicate the Choi & Tong (2025) paper's soft manipulator control experiments us
 - Custom RL algorithm deferred to a future phase
 
 ### Training setup
-- 32 parallel envs on single GPU (match CPU count; DisMech is CPU-bound)
+- 32 parallel envs on single GPU using `ParallelEnv` (not `SerialEnv`) to pipeline CPU/GPU work (DisMech is CPU-bound)
 - Hardware: 2x RTX A4000 (16GB each), 32 CPUs — train on 1 GPU, keep 2nd free
 - W&B project: `choi2025-replication`
-- SAC hyperparams from paper: lr=0.001, batch=2048, buffer=2M, UTD=4, 3×256 ReLU MLP
-- PPO uses standard defaults (clip=0.2, epochs=10, minibatch=64) with same 3×256 network
+- SAC hyperparams from paper: lr=0.001, batch=2048, buffer=2M, UTD=4, 3×1024 ReLU MLP (scaled up from paper's 3×256 to maximize GPU utilization)
+- PPO uses standard defaults (clip=0.2, epochs=10, minibatch=64) with same 3×1024 network
+- bf16 mixed precision enabled by default (use_amp=True in shared RLConfig)
 - Experiment matrix: 4 tasks × 2 algorithms = 8 runs (after validation passes)
 
 ### Replication folder

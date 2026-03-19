@@ -1940,6 +1940,81 @@ The complete right-hand side assembles all six blocks:
   \label{eq:pinn:rhs-full}
 \end{equation}
 
+\paragraph{Comparison with Elastica simulator physics.}
+The differentiable Cosserat RHS $\fssm$ implements a subset of the full Elastica transition operator (\cref{alg:elastica-transition}).
+\Cref{tab:pinn:physics-comparison} summarises term-by-term which physics is retained, simplified, or omitted, and why.
+
+\begin{table}[H]
+\centering
+\caption{Physics fidelity comparison: Elastica simulator (\cref{alg:elastica-transition}) vs.\ differentiable PINN RHS (\texttt{CosseratRHS}) vs.\ algebraic regularizer (\texttt{PhysicsRegularizer}).}
+\label{tab:pinn:physics-comparison}
+\footnotesize
+\renewcommand{\arraystretch}{1.25}
+\begin{tabular}{@{} p{2.8cm} p{3.4cm} p{3.4cm} p{3.4cm} @{}}
+\toprule
+\textbf{Physics term} &
+  \textbf{Elastica (Alg.~\ref{alg:elastica-transition})} &
+  \textbf{DD-PINN RHS} &
+  \textbf{Regularizer} \\
+\midrule
+Kinematics ($\dot{p}=v$, $\dot{\psi}=\omega$)
+  & Exact (Verlet half-step)
+  & Exact
+  & Soft penalty (C1, C2) \\[3pt]
+Shear--stretch
+  & Full: $\mathbf{n}_e^L = \mathbf{S}(\boldsymbol{\sigma}_e - \boldsymbol{\sigma}_e^{\text{rest}})$ via rotation matrices $\mathbf{Q}_e$
+  & Omitted (inextensible rod approximation)
+  & Omitted \\[3pt]
+Bending moments
+  & Full 3D: director-based curvature on Voronoi domain, $\mathbf{B}(\boldsymbol{\kappa}_v - \boldsymbol{\kappa}^{\text{rest}})$
+  & 2D simplified: $M_j = EI\,(\psi_{j+1} - \psi_j)/\Delta\ell$, finite-difference torque gradient
+  & Approximate curvature consistency (C3, weight $0.1\times$) \\[3pt]
+\raggedright RFT friction
+  & Anisotropic: $-c_t \mathbf{v}_{\mathrm{tan}} - c_n \mathbf{v}_{\mathrm{norm}}$ + viscous damping $-\gamma\dot{\mathbf{x}}$
+  & Anisotropic only: $-c_t \mathbf{v}_{\mathrm{tan}} - c_n \mathbf{v}_{\mathrm{norm}}$ with $\varepsilon$-regularised tangents; no damping
+  & Not modelled (data-only) \\[3pt]
+Gravity
+  & $\mathbf{m}\,\mathbf{g}^T$ (normal to plane)
+  & Omitted (planar; $\perp$ to motion plane)
+  & Omitted \\[3pt]
+Elastic forces (nodes)
+  & Full shear + bending force via $\mathbf{D}^T[\mathbf{Q}_e\,\mathbf{n}_e^L/\varepsilon_e]$ + moment gradient
+  & Bending only: $M_j\,\hat{n}_j / \Delta\ell^2$ at internal joints
+  & Not modelled \\[3pt]
+Newton's 2nd law
+  & $\ddot{\mathbf{x}} = (\mathbf{F}^{\text{int}} + \mathbf{F}^{\text{ext}}) / \mathbf{m}$
+  & $\dot{\mathbf{v}} = (\mathbf{F}^{\text{fric}} + \mathbf{F}^{\text{elastic}}) / m_i$
+  & Energy bound (C4): penalises $|\Delta\text{KE}| > \tau$ \\[3pt]
+Angular momentum
+  & $\dot{\boldsymbol{\omega}}_z = \mathbf{m}^{\text{int}} / (\varepsilon_e \odot \mathbf{J})$ with dilatation
+  & Simplified: $\dot{\omega}_z = \tau^{\text{elastic}} / (\rho I \Delta\ell)$
+  & Not modelled \\[3pt]
+CPG forcing
+  & Curvature updates every substep ($\Delta\phi = 2\pi f \Delta t_{\text{sub}}$ per substep, 500 substeps)
+  & Not in RHS (learned implicitly from data)
+  & Not modelled \\[3pt]
+Time integration
+  & Position Verlet: 500 explicit substeps ($\Delta t = 1$\,ms)
+  & N/A --- evaluated at Sobol collocation points, no time-stepping
+  & N/A --- single-step $\Delta t = 0.5$\,s \\[3pt]
+\midrule
+\textbf{Differentiable?}
+  & \textbf{In principle} (all arithmetic), but 500 chained substeps cause gradient explosion
+  & \textbf{Yes} --- single evaluation, all ops in PyTorch with $\varepsilon$-regularisation
+  & \textbf{Yes} --- algebraic, no simulator \\[3pt]
+\textbf{Computation cost}
+  & ${\sim}46$\,ms/step (CPU)
+  & ${\sim}0.3$\,ms/evaluation (GPU, batched)
+  & ${\sim}0.1$\,ms/evaluation (GPU, batched) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\noindent
+The dominant physics for planar snake locomotion---bending elasticity and anisotropic RFT friction ($c_n / c_t = 10$)---is preserved in the DD-PINN RHS.
+The omitted terms (stretching, viscous damping, gravity) are either negligible for in-plane motion or secondary to the primary locomotion mechanism.
+The regularizer trades physical completeness for simplicity: it encodes kinematic consistency and energy conservation without any explicit force model, relying on the training data to implicitly capture the force-level dynamics.
+
 % - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 \subsubsection{Physics-Regularized Surrogate Loss}
 \label{sec:pinn:regularizer}
