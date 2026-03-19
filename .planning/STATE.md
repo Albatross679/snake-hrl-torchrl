@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-stopped_at: Completed 15-01-PLAN.md
-last_updated: "2026-03-19T22:09:39.634Z"
+stopped_at: Completed 15-02-PLAN.md
+last_updated: "2026-03-19T22:31:45.538Z"
 progress:
   total_phases: 19
-  completed_phases: 6
+  completed_phases: 7
   total_plans: 30
-  completed_plans: 23
+  completed_plans: 24
 ---
 
 # Project State
@@ -23,8 +23,8 @@ See: .planning/PROJECT.md (updated 2026-03-09)
 
 ## Current Position
 
-Phase: 15 (implement-operator-theoretic-policy-gradient-arxiv-2603-17875-in-torchrl-alongside-ppo-and-sac) — EXECUTING
-Plan: 2 of 2
+Phase: 15 (implement-operator-theoretic-policy-gradient-arxiv-2603-17875-in-torchrl-alongside-ppo-and-sac) — COMPLETE
+Plan: 2 of 2 (all complete)
 
 ## Dataset Summary
 
@@ -73,6 +73,7 @@ Plan: 2 of 2
 | Phase 14 P02 | 81 min | 3 tasks | 6 files |
 | Phase 14 P03 | 20 min | 2 tasks | 10 files |
 | Phase 15 P01 | 6 min | 2 tasks | 5 files |
+| Phase 15 P02 | 18min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -136,6 +137,9 @@ Plan: 2 of 2
 - [Phase 15]: No entropy bonus in OTPG loss -- KL regularizer handles exploration per CONTEXT.md
 - [Phase 15]: Old distribution reconstructed from stored loc/scale via TanhNormal (not from saved policy weights)
 - [Phase 15]: Linear-time RBF MMD^2 estimator (O(n) not O(n^2)) using paired samples from TanhNormal distributions
+- [Phase 15]: Choi2025OTPGConfig mirrors PPO config structure for fair comparison (same network, env, parallelism)
+- [Phase 15]: SKIP_GPU_LOCK env var for concurrent multi-GPU training
+- [Phase 15]: 100K OTPG validation confirmed learning signal: reward 9->17 on follow_target
 
 ### Pending Todos
 
@@ -188,5 +192,5 @@ None currently.
 
 ## Session Continuity
 
-Last session: 2026-03-19T22:09:39.626Z
-Stopped at: Completed 15-01-PLAN.md
+Last session: 2026-03-19T22:31:45.532Z
+Stopped at: Completed 15-02-PLAN.md

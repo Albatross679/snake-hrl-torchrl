@@ -28,7 +28,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [ ] **Phase 12: Hamiltonian/Lagrangian NNs** - Explore physics-informed neural networks for snake dynamics
 - [x] **Phase 13: PINN and DD-PINN surrogates** - Implement physics-informed neural network surrogates with physics regularizer, DD-PINN ansatz, and full Cosserat rod physics residual (completed 2026-03-18)
 - [x] **Phase 14: Replicate Choi2025 soft robot control** - Train SAC and PPO on 4 manipulation tasks using DisMech implicit time-stepping, validate learning signal (completed 2026-03-19)
-- [ ] **Phase 15: OTPG algorithm** - Implement Operator-Theoretic Policy Gradient (MM-RKHS) as third RL trainer, benchmark on Choi2025 tasks
+- [x] **Phase 15: OTPG algorithm** - Implement Operator-Theoretic Policy Gradient (MM-RKHS) as third RL trainer, benchmark on Choi2025 tasks (completed 2026-03-19)
 
 ## Phase Details
 
@@ -253,7 +253,7 @@ Plans:
   3. Unit tests pass for config, trainer init, MMD computation, update step, checkpoint roundtrip
   4. Choi2025OTPGConfig + train_otpg.py entry point wired into benchmark suite
   5. 100K-frame quick validation on follow_target completes without crash, W&B logs OTPG metrics
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans complete
 
 Plans:
 - [ ] 15-01-PLAN.md — OTPGConfig dataclass, OTPGTrainer with MMD loss, trainer export, unit tests
@@ -288,4 +288,4 @@ Phases 9-12 are future research directions.
 | 12. Hamiltonian/Lagrangian NNs | 0/0 | Researched | - |
 | 13. PINN/DD-PINN Surrogates | 6/6 | Complete   | 2026-03-18 |
 | 14. Choi2025 Replication | 3/3 | Complete    | 2026-03-19 |
-| 15. OTPG Algorithm | 1/2 | In Progress|  |
+| 15. OTPG Algorithm | 2/2 | Complete   | 2026-03-19 |
