@@ -28,6 +28,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [ ] **Phase 12: Hamiltonian/Lagrangian NNs** - Explore physics-informed neural networks for snake dynamics
 - [x] **Phase 13: PINN and DD-PINN surrogates** - Implement physics-informed neural network surrogates with physics regularizer, DD-PINN ansatz, and full Cosserat rod physics residual (completed 2026-03-18)
 - [x] **Phase 14: Replicate Choi2025 soft robot control** - Train SAC and PPO on 4 manipulation tasks using DisMech implicit time-stepping, validate learning signal (completed 2026-03-19)
+- [ ] **Phase 15: OTPG algorithm** - Implement Operator-Theoretic Policy Gradient (MM-RKHS) as third RL trainer, benchmark on Choi2025 tasks
 
 ## Phase Details
 
@@ -241,6 +242,23 @@ Plans:
 - [ ] 14-02-PLAN.md — Quick validation (8 configs x 100K frames), human verify, launch full 1M training in tmux
 - [ ] 14-03-PLAN.md — Record video rollouts, analyze results, create comprehensive experiment report
 
+### Phase 15: Implement Operator-Theoretic Policy Gradient (arXiv:2603.17875) in TorchRL alongside PPO and SAC
+
+**Goal:** Add OTPG (Operator-Theoretic Policy Gradient) as a third RL trainer alongside PPO and SAC, implementing the MM-RKHS algorithm from Gupta & Mahajan (2026) adapted for continuous action spaces with neural network function approximation. Benchmark on the Choi2025 4-task suite for direct comparison with Phase 14's PPO/SAC results. This is a learning-signal validation (100K frames), not a full training campaign.
+**Requirements**: OTPG-01, OTPG-02, OTPG-03, OTPG-04, OTPG-05, OTPG-06
+**Depends on:** Phase 14
+**Success Criteria** (what must be TRUE):
+  1. OTPGConfig dataclass with MM-RKHS hyperparameters (beta, eta, MMD bandwidth/samples) inheriting RLConfig
+  2. OTPGTrainer class with MMD-based trust region loss, following PPOTrainer pattern
+  3. Unit tests pass for config, trainer init, MMD computation, update step, checkpoint roundtrip
+  4. Choi2025OTPGConfig + train_otpg.py entry point wired into benchmark suite
+  5. 100K-frame quick validation on follow_target completes without crash, W&B logs OTPG metrics
+**Plans:** 2 plans
+
+Plans:
+- [ ] 15-01-PLAN.md — OTPGConfig dataclass, OTPGTrainer with MMD loss, trainer export, unit tests
+- [ ] 15-02-PLAN.md — Choi2025OTPGConfig, train_otpg.py entry point, 100K-frame validation run
+
 ## Progress
 
 **Execution Order:**
@@ -249,6 +267,7 @@ Phase 7 is exploratory and can run in parallel after Phase 3.
 Phase 8 (Elastica baseline) can run in parallel with Phases 3-5 after Phase 2.
 Phase 13 can run in parallel with Phases 4-5 after Phase 3 (uses Phase 3 baseline).
 Phase 14 can run in parallel after Phase 13.
+Phase 15 follows Phase 14 (extends Choi2025 benchmark with OTPG).
 Phases 9-12 are future research directions.
 
 | Phase | Plans Complete | Status | Completed |
@@ -269,3 +288,4 @@ Phases 9-12 are future research directions.
 | 12. Hamiltonian/Lagrangian NNs | 0/0 | Researched | - |
 | 13. PINN/DD-PINN Surrogates | 6/6 | Complete   | 2026-03-18 |
 | 14. Choi2025 Replication | 3/3 | Complete    | 2026-03-19 |
+| 15. OTPG Algorithm | 0/2 | **PLANNED** | - |
