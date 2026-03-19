@@ -60,5 +60,9 @@ Train a neural surrogate model accurate enough to replace Elastica simulation du
 | Autonomous agent fixes issues | Overnight run can't wait for human intervention | — Pending |
 | Density-weighted training data | Compensate for uneven coverage in state space | — Pending |
 
+## Current State
+
+Phase 14 complete — Choi2025 soft robot control paper replication using ML workflow. PPO config, training infrastructure, 8-run experiment matrix, video rollouts, and comprehensive results report all delivered. SAC shows confirmed learning signal; PPO needs longer training runs for definitive comparison. Full 1M-frame training running in tmux.
+
 ---
-*Last updated: 2026-03-09 after initialization*
+*Last updated: 2026-03-19 after Phase 14 completion*
