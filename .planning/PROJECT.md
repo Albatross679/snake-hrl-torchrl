@@ -62,7 +62,7 @@ Train a neural surrogate model accurate enough to replace Elastica simulation du
 
 ## Current State
 
-Phase 14 complete — Choi2025 soft robot control paper replication using ML workflow. PPO config, training infrastructure, 8-run experiment matrix, video rollouts, and comprehensive results report all delivered. SAC shows confirmed learning signal; PPO needs longer training runs for definitive comparison. Full 1M-frame training running in tmux.
+Phase 15 complete — Operator-Theoretic Policy Gradient (OTPG) from arXiv:2603.17875 implemented alongside PPO and SAC. OTPGTrainer with MMD-RKHS trust region loss, Choi2025 benchmark integration, and 100K-frame validation showing learning signal (reward 9→21 on follow_target). Three RL algorithms now available for comparison.
 
 ---
-*Last updated: 2026-03-19 after Phase 14 completion*
+*Last updated: 2026-03-19 after Phase 15 completion*
