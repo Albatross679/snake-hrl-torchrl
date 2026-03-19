@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-stopped_at: Completed 14-01-PLAN.md
+stopped_at: Completed 14-02-PLAN.md
 last_updated: "2026-03-19T03:52:02.540Z"
 progress:
   total_phases: 18
   completed_phases: 5
   total_plans: 28
-  completed_plans: 20
+  completed_plans: 21
 ---
 
 # Project State
@@ -24,7 +24,7 @@ See: .planning/PROJECT.md (updated 2026-03-09)
 ## Current Position
 
 Phase: 14 (replicate-choi2025-soft-robot-control-paper-using-ml-workflow) — EXECUTING
-Plan: 2 of 3
+Plan: 3 of 3
 
 ## Dataset Summary
 
@@ -70,6 +70,7 @@ Plan: 2 of 3
 | Phase 13 P01 | 3 min | 1 tasks | 5 files |
 | Phase 13 P02 | 3 min | 1 tasks | 4 files |
 | Phase 14 P01 | 8 min | 3 tasks | 8 files |
+| Phase 14 P02 | 81 min | 3 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -123,6 +124,10 @@ Plan: 2 of 3
 - [Phase 14]: 3x1024 network (scaled up from paper's 3x256) to maximize GPU utilization
 - [Phase 14]: SAC switched from direct wandb.init to wandb_utils.setup_run for consistency
 - [Phase 14]: Watchdog timeout in run_experiment.py: wall_time + 10min, exit 137/143 = hung
+- [Phase 14]: Mock physics backend (_MockRodState) used since DisMech not installed
+- [Phase 14]: ParallelEnv workers run on CPU to avoid CUDA context exhaustion
+- [Phase 14]: Quick validation used 10K frames due to SAC UTD=4 throughput with single env
+- [Phase 14]: step_mdp() for auto-reset MDP state advancement in vectorized SAC
 
 ### Pending Todos
 
@@ -172,5 +177,5 @@ None currently.
 
 ## Session Continuity
 
-Last session: 2026-03-19T03:52:02.534Z
-Stopped at: Completed 14-01-PLAN.md
+Last session: 2026-03-19T05:14:43Z
+Stopped at: Completed 14-02-PLAN.md

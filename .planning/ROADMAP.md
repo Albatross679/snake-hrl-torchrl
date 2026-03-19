@@ -234,7 +234,7 @@ Plans:
   4. Reward improves over training for all 4 tasks with both algorithms (learning signal)
   5. Video rollouts recorded from best SAC and PPO checkpoints for all 4 tasks
   6. Comprehensive results documented with learning signal assessment
-**Plans:** 1/3 plans executed
+**Plans:** 2/3 plans executed
 
 Plans:
 - [ ] 14-01-PLAN.md — Create Choi2025PPOConfig, train_ppo.py, update evaluate.py for dual-algo, create run_experiment.py
@@ -268,4 +268,4 @@ Phases 9-12 are future research directions.
 | 11. Model-Based RL | 0/0 | Not planned | - |
 | 12. Hamiltonian/Lagrangian NNs | 0/0 | Researched | - |
 | 13. PINN/DD-PINN Surrogates | 6/6 | Complete   | 2026-03-18 |
-| 14. Choi2025 Replication | 1/3 | In Progress|  |
+| 14. Choi2025 Replication | 2/3 | In Progress|  |
