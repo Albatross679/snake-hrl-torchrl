@@ -130,11 +130,19 @@ def main():
             results = trainer.train()
             print(f"Done: {results['total_episodes']} episodes, best={results['best_reward']:.2f}")
     finally:
-        env.close()
+        try:
+            env.close()
+        except RuntimeError:
+            pass  # Already closed by collector
 
 
 if __name__ == "__main__":
-    from src.utils.gpu_lock import GpuLock
-
-    with GpuLock():
+    # Skip GpuLock when running on a dedicated GPU (e.g. CUDA_VISIBLE_DEVICES=1)
+    # to allow concurrent training on separate GPUs
+    if os.environ.get("SKIP_GPU_LOCK"):
         main()
+    else:
+        from src.utils.gpu_lock import GpuLock
+
+        with GpuLock():
+            main()
