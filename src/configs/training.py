@@ -134,6 +134,9 @@ class SACConfig(RLConfig):
     update_frequency: int = 1  # How often to update (in env steps)
     num_updates: int = 1  # Updates per update step
 
+    # Target network update frequency
+    soft_update_period: int = 1  # Update target every N critic updates (1 = every update)
+
     # Critic
     num_critics: int = 2  # Number of Q-networks for min-Q trick
     critic_lr: float = 3e-4

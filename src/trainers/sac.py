@@ -273,7 +273,12 @@ class SACTrainer:
 
                 # Environment step (move back to env device for stepping)
                 td_env = td_device.to(td.device)
-                next_td = self.env.step(td_env)
+                if is_vec:
+                    # step_and_maybe_reset handles auto-reset for done envs
+                    next_td, td_reset = self.env.step_and_maybe_reset(td_env)
+                else:
+                    next_td = self.env.step(td_env)
+                    td_reset = None
                 env_dt = time.monotonic() - t0
 
                 # --- Timing: data (replay buffer) ---
@@ -342,10 +347,8 @@ class SACTrainer:
                         episode_rewards[done_mask] = 0.0
                         episode_lengths[done_mask] = 0
 
-                    # TorchRL auto-resets; advance MDP state for next step
-                    # step_mdp moves "next" to top-level so td has fresh obs
-                    from torchrl.envs.utils import step_mdp
-                    td = step_mdp(next_td)
+                    # step_and_maybe_reset already applied step_mdp + reset
+                    td = td_reset
                 else:
                     # Single env path (original logic)
                     episode_rewards[0] += step_result["reward"].item()
@@ -494,6 +497,8 @@ class SACTrainer:
         self.critic_optimizer.zero_grad()
         critic_loss.backward()  # OUTSIDE amp context
         critic_grad_norm = compute_grad_norm(self.critic)
+        if self.config.max_grad_norm is not None:
+            nn.utils.clip_grad_norm_(self.critic.parameters(), self.config.max_grad_norm)
         self.critic_optimizer.step()
 
         # Update actor (less frequently)
@@ -519,6 +524,8 @@ class SACTrainer:
             self.actor_optimizer.zero_grad()
             actor_loss.backward()  # OUTSIDE amp context
             actor_grad_norm = compute_grad_norm(self.actor)
+            if self.config.max_grad_norm is not None:
+                nn.utils.clip_grad_norm_(self.actor.parameters(), self.config.max_grad_norm)
             self.actor_optimizer.step()
 
             # Update alpha
@@ -532,8 +539,9 @@ class SACTrainer:
                 alpha_loss.backward()  # OUTSIDE amp context
                 self.alpha_optimizer.step()
 
-        # Update target networks
-        self._soft_update()
+        # Update target networks (every soft_update_period updates)
+        if self._update_count % self.config.soft_update_period == 0:
+            self._soft_update()
 
         metrics = {
             "critic_loss": critic_loss.item(),
