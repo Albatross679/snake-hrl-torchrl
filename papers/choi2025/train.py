@@ -16,6 +16,11 @@ from src.configs.base import resolve_device
 from src.trainers.sac import SACTrainer
 
 
+def _make_env(env_config, device):
+    """Top-level env factory for picklability with ParallelEnv."""
+    return SoftManipulatorEnv(env_config, device=device)
+
+
 def parse_wall_time(s: str) -> float:
     """Parse a wall-time string into seconds.
 
@@ -87,36 +92,44 @@ def main():
 
     # Create environment
     if config.num_envs > 1:
-        from torchrl.envs import SerialEnv
+        from torchrl.envs import ParallelEnv
 
-        env = SerialEnv(
-            config.num_envs,
-            lambda: SoftManipulatorEnv(config.env, device=device),
+        env = ParallelEnv(
+            num_workers=config.num_envs,
+            create_env_fn=[
+                lambda cfg=config.env, dev=device: _make_env(cfg, dev)
+            ] * config.num_envs,
         )
     else:
         env = SoftManipulatorEnv(config.env, device=device)
 
-    with ConsoleLogger(run_dir, config.console):
-        # Create trainer
-        trainer = SACTrainer(
-            env=env,
-            config=config,
-            network_config=config.network,
-            device=device,
-            run_dir=run_dir,
-        )
+    try:
+        with ConsoleLogger(run_dir, config.console):
+            # Create trainer
+            trainer = SACTrainer(
+                env=env,
+                config=config,
+                network_config=config.network,
+                device=device,
+                run_dir=run_dir,
+            )
 
-        # Train
-        wall_msg = ""
-        if config.max_wall_time is not None:
-            mins = config.max_wall_time / 60
-            wall_msg = f", max wall time {mins:.0f}min"
-        print(f"Training {args.task} with {config.total_frames} frames{wall_msg}")
-        print(f"  Device: {device}")
-        print(f"  Run directory: {run_dir}")
-        results = trainer.train()
-        print(f"Done: {results['total_episodes']} episodes, best={results['best_reward']:.2f}")
+            # Train
+            wall_msg = ""
+            if config.max_wall_time is not None:
+                mins = config.max_wall_time / 60
+                wall_msg = f", max wall time {mins:.0f}min"
+            print(f"Training {args.task} with {config.total_frames} frames{wall_msg}")
+            print(f"  Device: {device}")
+            print(f"  Run directory: {run_dir}")
+            results = trainer.train()
+            print(f"Done: {results['total_episodes']} episodes, best={results['best_reward']:.2f}")
+    finally:
+        env.close()
 
 
 if __name__ == "__main__":
-    main()
+    from src.utils.gpu_lock import GpuLock
+
+    with GpuLock():
+        main()
