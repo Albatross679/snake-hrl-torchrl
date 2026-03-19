@@ -11,11 +11,14 @@ Changes from original:
 - One-time params logged (total_params, gpu_name)
 - Best model uploaded as W&B artifact at end of training
 - Checkpointing config wired to Checkpointing dataclass
+- bf16 mixed precision via torch.amp.autocast
+- Per-section timing profiling (env_step, backward, data, overhead)
 """
 
 import json
 import time
 from collections import deque
+from contextlib import nullcontext
 from typing import Optional, Dict, Any, Callable
 from pathlib import Path
 import os
@@ -49,6 +52,13 @@ from src import wandb_utils
 
 # Default STOP file path (relative to working directory)
 STOP_FILE = "STOP"
+
+
+def _amp_context(use_amp: bool, device: str):
+    """Create AMP autocast context for bf16 mixed precision."""
+    if use_amp and 'cuda' in str(device):
+        return torch.amp.autocast('cuda', dtype=torch.bfloat16)
+    return nullcontext()
 
 
 class PPOTrainer:
@@ -171,6 +181,8 @@ class PPOTrainer:
         # Log one-time params
         extra_params = wandb_utils._count_parameters(self.loss_module)
         extra_params["num_envs"] = self.config.num_envs
+        extra_params["use_amp"] = self.config.use_amp
+        extra_params["amp_dtype"] = "bfloat16" if self.config.use_amp else "float32"
         extra_params.update(wandb_utils.collect_hardware_info(self.device))
         wandb_utils.log_extra_params(self.wandb_run, extra_params)
 
@@ -213,7 +225,13 @@ class PPOTrainer:
         stop_reason = "completed"
 
         try:
+            # Track env step time across collector iterations
+            _collector_start = time.monotonic()
+
             for batch_idx, batch in enumerate(self.collector):
+                # --- Timing: env step (rollout collection via SyncDataCollector) ---
+                env_dt = time.monotonic() - _collector_start
+
                 # Check for graceful shutdown (SIGINT/SIGTERM)
                 if self._shutdown_requested:
                     print("Shutdown requested, saving checkpoint...")
@@ -249,6 +267,9 @@ class PPOTrainer:
                     stop_reason = "early_stopping"
                     break
 
+                # --- Timing: data (batch transfer + GAE computation) ---
+                t0 = time.monotonic()
+
                 # Move batch to training device (ParallelEnv produces CPU tensors)
                 batch = batch.to(self.device)
 
@@ -259,9 +280,15 @@ class PPOTrainer:
                 # Compute advantages
                 with torch.no_grad():
                     self.advantage_module(batch)
+                data_dt = time.monotonic() - t0
+
+                # --- Timing: backward (PPO update epochs) ---
+                t0 = time.monotonic()
 
                 # PPO update
                 metrics = self._update(batch)
+                backward_dt = time.monotonic() - t0
+
                 metrics["batch_idx"] = batch_idx
                 metrics["total_frames"] = self.total_frames
 
@@ -339,6 +366,9 @@ class PPOTrainer:
                 metrics["step_time_ms"] = (batch_time_s / batch.numel()) * 1000 if batch.numel() > 0 else 0.0
                 self._batch_start_time = time.monotonic()
 
+                # --- Timing: overhead (logging, checkpointing) ---
+                t0 = time.monotonic()
+
                 all_metrics.append(metrics)
 
                 # Write to metrics.jsonl (every batch)
@@ -359,6 +389,20 @@ class PPOTrainer:
                 # Update learning rate
                 if self.scheduler:
                     self.scheduler.step()
+
+                overhead_dt = time.monotonic() - t0
+
+                # Compute timing fractions and add to metrics
+                total_dt = env_dt + data_dt + backward_dt + overhead_dt
+                metrics["timing/env_step_seconds"] = env_dt
+                metrics["timing/data_seconds"] = data_dt
+                metrics["timing/backward_seconds"] = backward_dt
+                metrics["timing/overhead_seconds"] = overhead_dt
+                metrics["timing/env_step_pct"] = env_dt / total_dt * 100 if total_dt > 0 else 0
+                metrics["timing/backward_pct"] = backward_dt / total_dt * 100 if total_dt > 0 else 0
+
+                # Start timing for next iteration's env step (collector.__next__)
+                _collector_start = time.monotonic()
 
         finally:
             pbar.close()
@@ -399,6 +443,7 @@ class PPOTrainer:
         Returns:
             Dictionary with loss metrics including clip_fraction.
         """
+        amp_ctx = _amp_context(self.config.use_amp, self.device)
         metrics = {
             "loss_actor": 0.0,
             "loss_critic": 0.0,
@@ -421,17 +466,18 @@ class PPOTrainer:
 
                 mini_batch = batch[mb_indices]
 
-                # Compute loss
-                loss_dict = self.loss_module(mini_batch)
+                # Compute loss with AMP context
+                with amp_ctx:
+                    loss_dict = self.loss_module(mini_batch)
 
-                # Total loss
-                loss = (
-                    loss_dict["loss_objective"]
-                    + self.config.value_coef * loss_dict["loss_critic"]
-                    + self.config.entropy_coef * loss_dict.get("loss_entropy", 0.0)
-                )
+                    # Total loss
+                    loss = (
+                        loss_dict["loss_objective"]
+                        + self.config.value_coef * loss_dict["loss_critic"]
+                        + self.config.entropy_coef * loss_dict.get("loss_entropy", 0.0)
+                    )
 
-                # Backward pass
+                # Backward pass (OUTSIDE amp context)
                 self.optimizer.zero_grad()
                 loss.backward()
 
@@ -553,6 +599,15 @@ class PPOTrainer:
             wandb_log["timing/step_time_ms"] = metrics["step_time_ms"]
         wandb_log["timing/wall_clock_mins"] = (time.monotonic() - self._train_start_time) / 60.0
 
+        # Per-section timing metrics
+        for key in (
+            "timing/env_step_seconds", "timing/data_seconds",
+            "timing/backward_seconds", "timing/overhead_seconds",
+            "timing/env_step_pct", "timing/backward_pct",
+        ):
+            if key in metrics:
+                wandb_log[key] = metrics[key]
+
         # System metrics (throttled)
         sys_metrics = collect_system_metrics(
             self.device,
@@ -613,6 +668,7 @@ class PPOTrainer:
         """Evaluate current policy."""
         rewards = []
         lengths = []
+        amp_ctx = _amp_context(self.config.use_amp, self.device)
 
         for _ in range(num_episodes):
             td = self.env.reset()
@@ -621,13 +677,14 @@ class PPOTrainer:
 
             done = False
             while not done:
-                with torch.no_grad():
-                    if deterministic:
-                        # Use mean action
-                        self.actor(td)
-                        td["action"] = td["loc"]
-                    else:
-                        td = self.actor(td)
+                with torch.inference_mode():
+                    with amp_ctx:
+                        if deterministic:
+                            # Use mean action
+                            self.actor(td)
+                            td["action"] = td["loc"]
+                        else:
+                            td = self.actor(td)
 
                 td = self.env.step(td)
                 episode_reward += td["reward"].item()

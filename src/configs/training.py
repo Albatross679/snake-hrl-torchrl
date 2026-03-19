@@ -57,6 +57,9 @@ class RLConfig(MLBaseConfig):
     num_workers: int = 1
     num_envs: int = 1  # Number of parallel environments (vectorized)
 
+    # Mixed precision
+    use_amp: bool = True  # bf16 autocast (disable for pre-Ampere GPUs)
+
     # Weights & Biases
     wandb: WandB = field(default_factory=WandB)
 
