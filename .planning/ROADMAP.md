@@ -268,4 +268,4 @@ Phases 9-12 are future research directions.
 | 11. Model-Based RL | 0/0 | Not planned | - |
 | 12. Hamiltonian/Lagrangian NNs | 0/0 | Researched | - |
 | 13. PINN/DD-PINN Surrogates | 6/6 | Complete   | 2026-03-18 |
-| 14. Choi2025 Replication | 3/3 | Complete   | 2026-03-19 |
+| 14. Choi2025 Replication | 3/3 | Complete    | 2026-03-19 |
