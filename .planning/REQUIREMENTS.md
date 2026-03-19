@@ -1,7 +1,7 @@
 # Requirements: Surrogate Data Collection & Validation
 
 **Defined:** 2026-03-09
-**Updated:** 2026-03-11
+**Updated:** 2026-03-19
 **Core Value:** Produce a high-quality, well-covered dataset of snake robot dynamics transitions ready for surrogate model training
 
 ## v1 Requirements
@@ -54,6 +54,16 @@ Requirements for initial release. Each maps to roadmap phases.
 - [ ] **SVAL-05**: Validation figures — trajectory overlays (best/median/worst per scenario), per-component error heatmap, scenario comparison bars, RMSE/CoM drift over time
 - [ ] **SVAL-06**: Structured validation report — markdown report at output/surrogate/validation_report.md with summary table, per-scenario details, diagnosis section, threshold documentation
 
+### Choi2025 Soft Robot Replication (Phase 14)
+
+- [ ] **CHOI-01**: PPO config dataclass — `Choi2025PPOConfig(PPOConfig)` with clip=0.2, epochs=10, minibatch=64, 3x256 ReLU MLP, W&B project `choi2025-replication`
+- [ ] **CHOI-02**: PPO training entry point — `train_ppo.py` with same CLI interface as SAC `train.py`, using `PPOTrainer` from `src/trainers/ppo.py`
+- [ ] **CHOI-03**: Experiment matrix runner — `run_experiment.py` orchestrating 8 sequential runs (4 tasks x 2 algos) with GPU cleanup between runs, `--quick` flag for 100K validation
+- [ ] **CHOI-04**: Quick validation — all 8 configs run for 100K frames without crashes, W&B runs visible in `choi2025-replication` project
+- [ ] **CHOI-05**: Full training — all 8 configs run for 1M frames, launched in tmux with wall-time limits
+- [ ] **CHOI-06**: Video rollouts — 1-2 episode videos per task from best SAC and PPO checkpoints, saved to `media/choi2025/`
+- [ ] **CHOI-07**: Results documentation — comprehensive experiment report with learning signal assessment (reward improves over training) for all 8 runs
+
 ## v2 Requirements
 
 Deferred to future release. Tracked but not in current roadmap.
@@ -105,12 +115,19 @@ Deferred to future release. Tracked but not in current roadmap.
 | SVAL-04 | Phase 4 | Planned |
 | SVAL-05 | Phase 4 | Planned |
 | SVAL-06 | Phase 4 | Planned |
+| CHOI-01 | Phase 14 | Planned |
+| CHOI-02 | Phase 14 | Planned |
+| CHOI-03 | Phase 14 | Planned |
+| CHOI-04 | Phase 14 | Planned |
+| CHOI-05 | Phase 14 | Planned |
+| CHOI-06 | Phase 14 | Planned |
+| CHOI-07 | Phase 14 | Planned |
 
 **Coverage:**
-- v1 requirements: 28 total
-- Mapped to phases: 28
+- v1 requirements: 35 total
+- Mapped to phases: 35
 - Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-09*
-*Last updated: 2026-03-11 — added Phase 4 surrogate validation requirements (SVAL-01 through SVAL-06)*
+*Last updated: 2026-03-19 — added Phase 14 Choi2025 replication requirements (CHOI-01 through CHOI-07)*

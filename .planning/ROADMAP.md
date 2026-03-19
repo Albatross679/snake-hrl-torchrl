@@ -27,6 +27,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [ ] **Phase 11: Model-based RL** - Explore surrogate as world model for planning and policy optimization
 - [ ] **Phase 12: Hamiltonian/Lagrangian NNs** - Explore physics-informed neural networks for snake dynamics
 - [x] **Phase 13: PINN and DD-PINN surrogates** - Implement physics-informed neural network surrogates with physics regularizer, DD-PINN ansatz, and full Cosserat rod physics residual (completed 2026-03-18)
+- [ ] **Phase 14: Replicate Choi2025 soft robot control** - Train SAC and PPO on 4 manipulation tasks using DisMech implicit time-stepping, validate learning signal
 
 ## Phase Details
 
@@ -221,6 +222,25 @@ Plans:
 - [ ] 13-05-PLAN.md — DD-PINN training script with data + physics loss, n_g sweep, Stage 2 human checkpoint
 - [ ] 13-06-PLAN.md — Full DD-PINN with scaled collocation (500K-1M), L-BFGS refinement, comprehensive comparison, Stage 3 human checkpoint
 
+### Phase 14: Replicate Choi2025 soft robot control paper using ML workflow
+
+**Goal:** Train SAC and PPO policies across all 4 manipulation tasks (follow_target, inverse_kinematics, tight_obstacles, random_obstacles) using the existing `papers/choi2025/` scaffolding and DisMech implicit time-stepping. Validate learning signal with 1 seed, 32 parallel envs. Record video rollouts from best checkpoints.
+**Requirements**: CHOI-01, CHOI-02, CHOI-03, CHOI-04, CHOI-05, CHOI-06, CHOI-07
+**Depends on:** Phase 13
+**Success Criteria** (what must be TRUE):
+  1. Choi2025PPOConfig dataclass with standard PPO hyperparams wired to existing PPOTrainer
+  2. All 8 experiment configs (4 tasks x 2 algos) train without crashes at 100K frames (quick validation)
+  3. All 8 configs complete full 1M frame training with W&B logging to choi2025-replication project
+  4. Reward improves over training for all 4 tasks with both algorithms (learning signal)
+  5. Video rollouts recorded from best SAC and PPO checkpoints for all 4 tasks
+  6. Comprehensive results documented with learning signal assessment
+**Plans:** 3 plans
+
+Plans:
+- [ ] 14-01-PLAN.md — Create Choi2025PPOConfig, train_ppo.py, update evaluate.py for dual-algo, create run_experiment.py
+- [ ] 14-02-PLAN.md — Quick validation (8 configs x 100K frames), human verify, launch full 1M training in tmux
+- [ ] 14-03-PLAN.md — Record video rollouts, analyze results, create comprehensive experiment report
+
 ## Progress
 
 **Execution Order:**
@@ -228,6 +248,7 @@ Phases execute in numeric order: 1 -> 2 -> 2.1 -> 2.2 -> 3 -> 4 -> 5 -> 6
 Phase 7 is exploratory and can run in parallel after Phase 3.
 Phase 8 (Elastica baseline) can run in parallel with Phases 3-5 after Phase 2.
 Phase 13 can run in parallel with Phases 4-5 after Phase 3 (uses Phase 3 baseline).
+Phase 14 can run in parallel after Phase 13.
 Phases 9-12 are future research directions.
 
 | Phase | Plans Complete | Status | Completed |
@@ -247,3 +268,4 @@ Phases 9-12 are future research directions.
 | 11. Model-Based RL | 0/0 | Not planned | - |
 | 12. Hamiltonian/Lagrangian NNs | 0/0 | Researched | - |
 | 13. PINN/DD-PINN Surrogates | 6/6 | Complete   | 2026-03-18 |
+| 14. Choi2025 Replication | 0/3 | **PLANNED** | - |
