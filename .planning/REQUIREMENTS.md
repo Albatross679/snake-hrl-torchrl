@@ -61,8 +61,8 @@ Requirements for initial release. Each maps to roadmap phases.
 - [x] **CHOI-03**: Experiment matrix runner — `run_experiment.py` orchestrating 8 sequential runs (4 tasks x 2 algos) with GPU cleanup between runs, `--quick` flag for 100K validation
 - [x] **CHOI-04**: Quick validation — all 8 configs run for 100K frames without crashes, W&B runs visible in `choi2025-replication` project
 - [x] **CHOI-05**: Full training — all 8 configs run for 1M frames, launched in tmux with wall-time limits
-- [ ] **CHOI-06**: Video rollouts — 1-2 episode videos per task from best SAC and PPO checkpoints, saved to `media/choi2025/`
-- [ ] **CHOI-07**: Results documentation — comprehensive experiment report with learning signal assessment (reward improves over training) for all 8 runs
+- [x] **CHOI-06**: Video rollouts — 1-2 episode videos per task from best SAC and PPO checkpoints, saved to `media/choi2025/`
+- [x] **CHOI-07**: Results documentation — comprehensive experiment report with learning signal assessment (reward improves over training) for all 8 runs
 
 ## v2 Requirements
 

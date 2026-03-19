@@ -27,7 +27,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [ ] **Phase 11: Model-based RL** - Explore surrogate as world model for planning and policy optimization
 - [ ] **Phase 12: Hamiltonian/Lagrangian NNs** - Explore physics-informed neural networks for snake dynamics
 - [x] **Phase 13: PINN and DD-PINN surrogates** - Implement physics-informed neural network surrogates with physics regularizer, DD-PINN ansatz, and full Cosserat rod physics residual (completed 2026-03-18)
-- [ ] **Phase 14: Replicate Choi2025 soft robot control** - Train SAC and PPO on 4 manipulation tasks using DisMech implicit time-stepping, validate learning signal
+- [x] **Phase 14: Replicate Choi2025 soft robot control** - Train SAC and PPO on 4 manipulation tasks using DisMech implicit time-stepping, validate learning signal (completed 2026-03-19)
 
 ## Phase Details
 
@@ -234,7 +234,7 @@ Plans:
   4. Reward improves over training for all 4 tasks with both algorithms (learning signal)
   5. Video rollouts recorded from best SAC and PPO checkpoints for all 4 tasks
   6. Comprehensive results documented with learning signal assessment
-**Plans:** 2/3 plans executed
+**Plans:** 3/3 plans complete
 
 Plans:
 - [ ] 14-01-PLAN.md — Create Choi2025PPOConfig, train_ppo.py, update evaluate.py for dual-algo, create run_experiment.py
@@ -268,4 +268,4 @@ Phases 9-12 are future research directions.
 | 11. Model-Based RL | 0/0 | Not planned | - |
 | 12. Hamiltonian/Lagrangian NNs | 0/0 | Researched | - |
 | 13. PINN/DD-PINN Surrogates | 6/6 | Complete   | 2026-03-18 |
-| 14. Choi2025 Replication | 2/3 | In Progress|  |
+| 14. Choi2025 Replication | 3/3 | Complete   | 2026-03-19 |
