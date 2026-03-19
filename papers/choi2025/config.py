@@ -4,6 +4,7 @@ Hierarchy:
     DismechConfig         → Choi2025PhysicsConfig (3D clamped manipulator)
     SACConfig             → Choi2025Config (top-level project config)
     PPOConfig             → Choi2025PPOConfig (PPO variant)
+    OTPGConfig            → Choi2025OTPGConfig (OTPG variant)
 
 Composable pieces:
     DeltaCurvatureControlConfig  -- control point interpolation
@@ -20,7 +21,7 @@ from typing import List, Optional, Tuple
 from src.configs.base import Console, Output, TensorBoard, WandB
 from src.configs.network import ActorConfig, CriticConfig, NetworkConfig
 from src.configs.physics import DismechConfig, FrictionConfig, FrictionModel, GeometryConfig
-from src.configs.training import PPOConfig, SACConfig
+from src.configs.training import OTPGConfig, PPOConfig, SACConfig
 
 
 # ---------------------------------------------------------------------------
@@ -317,4 +318,49 @@ class Choi2025PPOConfig(PPOConfig):
         """Set name and experiment_name from task and algo."""
         task = self.env.task.value if isinstance(self.env.task, TaskType) else self.env.task
         self.name = f"fixed_{task}_ppo_lr3e4_{self.num_envs}envs"
+        self.experiment_name = self.name
+
+
+@dataclass
+class Choi2025OTPGConfig(OTPGConfig):
+    """Top-level config for soft manipulator OTPG training.
+
+    Operator-Theoretic Policy Gradient with MM-RKHS loss.
+    Uses same network architecture and env config as PPO for fair comparison.
+    """
+
+    name: str = "choi2025_otpg"
+    experiment_name: str = "choi2025_otpg"
+
+    # Training budget (same as PPO for comparison)
+    total_frames: int = 5_000_000
+    learning_rate: float = 3e-4
+    num_epochs: int = 10
+    mini_batch_size: int = 1024
+    frames_per_batch: int = 8192
+    gae_lambda: float = 0.95
+    normalize_advantage: bool = True
+    patience_batches: int = 0  # Disabled -- wall time controls stopping
+
+    # OTPG-specific (MM-RKHS)
+    beta: float = 1.0
+    eta: float = 1.0
+    mmd_bandwidth: float = 1.0
+    mmd_num_samples: int = 16
+    value_coef: float = 0.5
+
+    # Compose env + network + logging (identical to PPO config)
+    env: Choi2025EnvConfig = field(default_factory=Choi2025EnvConfig)
+    network: Choi2025PaperNetworkConfig = field(default_factory=Choi2025PaperNetworkConfig)
+    wandb: WandB = field(default_factory=lambda: WandB(project="choi2025-replication"))
+    output: Output = field(default_factory=Output)
+    console: Console = field(default_factory=Console)
+
+    # Parallelism (match PPO/SAC for fair comparison)
+    num_envs: int = 500
+
+    def __post_init__(self):
+        """Set name and experiment_name from task."""
+        task = self.env.task.value if isinstance(self.env.task, TaskType) else self.env.task
+        self.name = f"fixed_{task}_otpg_lr3e4_{self.num_envs}envs"
         self.experiment_name = self.name
