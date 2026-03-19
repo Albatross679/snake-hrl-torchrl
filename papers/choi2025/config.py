@@ -3,23 +3,24 @@
 Hierarchy:
     DismechConfig         → Choi2025PhysicsConfig (3D clamped manipulator)
     SACConfig             → Choi2025Config (top-level project config)
+    PPOConfig             → Choi2025PPOConfig (PPO variant)
 
 Composable pieces:
     DeltaCurvatureControlConfig  -- control point interpolation
     TargetConfig                 -- target sampling ranges
     ObstacleConfig               -- obstacle layout
     Choi2025EnvConfig            -- composes physics + control + target + obstacles
-    Choi2025NetworkConfig        -- 3×256 ReLU MLP
+    Choi2025NetworkConfig        -- 3×1024 ReLU MLP
 """
 
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import List, Optional, Tuple
 
-from src.configs.base import TensorBoard
+from src.configs.base import Console, Output, TensorBoard, WandB
 from src.configs.network import ActorConfig, CriticConfig, NetworkConfig
 from src.configs.physics import DismechConfig, FrictionConfig, FrictionModel, GeometryConfig
-from src.configs.training import SACConfig
+from src.configs.training import PPOConfig, SACConfig
 
 
 # ---------------------------------------------------------------------------
@@ -168,17 +169,17 @@ class Choi2025EnvConfig:
 
 
 # ---------------------------------------------------------------------------
-# Network config (3×256 ReLU MLP matching paper)
+# Network config (3×1024 ReLU MLP — scaled up from paper's 3×256)
 # ---------------------------------------------------------------------------
 
 
 @dataclass
 class Choi2025NetworkConfig(NetworkConfig):
-    """Network config matching Choi & Tong (2025): 3×256 ReLU."""
+    """Network config: 3×1024 ReLU MLP (scaled up from paper's 3×256)."""
 
     actor: ActorConfig = field(
         default_factory=lambda: ActorConfig(
-            hidden_dims=[256, 256, 256],
+            hidden_dims=[1024, 1024, 1024],
             activation="relu",
             ortho_init=True,
             init_gain=0.01,
@@ -189,7 +190,7 @@ class Choi2025NetworkConfig(NetworkConfig):
     )
     critic: CriticConfig = field(
         default_factory=lambda: CriticConfig(
-            hidden_dims=[256, 256, 256],
+            hidden_dims=[1024, 1024, 1024],
             activation="relu",
             ortho_init=True,
             init_gain=1.0,
@@ -227,6 +228,9 @@ class Choi2025Config(SACConfig):
     env: Choi2025EnvConfig = field(default_factory=Choi2025EnvConfig)
     network: Choi2025NetworkConfig = field(default_factory=Choi2025NetworkConfig)
     tensorboard: TensorBoard = field(default_factory=TensorBoard)
+    wandb: WandB = field(default_factory=lambda: WandB(project="choi2025-replication"))
+    output: Output = field(default_factory=Output)
+    console: Console = field(default_factory=Console)
 
     # Parallelism
     num_envs: int = 1  # Number of parallel environments (paper uses 500)
@@ -234,5 +238,45 @@ class Choi2025Config(SACConfig):
     def __post_init__(self):
         """Set name and experiment_name from task."""
         task = self.env.task.value if isinstance(self.env.task, TaskType) else self.env.task
-        self.name = f"choi2025_{task}"
+        self.name = f"fixed_{task}_sac_lr1e3_{self.num_envs}envs"
+        self.experiment_name = self.name
+
+
+@dataclass
+class Choi2025PPOConfig(PPOConfig):
+    """Top-level config for soft manipulator PPO training.
+
+    Standard PPO hyperparameters with same env/network as SAC variant.
+    """
+
+    name: str = "choi2025_ppo"
+    experiment_name: str = "choi2025_ppo"
+
+    # PPO hyperparameters (standard defaults)
+    total_frames: int = 1_000_000
+    learning_rate: float = 3e-4
+    clip_epsilon: float = 0.2
+    num_epochs: int = 10
+    mini_batch_size: int = 64
+    frames_per_batch: int = 4096
+    gae_lambda: float = 0.95
+    entropy_coef: float = 0.01
+    value_coef: float = 0.5
+    normalize_advantage: bool = True
+    patience_batches: int = 0  # Disabled — wall time controls stopping
+
+    # Compose env + network + logging
+    env: Choi2025EnvConfig = field(default_factory=Choi2025EnvConfig)
+    network: Choi2025NetworkConfig = field(default_factory=Choi2025NetworkConfig)
+    wandb: WandB = field(default_factory=lambda: WandB(project="choi2025-replication"))
+    output: Output = field(default_factory=Output)
+    console: Console = field(default_factory=Console)
+
+    # Parallelism
+    num_envs: int = 1
+
+    def __post_init__(self):
+        """Set name and experiment_name from task and algo."""
+        task = self.env.task.value if isinstance(self.env.task, TaskType) else self.env.task
+        self.name = f"fixed_{task}_ppo_lr3e4_{self.num_envs}envs"
         self.experiment_name = self.name
