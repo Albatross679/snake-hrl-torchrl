@@ -259,29 +259,40 @@ class SACTrainer:
                 # --- Timing: env step ---
                 t0 = time.monotonic()
 
-                # Select action
+                # Select action (move to training device for policy inference)
+                td_device = td.to(self.device)
                 if self.total_frames < self.config.warmup_steps:
                     # Random action during warmup
                     action = torch.rand(self.env.action_spec.shape) * 2 - 1
-                    td["action"] = action.to(self.device)
+                    td_device["action"] = action.to(self.device)
                 else:
                     with torch.no_grad():
                         amp_ctx = _amp_context(self.config.use_amp, self.device)
                         with amp_ctx:
-                            td = self.actor(td)
+                            td_device = self.actor(td_device)
 
-                # Environment step
-                next_td = self.env.step(td)
+                # Environment step (move back to env device for stepping)
+                td_env = td_device.to(td.device)
+                next_td = self.env.step(td_env)
                 env_dt = time.monotonic() - t0
 
                 # --- Timing: data (replay buffer) ---
                 t0 = time.monotonic()
 
                 # Store transition(s)
+                # Flatten TorchRL step output: lift reward/done from "next"
+                # to top level so _update() can access batch["reward"] etc.
+                store_td = next_td.clone()
+                if "next" in store_td.keys():
+                    nxt = store_td["next"]
+                    if "reward" in nxt.keys():
+                        store_td["reward"] = nxt["reward"]
+                    if "done" in nxt.keys():
+                        store_td["done"] = nxt["done"]
                 if is_vec:
-                    self.replay_buffer.extend(next_td)
+                    self.replay_buffer.extend(store_td)
                 else:
-                    self.replay_buffer.add(next_td)
+                    self.replay_buffer.add(store_td)
                 data_dt = time.monotonic() - t0
 
                 # Update counters
@@ -331,8 +342,10 @@ class SACTrainer:
                         episode_rewards[done_mask] = 0.0
                         episode_lengths[done_mask] = 0
 
-                    # TorchRL auto-resets; use next_td for next step
-                    td = next_td
+                    # TorchRL auto-resets; advance MDP state for next step
+                    # step_mdp moves "next" to top-level so td has fresh obs
+                    from torchrl.envs.utils import step_mdp
+                    td = step_mdp(next_td)
                 else:
                     # Single env path (original logic)
                     episode_rewards[0] += step_result["reward"].item()

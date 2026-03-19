@@ -64,17 +64,22 @@ def main():
     if args.num_envs > 1:
         config.num_envs = args.num_envs
 
+    # Re-run __post_init__ to update name with correct num_envs
+    config.__post_init__()
+
     # Setup consolidated run directory
     run_dir = setup_run_dir(config)
 
     # Create environment
+    # ParallelEnv workers run on CPU (physics is CPU-bound numpy);
+    # the training loop handles GPU transfer for policy/critic inference.
     if config.num_envs > 1:
         from torchrl.envs import ParallelEnv
 
         env = ParallelEnv(
             num_workers=config.num_envs,
             create_env_fn=[
-                lambda cfg=env_config, dev=device: _make_env(cfg, dev)
+                lambda cfg=env_config: _make_env(cfg, "cpu")
             ] * config.num_envs,
         )
     else:
