@@ -157,6 +157,7 @@ Plan: 1 of 4
 - Phase 02.3 inserted after Phase 2: Collect DisMech snake dynamics data for surrogate training (URGENT)
 - Phase 13 added: Implement PINN and DD-PINN surrogate models
 - Phase 14 added: Replicate Choi2025 soft robot control paper using ML workflow
+- Phase 15 added: Implement Operator-Theoretic Policy Gradient (arXiv:2603.17875) in TorchRL alongside PPO and SAC
 
 ### Blockers/Concerns
 
@@ -178,8 +179,9 @@ None currently.
 | 260318-h2e | Add PINN and DD-PINN chapter to report using existing codebase content | 2026-03-18 | 21c6170 | [260318-h2e-add-pinn-and-dd-pinn-chapter-to-report-u](./quick/260318-h2e-add-pinn-and-dd-pinn-chapter-to-report-u/) |
 | 260319-3rv | Create PDE system framework knowledge document for PINNs | 2026-03-19 | 30b517d | [260319-3rv-create-markdown-document-clean-pde-syste](./quick/260319-3rv-create-markdown-document-clean-pde-syste/) |
 | 260319-3kt | Create Markdown report mirroring LaTeX report.tex | 2026-03-19 | 998e78f | [260319-3kt-create-markdown-report-mirroring-latex-r](./quick/260319-3kt-create-markdown-report-mirroring-latex-r/) |
+| 260319-snc | Align choi2025 SAC and PPO configs to match paper | 2026-03-19 | b1bd7d1 | [260319-snc-align-choi2025-sac-and-ppo-configs-to-ma](./quick/260319-snc-align-choi2025-sac-and-ppo-configs-to-ma/) |
 
 ## Session Continuity
 
-Last session: 2026-03-19T05:41:13.584Z
-Stopped at: Completed 14-03-PLAN.md (Phase 14 complete)
+Last session: 2026-03-19T20:39:55Z
+Stopped at: Completed quick-260319-snc
