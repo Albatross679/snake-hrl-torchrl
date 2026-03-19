@@ -1,31 +1,33 @@
 #!/usr/bin/env python
 """Record video of soft manipulator rollout (Choi & Tong, 2025).
 
-Runs a trained SAC policy (or zero-action baseline) through the DisMech
-environment, collects node positions at each step, and renders to MP4 or
-GIF via matplotlib animation.
+Runs a trained SAC or PPO policy (or zero-action baseline) through the
+DisMech environment, collects node positions at each step, and renders
+to MP4 or GIF via matplotlib animation.
+
+Supports both SAC and PPO checkpoint formats with automatic detection.
 
 Usage:
     # Passive dynamics (zero action)
     python -m choi2025.record --steps 200 \
         --output media/manipulator_passive.mp4
 
-    # With trained policy
+    # With trained SAC policy
     python -m choi2025.record \
-        --checkpoint model/choi2025/best.pt \
-        --task follow_target \
-        --output media/manipulator_trained.mp4
+        --checkpoint output/fixed_follow_target_sac/checkpoints/best.pt \
+        --task follow_target --algo sac \
+        --output media/choi2025/fixed_follow_target_sac.mp4
 
-    # GIF output, custom view angle
+    # With trained PPO policy
     python -m choi2025.record \
-        --checkpoint model/choi2025/best.pt \
-        --output media/manipulator.gif \
-        --elevation 30 --azimuth 45
+        --checkpoint output/fixed_follow_target_ppo/checkpoints/final.pt \
+        --task follow_target --algo ppo \
+        --output media/choi2025/fixed_follow_target_ppo.mp4
 
-    # Multiple episodes stitched together
+    # Multiple episodes, output to default dir
     python -m choi2025.record \
-        --checkpoint model/choi2025/best.pt \
-        --num-episodes 3 --output media/manipulator_3ep.mp4
+        --checkpoint model/best.pt --algo sac \
+        --num-episodes 2 --output-dir media/choi2025/
 """
 
 import argparse
@@ -55,6 +57,13 @@ def parse_args() -> argparse.Namespace:
         help="Task type",
     )
     parser.add_argument(
+        "--algo",
+        type=str,
+        default="sac",
+        choices=["sac", "ppo"],
+        help="Algorithm used to train the checkpoint (sac or ppo)",
+    )
+    parser.add_argument(
         "--checkpoint", type=str, default=None, help="Path to trained .pt checkpoint"
     )
     parser.add_argument(
@@ -72,8 +81,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--output",
         type=str,
-        default="media/manipulator.mp4",
-        help="Output path (.mp4 or .gif)",
+        default=None,
+        help="Output path (.mp4 or .gif). Overrides --output-dir.",
+    )
+    parser.add_argument(
+        "--output-dir",
+        type=str,
+        default="media/choi2025/",
+        help="Output directory (filename auto-generated from task/algo)",
     )
     parser.add_argument("--fps", type=int, default=30, help="Video FPS")
     parser.add_argument("--dpi", type=int, default=150, help="Figure DPI")
@@ -88,18 +103,35 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def load_actor(checkpoint_path: str, env: SoftManipulatorEnv, device: str):
+def load_actor(checkpoint_path: str, env: SoftManipulatorEnv, device: str, algo: str = "sac"):
     """Reconstruct actor network and load trained weights.
+
+    Supports both SAC and PPO checkpoint formats. SAC checkpoints contain
+    ``actor_state_dict``, ``critic_state_dict``, and SAC-specific keys
+    (``log_alpha``, etc.). PPO checkpoints contain ``actor_state_dict``,
+    ``critic_state_dict``, and ``optimizer_state_dict``.  Both formats
+    share the ``actor_state_dict`` key, so loading is algorithm-agnostic.
 
     Args:
         checkpoint_path: Path to .pt checkpoint.
         env: Environment (needed for specs).
         device: Torch device.
+        algo: Algorithm used to train the checkpoint ("sac" or "ppo").
 
     Returns:
         TorchRL ProbabilisticActor with loaded weights.
     """
     checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
+
+    # Detect checkpoint format
+    if isinstance(checkpoint, dict) and "actor_state_dict" in checkpoint:
+        actor_state_dict = checkpoint["actor_state_dict"]
+    elif isinstance(checkpoint, dict):
+        # Fallback: assume the entire dict is the state_dict
+        actor_state_dict = checkpoint
+        print(f"  Warning: no 'actor_state_dict' key found, treating checkpoint as raw state_dict")
+    else:
+        raise ValueError(f"Unsupported checkpoint format: {type(checkpoint)}")
 
     network_config = Choi2025NetworkConfig()
     obs_dim = env.observation_spec["observation"].shape[-1]
@@ -110,12 +142,12 @@ def load_actor(checkpoint_path: str, env: SoftManipulatorEnv, device: str):
         config=network_config.actor,
         device=device,
     )
-    actor.load_state_dict(checkpoint["actor_state_dict"])
+    actor.load_state_dict(actor_state_dict)
     actor.eval()
 
-    frames_trained = checkpoint.get("total_frames", "N/A")
-    best_reward = checkpoint.get("best_reward", "N/A")
-    print(f"  Loaded checkpoint: {checkpoint_path}")
+    frames_trained = checkpoint.get("total_frames", "N/A") if isinstance(checkpoint, dict) else "N/A"
+    best_reward = checkpoint.get("best_reward", "N/A") if isinstance(checkpoint, dict) else "N/A"
+    print(f"  Loaded {algo.upper()} checkpoint: {checkpoint_path}")
     print(f"  Frames trained: {frames_trained}")
     print(f"  Best reward:    {best_reward}")
 
@@ -323,6 +355,13 @@ def main():
     args = parse_args()
     device = resolve_device(args.device)
 
+    # Determine output path
+    if args.output is not None:
+        output_path = Path(args.output)
+    else:
+        output_dir = Path(args.output_dir)
+        output_path = output_dir / f"fixed_{args.task}_{args.algo}.mp4"
+
     # Build config and environment
     config = Choi2025Config(seed=args.seed, device=device)
     config.env.task = TaskType(args.task)
@@ -336,14 +375,14 @@ def main():
     # Load actor
     actor = None
     if args.checkpoint is not None:
-        actor = load_actor(args.checkpoint, env, device)
+        actor = load_actor(args.checkpoint, env, device, algo=args.algo)
     else:
-        print("No checkpoint provided — recording zero-action passive dynamics.")
+        print("No checkpoint provided -- recording zero-action passive dynamics.")
 
     # Collect rollouts
     print(
         f"Recording {args.num_episodes} episode(s), "
-        f"up to {max_steps} steps each (task={args.task})..."
+        f"up to {max_steps} steps each (task={args.task}, algo={args.algo})..."
     )
     rollouts = []
     total_reward = 0.0
@@ -378,7 +417,6 @@ def main():
     )
 
     # Save
-    output_path = Path(args.output)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     if output_path.suffix == ".gif":
