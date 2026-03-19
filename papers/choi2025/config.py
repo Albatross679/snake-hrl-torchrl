@@ -284,7 +284,7 @@ class Choi2025Config(SACConfig):
 class Choi2025PPOConfig(PPOConfig):
     """Top-level config for soft manipulator PPO training.
 
-    Standard PPO hyperparameters with same env/network as SAC variant.
+    Standard PPO hyperparameters with paper-matching 3x256 network (Table A.1).
     """
 
     name: str = "choi2025_ppo"
@@ -305,7 +305,7 @@ class Choi2025PPOConfig(PPOConfig):
 
     # Compose env + network + logging
     env: Choi2025EnvConfig = field(default_factory=Choi2025EnvConfig)
-    network: Choi2025NetworkConfig = field(default_factory=Choi2025NetworkConfig)
+    network: Choi2025PaperNetworkConfig = field(default_factory=Choi2025PaperNetworkConfig)
     wandb: WandB = field(default_factory=lambda: WandB(project="choi2025-replication"))
     output: Output = field(default_factory=Output)
     console: Console = field(default_factory=Console)
