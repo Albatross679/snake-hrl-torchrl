@@ -149,6 +149,7 @@ Progress: [████████░░] 76%
 - Phase 06.1 inserted after Phase 6: Improve report structure and organization (URGENT)
 - Phase 02.3 inserted after Phase 2: Collect DisMech snake dynamics data for surrogate training (URGENT)
 - Phase 13 added: Implement PINN and DD-PINN surrogate models
+- Phase 14 added: Replicate Choi2025 soft robot control paper using ML workflow
 
 ### Blockers/Concerns
 
@@ -168,6 +169,7 @@ None currently.
 | 260317-lcq | set all GSD quality profile agents to opus | 2026-03-17 | 5e96373 | [260317-lcq-make-sure-all-the-gsd-agents-use-opus-wi](./quick/260317-lcq-make-sure-all-the-gsd-agents-use-opus-wi/) |
 | 260317-lb3 | integrate method-of-lines explanation into report | 2026-03-17 | b323dc9 | [260317-lb3-integrate-explicit-integration-method-of](./quick/260317-lb3-integrate-explicit-integration-method-of/) |
 | 260318-h2e | Add PINN and DD-PINN chapter to report using existing codebase content | 2026-03-18 | 21c6170 | [260318-h2e-add-pinn-and-dd-pinn-chapter-to-report-u](./quick/260318-h2e-add-pinn-and-dd-pinn-chapter-to-report-u/) |
+| 260319-3rv | Create PDE system framework knowledge document for PINNs | 2026-03-19 | 30b517d | [260319-3rv-create-markdown-document-clean-pde-syste](./quick/260319-3rv-create-markdown-document-clean-pde-syste/) |
 
 ## Session Continuity
 
