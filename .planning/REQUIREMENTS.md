@@ -66,12 +66,12 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### OTPG Operator-Theoretic Policy Gradient (Phase 15)
 
-- [ ] **OTPG-01**: OTPGConfig dataclass — `OTPGConfig(RLConfig)` with beta=1.0, eta=1.0, mmd_bandwidth=1.0, mmd_num_samples=16, gae_lambda=0.95, value_coef=0.5; no entropy_coef or clip_epsilon
-- [ ] **OTPG-02**: OTPGTrainer class — follows PPOTrainer pattern (`__init__`/`train()`/`_update()`), creates actor via `create_actor()`, critic via `create_critic()`, single Adam optimizer, GAE, SyncDataCollector
-- [ ] **OTPG-03**: MMD penalty computation — RBF kernel with linear-time unbiased estimator (O(n)), configurable bandwidth and sample count, returns finite non-negative scalar
-- [ ] **OTPG-04**: MM-RKHS loss function — `loss = -E[ratio*A] + beta*MMD^2 + (1/eta)*KL + value_coef*critic_loss`; log-ratio clamped [-20,20], advantage normalized, NaN guards
+- [x] **OTPG-01**: OTPGConfig dataclass — `OTPGConfig(RLConfig)` with beta=1.0, eta=1.0, mmd_bandwidth=1.0, mmd_num_samples=16, gae_lambda=0.95, value_coef=0.5; no entropy_coef or clip_epsilon
+- [x] **OTPG-02**: OTPGTrainer class — follows PPOTrainer pattern (`__init__`/`train()`/`_update()`), creates actor via `create_actor()`, critic via `create_critic()`, single Adam optimizer, GAE, SyncDataCollector
+- [x] **OTPG-03**: MMD penalty computation — RBF kernel with linear-time unbiased estimator (O(n)), configurable bandwidth and sample count, returns finite non-negative scalar
+- [x] **OTPG-04**: MM-RKHS loss function — `loss = -E[ratio*A] + beta*MMD^2 + (1/eta)*KL + value_coef*critic_loss`; log-ratio clamped [-20,20], advantage normalized, NaN guards
 - [ ] **OTPG-05**: Choi2025 benchmark integration — `Choi2025OTPGConfig(OTPGConfig)` + `train_otpg.py` entry point; 100K-frame quick validation on follow_target completes without crash
-- [ ] **OTPG-06**: Checkpoint save/load — atomic saves with backup, round-trip restores actor/critic/optimizer state; follows PPOTrainer checkpoint pattern
+- [x] **OTPG-06**: Checkpoint save/load — atomic saves with backup, round-trip restores actor/critic/optimizer state; follows PPOTrainer checkpoint pattern
 
 ## v2 Requirements
 
