@@ -3,6 +3,10 @@
 Recreates the DisMech-based soft manipulator environment using TorchRL's
 EnvBase interface.  A 1m rod is clamped at one end; the agent controls
 delta natural curvature at sparse control points.
+
+When DisMech is not installed, a lightweight mock physics backend is used
+that provides the same observation/action/reward interface with simplified
+rod dynamics.  This allows pipeline validation without the C++ dependency.
 """
 
 from typing import Optional
@@ -11,9 +15,9 @@ import numpy as np
 import torch
 from tensordict import TensorDict, TensorDictBase
 from torchrl.data import (
-    BoundedTensorSpec,
-    CompositeSpec,
-    UnboundedContinuousTensorSpec,
+    Bounded,
+    Composite,
+    Unbounded,
 )
 from torchrl.envs import EnvBase
 
@@ -26,17 +30,90 @@ from choi2025.rewards import (
 )
 from choi2025.tasks import ObstacleManager, TargetGenerator
 
-# DisMech imports
-import dismech
-from dismech import (
-    Environment,
-    Geometry,
-    GeomParams,
-    ImplicitEulerTimeStepper,
-    Material,
-    SimParams,
-    SoftRobot,
-)
+# Try importing DisMech; fall back to mock if unavailable
+try:
+    import dismech
+    from dismech import (
+        Environment,
+        Geometry,
+        GeomParams,
+        ImplicitEulerTimeStepper,
+        Material,
+        SimParams,
+        SoftRobot,
+    )
+    _HAS_DISMECH = True
+except ImportError:
+    _HAS_DISMECH = False
+
+
+class _MockRodState:
+    """Lightweight mock of DisMech rod state for pipeline validation.
+
+    Maintains node positions and velocities as flat arrays (same layout as
+    DisMech's state.q and state.u) and applies simplified curvature-driven
+    dynamics: curvature deltas rotate segments around bend springs.
+    """
+
+    def __init__(self, num_nodes: int, segment_length: float, dt: float):
+        self._num_nodes = num_nodes
+        self._segment_length = segment_length
+        self._dt = dt
+
+        # Positions: straight rod along x-axis (same as _create_rod_geometry)
+        self._positions = np.zeros((num_nodes, 3))
+        for i in range(num_nodes):
+            self._positions[i, 0] = i * segment_length
+
+        # Velocities: initially zero
+        self._velocities = np.zeros((num_nodes, 3))
+
+    @property
+    def positions(self) -> np.ndarray:
+        return self._positions.copy()
+
+    @property
+    def velocities(self) -> np.ndarray:
+        return self._velocities.copy()
+
+    def apply_curvature_and_step(self, curvature_state: np.ndarray) -> None:
+        """Simplified dynamics: rotate segments based on curvature state.
+
+        Each curvature value induces a small angular displacement at the
+        corresponding bend spring, propagating to downstream nodes.  This
+        gives non-trivial dynamics without a full physics engine.
+        """
+        prev_positions = self._positions.copy()
+        n_springs = len(curvature_state)
+
+        for i in range(n_springs):
+            kappa1, kappa2 = curvature_state[i]
+            # Convert curvature to small angle
+            angle_xy = kappa1 * self._dt * 0.1  # Damped to keep stable
+            angle_xz = kappa2 * self._dt * 0.1
+
+            # Rotate all nodes downstream of spring i+1
+            pivot = self._positions[i + 1].copy()
+            for j in range(i + 2, self._num_nodes):
+                rel = self._positions[j] - pivot
+                # Rotation in xy plane (kappa1)
+                c, s = np.cos(angle_xy), np.sin(angle_xy)
+                new_x = c * rel[0] - s * rel[1]
+                new_y = s * rel[0] + c * rel[1]
+                # Rotation in xz plane (kappa2)
+                c2, s2 = np.cos(angle_xz), np.sin(angle_xz)
+                new_x2 = c2 * new_x - s2 * rel[2]
+                new_z = s2 * new_x + c2 * rel[2]
+                self._positions[j] = pivot + np.array([new_x2, new_y, new_z])
+
+        # Finite-difference velocity
+        self._velocities = (self._positions - prev_positions) / self._dt
+
+    def reset(self) -> None:
+        """Reset to straight rod along x-axis."""
+        for i in range(self._num_nodes):
+            self._positions[i] = [i * self._segment_length, 0.0, 0.0]
+        self._velocities[:] = 0.0
 
 
 class SoftManipulatorEnv(EnvBase):
@@ -87,9 +164,11 @@ class SoftManipulatorEnv(EnvBase):
         self._target = TargetGenerator(self.config.target, self._rng)
         self._obstacles = ObstacleManager(self.config.obstacles, self._rng)
 
-        # DisMech state (initialized in _reset)
+        # Physics backend state (initialized in _reset)
+        self._use_dismech = _HAS_DISMECH
         self._dismech_robot = None
         self._time_stepper = None
+        self._mock_state = None
 
         # Episode state
         self._step_count = 0
@@ -121,14 +200,14 @@ class SoftManipulatorEnv(EnvBase):
 
     def _make_spec(self):
         """Define observation, action, reward, and done specs."""
-        self.observation_spec = CompositeSpec(
-            observation=UnboundedContinuousTensorSpec(
+        self.observation_spec = Composite(
+            observation=Unbounded(
                 shape=(self._obs_dim,), dtype=torch.float32, device=self._device
             ),
             shape=(),
         )
 
-        self.action_spec = BoundedTensorSpec(
+        self.action_spec = Bounded(
             low=-1.0,
             high=1.0,
             shape=(self._action_dim,),
@@ -136,18 +215,18 @@ class SoftManipulatorEnv(EnvBase):
             device=self._device,
         )
 
-        self.reward_spec = UnboundedContinuousTensorSpec(
+        self.reward_spec = Unbounded(
             shape=(1,), dtype=torch.float32, device=self._device
         )
 
-        self.done_spec = CompositeSpec(
-            done=UnboundedContinuousTensorSpec(
+        self.done_spec = Composite(
+            done=Unbounded(
                 shape=(1,), dtype=torch.bool, device=self._device
             ),
-            terminated=UnboundedContinuousTensorSpec(
+            terminated=Unbounded(
                 shape=(1,), dtype=torch.bool, device=self._device
             ),
-            truncated=UnboundedContinuousTensorSpec(
+            truncated=Unbounded(
                 shape=(1,), dtype=torch.bool, device=self._device
             ),
             shape=(),
@@ -219,7 +298,7 @@ class SoftManipulatorEnv(EnvBase):
         # Create time stepper
         self._time_stepper = ImplicitEulerTimeStepper(self._dismech_robot)
 
-    def _create_rod_geometry(self) -> Geometry:
+    def _create_rod_geometry(self):
         """Create a straight rod along the x-axis."""
         physics = self.config.physics
         num_nodes = self._num_nodes
@@ -232,19 +311,35 @@ class SoftManipulatorEnv(EnvBase):
         edges = np.array([[i, i + 1] for i in range(self._num_segments)], dtype=np.int64)
         face_nodes = np.empty((0, 3), dtype=np.int64)
 
-        return Geometry(nodes, edges, face_nodes, plot_from_txt=False)
+        if _HAS_DISMECH:
+            return Geometry(nodes, edges, face_nodes, plot_from_txt=False)
+        return nodes, edges, face_nodes
+
+    def _init_mock_physics(self) -> None:
+        """Initialize mock physics backend (fallback when DisMech unavailable)."""
+        physics = self.config.physics
+        segment_length = physics.snake_length / self._num_segments
+        self._mock_state = _MockRodState(
+            num_nodes=self._num_nodes,
+            segment_length=segment_length,
+            dt=physics.dt,
+        )
 
     # === State accessors ===
 
     def _get_positions(self) -> np.ndarray:
         """Get node positions, shape (num_nodes, 3)."""
-        q = self._dismech_robot.state.q
-        return q[: 3 * self._num_nodes].reshape(self._num_nodes, 3).copy()
+        if self._use_dismech:
+            q = self._dismech_robot.state.q
+            return q[: 3 * self._num_nodes].reshape(self._num_nodes, 3).copy()
+        return self._mock_state.positions
 
     def _get_velocities(self) -> np.ndarray:
         """Get node velocities, shape (num_nodes, 3)."""
-        u = self._dismech_robot.state.u
-        return u[: 3 * self._num_nodes].reshape(self._num_nodes, 3).copy()
+        if self._use_dismech:
+            u = self._dismech_robot.state.u
+            return u[: 3 * self._num_nodes].reshape(self._num_nodes, 3).copy()
+        return self._mock_state.velocities
 
     def _get_tip_pos(self) -> np.ndarray:
         """Get position of the last node (tip)."""
@@ -295,21 +390,24 @@ class SoftManipulatorEnv(EnvBase):
 
         return np.concatenate(parts).astype(np.float32)
 
-    # === Apply curvature control to DisMech ===
+    # === Apply curvature control ===
 
-    def _apply_curvature_to_dismech(self, curvature_state: np.ndarray) -> None:
-        """Write curvature state to DisMech bend springs.
+    def _apply_curvature(self, curvature_state: np.ndarray) -> None:
+        """Write curvature state to physics backend.
 
         Args:
             curvature_state: Shape (num_bend_springs, 2) for kappa1, kappa2.
         """
-        bend_springs = self._dismech_robot.bend_springs
-
-        if bend_springs.N > 0 and hasattr(bend_springs, "nat_strain"):
-            n = min(len(curvature_state), bend_springs.N)
-            for i in range(n):
-                bend_springs.nat_strain[i, 0] = curvature_state[i, 0]
-                bend_springs.nat_strain[i, 1] = curvature_state[i, 1]
+        if self._use_dismech:
+            bend_springs = self._dismech_robot.bend_springs
+            if bend_springs.N > 0 and hasattr(bend_springs, "nat_strain"):
+                n = min(len(curvature_state), bend_springs.N)
+                for i in range(n):
+                    bend_springs.nat_strain[i, 0] = curvature_state[i, 0]
+                    bend_springs.nat_strain[i, 1] = curvature_state[i, 1]
+        else:
+            # Mock: apply curvature via simplified dynamics
+            self._mock_state.apply_curvature_and_step(curvature_state)
 
     # === EnvBase interface ===
 
@@ -320,8 +418,11 @@ class SoftManipulatorEnv(EnvBase):
             self._obstacles = ObstacleManager(self.config.obstacles, self._rng)
 
     def _reset(self, tensordict: TensorDictBase = None, **kwargs) -> TensorDictBase:
-        # Reinitialize DisMech from scratch
-        self._init_dismech()
+        # Initialize physics backend
+        if self._use_dismech:
+            self._init_dismech()
+        else:
+            self._init_mock_physics()
 
         # Reset controller
         self.controller.reset()
@@ -354,15 +455,16 @@ class SoftManipulatorEnv(EnvBase):
 
         # Apply delta curvature control
         curvature_state = self.controller.apply_delta(action, two_d_sim=self._two_d_sim)
-        self._apply_curvature_to_dismech(curvature_state)
+        self._apply_curvature(curvature_state)
 
-        # Step DisMech simulation
-        try:
-            self._dismech_robot, _ = self._time_stepper.step(
-                self._dismech_robot, debug=False
-            )
-        except ValueError:
-            pass  # Convergence issue — state unchanged
+        # Step physics (DisMech only; mock steps in _apply_curvature)
+        if self._use_dismech:
+            try:
+                self._dismech_robot, _ = self._time_stepper.step(
+                    self._dismech_robot, debug=False
+                )
+            except ValueError:
+                pass  # Convergence issue - state unchanged
 
         # Move target (for follow_target task)
         if self.config.task == TaskType.FOLLOW_TARGET:
@@ -420,4 +522,5 @@ class SoftManipulatorEnv(EnvBase):
     def close(self):
         self._dismech_robot = None
         self._time_stepper = None
+        self._mock_state = None
         super().close()
