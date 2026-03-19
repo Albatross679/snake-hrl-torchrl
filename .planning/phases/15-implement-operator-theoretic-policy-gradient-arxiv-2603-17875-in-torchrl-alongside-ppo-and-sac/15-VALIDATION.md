@@ -43,7 +43,7 @@ created: 2026-03-19
 | 15-01-03 | 01 | 1 | OTPG-03 | unit | `python -m pytest tests/test_otpg.py::test_mmd_penalty -x` | ❌ W0 | ⬜ pending |
 | 15-01-04 | 01 | 1 | OTPG-04 | unit | `python -m pytest tests/test_otpg.py::test_update_step -x` | ❌ W0 | ⬜ pending |
 | 15-02-01 | 02 | 2 | OTPG-05 | smoke | `python -m pytest tests/test_otpg.py::test_short_training -x` | ❌ W0 | ⬜ pending |
-| 15-02-02 | 02 | 2 | OTPG-06 | unit | `python -m pytest tests/test_otpg.py::test_checkpoint -x` | ❌ W0 | ⬜ pending |
+| 15-01-05 | 01 | 1 | OTPG-06 | unit | `python -m pytest tests/test_otpg.py::test_checkpoint -x` | ❌ W0 | ⬜ pending |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 
