@@ -50,8 +50,10 @@ class Choi2025PhysicsConfig(DismechConfig):
     - 3D rod (two_d_sim=False)
     - First node clamped (clamp_first_node=True)
     - 1m rod, 21 nodes (20 segments)
-    - Young's modulus 2e6 Pa, Poisson's ratio 0.5
-    - dt=0.01s
+    - Young's modulus 10e6 Pa, Poisson's ratio 0.5
+    - dt=0.05s (50ms substep, 10 Hz control with period=2)
+    - Gravity enabled
+    - Newton iterations: 2 (non-contact), 5 (contact)
     """
 
     # Manipulator-specific
@@ -61,23 +63,23 @@ class Choi2025PhysicsConfig(DismechConfig):
     # Contact parameters (for obstacle tasks)
     contact_stiffness: float = 1e6
     contact_delta: float = 0.005
-    max_newton_iter_contact: int = 25
-    max_newton_iter_noncontact: int = 15
+    max_newton_iter_contact: int = 5
+    max_newton_iter_noncontact: int = 2
 
     # Override rod defaults for this paper
     geometry: GeometryConfig = field(
         default_factory=lambda: GeometryConfig(
             snake_length=1.0,
-            snake_radius=0.001,
+            snake_radius=0.05,
             num_segments=20,
         )
     )
-    dt: float = 0.01
-    youngs_modulus: float = 2e6
+    dt: float = 0.05
+    youngs_modulus: float = 10e6
     poisson_ratio: float = 0.5
-    density: float = 1200.0
+    density: float = 1000.0
 
-    # No gravity in 2D manipulator tasks (rod is horizontal)
+    # Gravity enabled per paper
     enable_gravity: bool = True
     gravity: Tuple[float, float, float] = (0.0, 0.0, -9.81)
 
@@ -164,6 +166,10 @@ class Choi2025EnvConfig:
     # Episode settings
     max_episode_steps: int = 200
 
+    # Number of physics substeps per RL action.
+    # Paper uses 2 substeps at dt=0.05 = 0.1s per action = 10 Hz control.
+    control_period: int = 2
+
     # Device — "auto" → GPU when available, else CPU
     device: str = "auto"
 
@@ -198,6 +204,31 @@ class Choi2025NetworkConfig(NetworkConfig):
     )
 
 
+@dataclass
+class Choi2025PaperNetworkConfig(NetworkConfig):
+    """Network config matching paper exactly: 3×256 ReLU MLP (Table A.1)."""
+
+    actor: ActorConfig = field(
+        default_factory=lambda: ActorConfig(
+            hidden_dims=[256, 256, 256],
+            activation="relu",
+            ortho_init=True,
+            init_gain=0.01,
+            min_std=0.1,
+            max_std=1.0,
+            init_std=0.5,
+        )
+    )
+    critic: CriticConfig = field(
+        default_factory=lambda: CriticConfig(
+            hidden_dims=[256, 256, 256],
+            activation="relu",
+            ortho_init=True,
+            init_gain=1.0,
+        )
+    )
+
+
 # ---------------------------------------------------------------------------
 # Top-level config (SAC hyperparameters from paper)
 # ---------------------------------------------------------------------------
@@ -214,8 +245,8 @@ class Choi2025Config(SACConfig):
     name: str = "choi2025"
     experiment_name: str = "choi2025"
 
-    # SAC hyperparameters from paper
-    total_frames: int = 1_000_000
+    # SAC hyperparameters from paper (Table A.1)
+    total_frames: int = 5_000_000
     actor_lr: float = 0.001
     critic_lr: float = 0.001
     alpha_lr: float = 0.001
@@ -224,16 +255,23 @@ class Choi2025Config(SACConfig):
     num_updates: int = 4  # UTD ratio
     warmup_steps: int = 1000
 
-    # Compose env + network + logging
+    # Entropy: paper explicitly disables auto-tuning (citing Yu et al. 2022)
+    auto_alpha: bool = False
+    alpha: float = 0.0  # No entropy bonus
+
+    # Target network update frequency (paper: every 8 critic updates)
+    soft_update_period: int = 8
+
+    # Compose env + network + logging (paper network: 3×256)
     env: Choi2025EnvConfig = field(default_factory=Choi2025EnvConfig)
-    network: Choi2025NetworkConfig = field(default_factory=Choi2025NetworkConfig)
+    network: Choi2025PaperNetworkConfig = field(default_factory=Choi2025PaperNetworkConfig)
     tensorboard: TensorBoard = field(default_factory=TensorBoard)
     wandb: WandB = field(default_factory=lambda: WandB(project="choi2025-replication"))
     output: Output = field(default_factory=Output)
     console: Console = field(default_factory=Console)
 
-    # Parallelism
-    num_envs: int = 1  # Number of parallel environments (paper uses 500)
+    # Parallelism (paper uses 500 parallel environments)
+    num_envs: int = 500
 
     def __post_init__(self):
         """Set name and experiment_name from task."""
@@ -252,8 +290,8 @@ class Choi2025PPOConfig(PPOConfig):
     name: str = "choi2025_ppo"
     experiment_name: str = "choi2025_ppo"
 
-    # PPO hyperparameters (standard defaults)
-    total_frames: int = 1_000_000
+    # PPO hyperparameters (aligned with SAC training budget)
+    total_frames: int = 5_000_000
     learning_rate: float = 3e-4
     clip_epsilon: float = 0.2
     num_epochs: int = 10
@@ -272,8 +310,8 @@ class Choi2025PPOConfig(PPOConfig):
     output: Output = field(default_factory=Output)
     console: Console = field(default_factory=Console)
 
-    # Parallelism
-    num_envs: int = 1
+    # Parallelism (match SAC for fair comparison)
+    num_envs: int = 500
 
     def __post_init__(self):
         """Set name and experiment_name from task and algo."""

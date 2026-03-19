@@ -141,6 +141,7 @@ class SoftManipulatorEnv(EnvBase):
         config: Optional[Choi2025EnvConfig] = None,
         device: str = "cpu",
     ):
+        device = torch.device(device) if isinstance(device, str) else device
         super().__init__(device=device, batch_size=torch.Size([]))
 
         self.config = config or Choi2025EnvConfig()
@@ -453,22 +454,25 @@ class SoftManipulatorEnv(EnvBase):
         # Record pre-step tip position
         self._prev_tip_pos = self._get_tip_pos()
 
-        # Apply delta curvature control
+        # Apply delta curvature control (once per RL step)
         curvature_state = self.controller.apply_delta(action, two_d_sim=self._two_d_sim)
-        self._apply_curvature(curvature_state)
 
-        # Step physics (DisMech only; mock steps in _apply_curvature)
-        if self._use_dismech:
-            try:
-                self._dismech_robot, _ = self._time_stepper.step(
-                    self._dismech_robot, debug=False
-                )
-            except ValueError:
-                pass  # Convergence issue - state unchanged
+        # Step physics for control_period substeps (temporal smoothing)
+        num_substeps = getattr(self.config, 'control_period', 1)
+        for substep_i in range(num_substeps):
+            if substep_i == 0 or self._use_dismech:
+                self._apply_curvature(curvature_state)
+            if self._use_dismech:
+                try:
+                    self._dismech_robot, _ = self._time_stepper.step(
+                        self._dismech_robot, debug=False
+                    )
+                except ValueError:
+                    pass  # Convergence issue - state unchanged
 
-        # Move target (for follow_target task)
+        # Move target (for follow_target task) — total time for all substeps
         if self.config.task == TaskType.FOLLOW_TARGET:
-            self._target.step(self.config.physics.dt)
+            self._target.step(self.config.physics.dt * num_substeps)
 
         # Compute reward
         reward = self._compute_reward()
