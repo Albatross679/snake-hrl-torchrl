@@ -1,13 +1,21 @@
 """Training script for soft manipulator SAC (Choi & Tong, 2025).
 
 Usage:
-    python -m choi2025.train --task follow_target --total-frames 1000000
+    python -m choi2025.train --task follow_target --total-frames 5000000
     python -m choi2025.train --task inverse_kinematics --seed 0
     python -m choi2025.train --task tight_obstacles --max-wall-time 30m
 """
 
 import argparse
+import os
 import re
+
+# Limit thread spawning for parallel envs to avoid pthread exhaustion
+os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
+os.environ.setdefault("MKL_NUM_THREADS", "1")
+os.environ.setdefault("OMP_NUM_THREADS", "1")
+
+from torchrl.envs import RewardSum
 
 from choi2025.config import Choi2025Config, Choi2025EnvConfig, TaskType
 from choi2025.env import SoftManipulatorEnv
@@ -59,7 +67,7 @@ def parse_args() -> argparse.Namespace:
         "--total-frames", type=int, default=None, help="Total training frames"
     )
     parser.add_argument(
-        "--num-envs", type=int, default=1, help="Number of parallel envs"
+        "--num-envs", type=int, default=32, help="Number of parallel envs"
     )
     parser.add_argument(
         "--max-wall-time",
@@ -108,6 +116,9 @@ def main():
     else:
         env = SoftManipulatorEnv(config.env, device=device)
 
+    # Accumulate per-step rewards into episode_reward for monitoring
+    env = env.append_transform(RewardSum())
+
     try:
         with ConsoleLogger(run_dir, config.console):
             # Create trainer
@@ -134,7 +145,12 @@ def main():
 
 
 if __name__ == "__main__":
-    from src.utils.gpu_lock import GpuLock
-
-    with GpuLock():
+    # Skip GpuLock when running on a dedicated GPU (e.g. CUDA_VISIBLE_DEVICES=1)
+    # to allow concurrent training on separate GPUs
+    if os.environ.get("SKIP_GPU_LOCK"):
         main()
+    else:
+        from src.utils.gpu_lock import GpuLock
+
+        with GpuLock():
+            main()

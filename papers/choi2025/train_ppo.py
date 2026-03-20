@@ -52,6 +52,12 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Wall-clock time limit, e.g. '30m', '2h', '1h30m', or '3600' (seconds)",
     )
+    parser.add_argument(
+        "--resume",
+        type=str,
+        default=None,
+        help="Path to checkpoint to resume from (e.g. output/.../checkpoints/final.pt)",
+    )
     return parser.parse_args()
 
 
@@ -106,6 +112,12 @@ def main():
                 device=device,
                 run_dir=run_dir,
             )
+
+            # Resume from checkpoint if specified
+            if args.resume:
+                print(f"Resuming from checkpoint: {args.resume}")
+                trainer.load_checkpoint(args.resume)
+                print(f"  Resumed at frame {trainer.total_frames}, best_reward={trainer.best_reward:.2f}")
 
             # Train
             wall_msg = ""

@@ -455,6 +455,7 @@ class PPOTrainer:
 
         # Multiple epochs over the batch
         kl_break = False
+        actual_updates = 0
         for epoch in range(self.config.num_epochs):
             # Shuffle and create mini-batches
             indices = torch.randperm(batch.numel())
@@ -509,6 +510,7 @@ class PPOTrainer:
                     continue
 
                 self.optimizer.step()
+                actual_updates += 1
 
                 # Accumulate metrics
                 metrics["loss_actor"] += loss_dict["loss_objective"].item()
@@ -537,15 +539,13 @@ class PPOTrainer:
             # Early stopping on KL divergence (compare average, not accumulated sum)
             if kl_break:
                 break
-            updates_so_far = (epoch + 1) * num_batches
-            avg_kl = metrics["kl_divergence"] / max(1, updates_so_far)
+            avg_kl = metrics["kl_divergence"] / max(1, actual_updates)
             if self.config.target_kl and avg_kl > self.config.target_kl:
                 break
 
-        # Average metrics
-        num_updates = self.config.num_epochs * num_batches
+        # Average metrics over actual updates (not theoretical max)
         for key in metrics:
-            metrics[key] /= max(1, num_updates)
+            metrics[key] /= max(1, actual_updates)
 
         return metrics
 
@@ -682,7 +682,7 @@ class PPOTrainer:
 
     def load_checkpoint(self, path: str) -> None:
         """Load training checkpoint."""
-        checkpoint = torch.load(path, map_location=self.device)
+        checkpoint = torch.load(path, map_location=self.device, weights_only=False)
 
         self.actor.load_state_dict(checkpoint["actor_state_dict"])
         self.critic.load_state_dict(checkpoint["critic_state_dict"])

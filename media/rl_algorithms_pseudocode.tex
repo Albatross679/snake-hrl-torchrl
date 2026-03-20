@@ -1,0 +1,527 @@
+\documentclass[11pt]{article}
+\usepackage[margin=0.9in]{geometry}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{amsmath, amssymb}
+\usepackage{booktabs, tabularx}
+
+\begin{document}
+
+%% ============================================================
+%% Algorithm 1: PPO-Clip
+%% ============================================================
+\begin{algorithm}[p]\small
+\caption{PPO-Clip (Proximal Policy Optimization)}\label{alg:ppo}
+\vspace{2pt}
+\noindent
+\begin{minipage}[t]{0.28\linewidth}
+\renewcommand{\arraystretch}{1.12}
+\textbf{Ensure} \\[2pt]
+Optimized policy $\pi_{\boldsymbol{\theta}}$
+
+\vspace{6pt}
+\textbf{Hyperparameters} \\[2pt]
+$\boldsymbol{\theta}_0$ — init policy params \\
+$\boldsymbol{\phi}_0$ — init value params \\
+$\epsilon$ — clip ratio (typ.\ $0.2$) \\
+$\gamma$ — discount factor \\
+$\lambda$ — GAE param \\
+\hspace*{1em}($0$=TD, $1$=MC) \\
+$N$ — actors \\
+$T$ — rollout length \\
+$K$ — epochs \\
+$M$ — minibatch size \\
+$\alpha_\pi$ — policy learning rate \\
+$\alpha_V$ — value learning rate \\
+$c_e$ — entropy coeff.\ (typ.\ $0.01$)
+
+\vspace{6pt}
+\textbf{Notation} \\[2pt]
+$s_t$ — state \\
+$a_t$ — action \\
+$r_t$ — reward \\
+$V_{\boldsymbol{\phi}}(s)$ — value function \\
+$\delta_t$ — TD error \\
+$\hat{A}_t$ — GAE advantage \\
+$\hat{R}_t$ — GAE-$\lambda$ return \\
+$\rho_t$ — IS ratio $\pi_{\boldsymbol{\theta}} / \pi_{\boldsymbol{\theta}_k}$ \\
+$H[\cdot]$ — policy entropy
+\end{minipage}%
+\hfill
+\vrule
+\hfill
+\begin{minipage}[t]{0.68\linewidth}
+\begin{algorithmic}[1]
+\For{$k = 0, 1, 2, \ldots$}
+    \Statex \hspace{\algorithmicindent}\textit{// Phase 1: Rollout collection}
+    \For{actor $= 1, \ldots, N$}
+        \For{$t = 0, \ldots, T{-}1$}
+            \State Sample action $a_t \sim \pi_{\boldsymbol{\theta}_k}(\cdot \mid s_t)$
+            \State Execute $a_t$, observe $r_t, s_{t+1}$
+            \State Store $(s_t, a_t, r_t, s_{t+1},\, \pi_{\boldsymbol{\theta}_k}(a_t \mid s_t))$
+        \EndFor
+    \EndFor
+    \State Collect buffer: $\mathcal{D}_k \gets N \!\times\! T$ tuples
+    \Statex \hspace{\algorithmicindent}\textit{// Phase 2: Advantage estimation (GAE) + normalization}
+    \State $S \gets 0$, \; $S_2 \gets 0$
+    \For{actor $= 1, \ldots, N$}
+        \State $\hat{A}_T \gets 0$
+        \For{$t = T{-}1, \ldots, 0$}
+            \State $\delta_t \gets r_t + \gamma\, V_{\boldsymbol{\phi}_k}(s_{t+1}) - V_{\boldsymbol{\phi}_k}(s_t)$
+            \State $\hat{A}_t \gets \delta_t + \gamma \lambda\, \hat{A}_{t+1}$
+            \State $\hat{R}_t \gets \hat{A}_t + V_{\boldsymbol{\phi}_k}(s_t)$
+            \State $(s_t, a_t, r_t, s_{t+1}, \pi_{\boldsymbol{\theta}_k}) \!\to\! (s_t, a_t, \hat{A}_t, \hat{R}_t, \pi_{\boldsymbol{\theta}_k})$
+            \State $S \gets S + \hat{A}_t$, \; $S_2 \gets S_2 + \hat{A}_t^2$
+        \EndFor
+    \EndFor
+    \State $\mu_{\hat{A}} \gets S / (N \!\cdot\! T)$, \; $\sigma_{\hat{A}} \gets \sqrt{S_2 / (N \!\cdot\! T) - \mu_{\hat{A}}^2}$
+    \For{each $\hat{A}_t \in \mathcal{D}_k$}
+        \State $\hat{A}_t \gets (\hat{A}_t - \mu_{\hat{A}}) / (\sigma_{\hat{A}} + \varepsilon)$
+    \EndFor
+    \Statex \hspace{\algorithmicindent}\textit{// Phase 3: Policy and value update}
+    \State Shuffle $\mathcal{D}_k$, split into $\lceil N \!\cdot\! T / M \rceil$ minibatches
+    \For{epoch $= 1, \ldots, K$}
+        \For{each minibatch $\mathcal{B}$, $|\mathcal{B}| = M$}
+            \State $L^{\text{CLIP}} \!\gets\! 0$, \; $L^{V} \!\gets\! 0$, \; $H \!\gets\! 0$
+            \For{each $(s_t, a_t, \hat{A}_t, \hat{R}_t, \pi_{\boldsymbol{\theta}_k}) \in \mathcal{B}$}
+                \State $\rho_t \gets \pi_{\boldsymbol{\theta}}(a_t \mid s_t) / \pi_{\boldsymbol{\theta}_k}(a_t \mid s_t)$
+                \State $L^{\text{CLIP}} \mathrel{+}= \frac{1}{M} \min\!\big(\rho_t \hat{A}_t,\; \text{clip}(\rho_t, 1{-}\epsilon, 1{+}\epsilon) \hat{A}_t\big)$
+                \State $L^{V} \mathrel{+}= \frac{1}{M} (V_{\boldsymbol{\phi}}(s_t) - \hat{R}_t)^2$
+                \For{each action $a$ in action space}
+                    \State $H \mathrel{-}= \frac{1}{M} \pi_{\boldsymbol{\theta}}(a \mid s_t) \log \pi_{\boldsymbol{\theta}}(a \mid s_t)$
+                \EndFor
+            \EndFor
+            \State $\boldsymbol{\theta} \gets \boldsymbol{\theta} + \alpha_\pi \nabla_{\boldsymbol{\theta}} (L^{\text{CLIP}} + c_e H)$
+            \State $\boldsymbol{\phi} \gets \boldsymbol{\phi} - \alpha_V \nabla_{\boldsymbol{\phi}} L^{V}$
+        \EndFor
+    \EndFor
+\EndFor
+\end{algorithmic}
+\end{minipage}
+\end{algorithm}
+
+%% ============================================================
+%% Algorithm 1b: PPO-Clip (Practical / Vectorized)
+%% ============================================================
+\begin{algorithm}[p]\small
+\caption{PPO-Clip — Practical Vectorized Implementation}\label{alg:ppo-practical}
+\vspace{2pt}
+\noindent
+\begin{minipage}[t]{0.28\linewidth}
+\renewcommand{\arraystretch}{1.12}
+\textbf{Ensure} \\[2pt]
+Optimized policy $\pi_{\boldsymbol{\theta}}$
+
+\vspace{6pt}
+\textbf{Hyperparameters} \\[2pt]
+$\boldsymbol{\theta}_0$ — init policy params \\
+$\boldsymbol{\phi}_0$ — init value params \\
+$\epsilon$ — clip ratio (typ.\ $0.2$) \\
+$\gamma$ — discount factor \\
+$\lambda$ — GAE param \\
+$N$ — parallel environments \\
+$T$ — rollout length \\
+$K$ — epochs \\
+$M$ — minibatch size \\
+$\alpha_\pi$ — policy learning rate \\
+$\alpha_V$ — value learning rate \\
+$c_e$ — entropy coeff.
+
+\vspace{6pt}
+\textbf{Tensors} \\[2pt]
+$\mathbf{S}, \mathbf{A}, \mathbf{R} \in \mathbb{R}^{N \times T}$ \\
+$\mathbf{D} \in \{0,1\}^{N \times T}$ — done flags \\
+$\boldsymbol{\pi}_{\text{old}} \in \mathbb{R}^{N \times T}$ \\
+$\mathbf{V} \in \mathbb{R}^{N \times (T+1)}$ \\
+$\boldsymbol{\delta} \in \mathbb{R}^{N \times T}$ \\
+$\hat{\mathbf{A}}, \hat{\mathbf{R}} \in \mathbb{R}^{N \times T}$ \\
+$\boldsymbol{\rho} \in \mathbb{R}^{M}$
+\end{minipage}%
+\hfill
+\vrule
+\hfill
+\begin{minipage}[t]{0.68\linewidth}
+\begin{algorithmic}[1]
+\For{$k = 0, 1, 2, \ldots$}
+    \Statex \hspace{\algorithmicindent}\textit{// Phase 1: Vectorized rollout} \hfill $\mathcal{O}(T \cdot N \cdot C_\pi)$
+    \For{$t = 0, \ldots, T{-}1$}
+        \State $\mathbf{A}_{:,t} \sim \pi_{\boldsymbol{\theta}_k}(\cdot \mid \mathbf{S}_{:,t})$ \hfill $\mathcal{O}(N \cdot C_\pi)$
+        \State $\mathbf{R}_{:,t},\, \mathbf{S}_{:,t+1},\, \mathbf{D}_{:,t} \gets \texttt{envs.step}(\mathbf{A}_{:,t})$ \hfill $\mathcal{O}(N)$
+        \State $\boldsymbol{\pi}_{\text{old}_{:,t}} \gets \pi_{\boldsymbol{\theta}_k}(\mathbf{A}_{:,t} \mid \mathbf{S}_{:,t})$
+    \EndFor
+    \Statex \hspace{\algorithmicindent}\textit{// Phase 2: Vectorized GAE} \hfill $\mathcal{O}(NT + N \cdot C_V)$
+    \State $\mathbf{V} \gets V_{\boldsymbol{\phi}_k}([\mathbf{S},\, \mathbf{S}_{:,T}])$ \hfill $\mathcal{O}(N \cdot C_V)$; shape $(N, T{+}1)$
+    \State $\boldsymbol{\delta} \gets \mathbf{R} + \gamma\,(1 - \mathbf{D}) \odot \mathbf{V}_{:,1:} - \mathbf{V}_{:,:-1}$ \hfill $\mathcal{O}(NT)$
+    \State $\hat{\mathbf{A}}_{:,T-1} \gets \boldsymbol{\delta}_{:,T-1}$
+    \For{$t = T{-}2, \ldots, 0$}
+        \State $\hat{\mathbf{A}}_{:,t} \gets \boldsymbol{\delta}_{:,t} + \gamma \lambda\,(1 - \mathbf{D}_{:,t}) \odot \hat{\mathbf{A}}_{:,t+1}$ \hfill $\mathcal{O}(N)$
+    \EndFor
+    \State $\hat{\mathbf{R}} \gets \hat{\mathbf{A}} + \mathbf{V}_{:,:-1}$ \hfill $\mathcal{O}(NT)$
+    \Statex \hspace{\algorithmicindent}\textit{// Phase 3: Minibatch SGD} \hfill $\mathcal{O}(K \!\cdot\! NT \!\cdot\! (C_\pi + C_V))$
+    \State Flatten $\mathcal{D}_k \gets$ reshape all tensors to $(N \!\cdot\! T, \ldots)$
+    \For{epoch $= 1, \ldots, K$}
+        \State $\mathcal{I} \gets \texttt{randperm}(N \!\cdot\! T)$
+        \For{$b = 0, M, 2M, \ldots$} \hfill $\lceil NT/M \rceil$ minibatches
+            \State $\mathcal{B} \gets \mathcal{I}[b : b{+}M]$
+            \State $\hat{\mathbf{A}}_\mathcal{B} \gets (\hat{\mathbf{A}}_\mathcal{B} - \texttt{mean}(\hat{\mathbf{A}}_\mathcal{B})) / (\texttt{std}(\hat{\mathbf{A}}_\mathcal{B}) + \varepsilon)$ \hfill $\mathcal{O}(M)$
+            \State $\boldsymbol{\rho} \gets \pi_{\boldsymbol{\theta}}(\mathbf{A}_\mathcal{B} \mid \mathbf{S}_\mathcal{B}) \,/\, \boldsymbol{\pi}_{\text{old}_\mathcal{B}}$ \hfill $\mathcal{O}(M \cdot C_\pi)$
+            \State $L^{\text{CLIP}} \gets \texttt{mean}\!\big(\min(\boldsymbol{\rho} \odot \hat{\mathbf{A}}_\mathcal{B},\; \texttt{clip}(\boldsymbol{\rho}, 1{-}\epsilon, 1{+}\epsilon) \odot \hat{\mathbf{A}}_\mathcal{B})\big)$
+            \State $L^{V} \gets \texttt{mean}\!\big((V_{\boldsymbol{\phi}}(\mathbf{S}_\mathcal{B}) - \hat{\mathbf{R}}_\mathcal{B})^2\big)$ \hfill $\mathcal{O}(M \cdot C_V)$
+            \State $H \gets \texttt{mean}\!\big(\texttt{entropy}(\pi_{\boldsymbol{\theta}}(\cdot \mid \mathbf{S}_\mathcal{B}))\big)$
+            \State $\boldsymbol{\theta} \gets \boldsymbol{\theta} + \alpha_\pi \nabla_{\boldsymbol{\theta}} (L^{\text{CLIP}} + c_e H)$ \hfill $\mathcal{O}(M \cdot C_\pi)$
+            \State $\boldsymbol{\phi} \gets \boldsymbol{\phi} - \alpha_V \nabla_{\boldsymbol{\phi}} L^{V}$ \hfill $\mathcal{O}(M \cdot C_V)$
+        \EndFor
+    \EndFor
+\EndFor
+\end{algorithmic}
+\vspace{4pt}
+\noindent\rule{\linewidth}{0.4pt}
+\vspace{2pt}
+\textit{Per-iteration complexity:} $\mathcal{O}\big(T \!\cdot\! N \!\cdot\! C_\pi + K \!\cdot\! N \!\cdot\! T \!\cdot\! (C_\pi + C_V)\big)$ \\[2pt]
+$C_\pi$: policy forward/backward cost, \; $C_V$: value forward/backward cost. \\
+Phase 3 dominates ($K$ epochs $\times$ full buffer); Phase 2 is $\mathcal{O}(NT)$ arithmetic.
+\end{minipage}
+\end{algorithm}
+
+%% ============================================================
+%% Algorithm 2: GRPO
+%% ============================================================
+\begin{algorithm}[p]\small
+\caption{GRPO (Group Relative Policy Optimization)}\label{alg:grpo}
+\vspace{2pt}
+\noindent
+\begin{minipage}[t]{0.28\linewidth}
+\renewcommand{\arraystretch}{1.12}
+\textbf{Ensure} \\[2pt]
+Optimized policy $\pi_{\boldsymbol{\theta}}$
+
+\vspace{6pt}
+\textbf{Hyperparameters} \\[2pt]
+$\boldsymbol{\theta}_0$ — init policy params \\
+$\pi_{\text{ref}}$ — frozen reference policy \\
+$\epsilon$ — clip ratio (typ.\ $0.2$) \\
+$G$ — group size \\
+$\beta$ — KL coefficient \\
+$\alpha$ — learning rate \\
+$K$ — epochs \\
+$R(\mathbf{q}, \mathbf{o})$ — reward function
+
+\vspace{6pt}
+\textbf{Notation} \\[2pt]
+$\mathbf{q}$ — input query (prompt) \\
+$\mathbf{o}_j$ — $j$-th completion \\
+$o_{j,t}$ — token $t$ of completion $j$ \\
+$\mathbf{o}_{j,<t}$ — preceding tokens \\
+$|\mathbf{o}_j|$ — completion length \\
+$\hat{A}_j$ — group-relative advantage \\
+$\rho_{j,t}$ — IS ratio $\pi_{\boldsymbol{\theta}} / \pi_{\boldsymbol{\theta}_k}$ \\
+$D_{\text{KL}}$ — KL divergence
+\end{minipage}%
+\hfill
+\vrule
+\hfill
+\begin{minipage}[t]{0.68\linewidth}
+\begin{algorithmic}[1]
+\For{$k = 0, 1, 2, \ldots$}
+    \Statex \hspace{\algorithmicindent}\textit{// Phase 1: Group sampling}
+    \For{each query $\mathbf{q}$ in training batch}
+        \For{$j = 1, \ldots, G$}
+            \State Sample completion $\mathbf{o}_j \sim \pi_{\boldsymbol{\theta}_k}(\cdot \mid \mathbf{q})$
+            \State Compute reward $R_j \gets R(\mathbf{q}, \mathbf{o}_j)$
+            \For{$t = 1, \ldots, |\mathbf{o}_j|$}
+                \State Cache $\pi_{\boldsymbol{\theta}_k}(o_{j,t} \mid \mathbf{q},\, \mathbf{o}_{j,<t})$
+            \EndFor
+        \EndFor
+    \EndFor
+    \Statex \hspace{\algorithmicindent}\textit{// Phase 2: Group-relative advantage (no critic)}
+    \For{each query group $\{R_1, \ldots, R_G\}$}
+        \State $\mu \gets 0$, \; $\sigma^2 \gets 0$
+        \For{$j = 1, \ldots, G$}
+            \State $\mu \gets \mu + R_j / G$
+        \EndFor
+        \For{$j = 1, \ldots, G$}
+            \State $\sigma^2 \gets \sigma^2 + (R_j - \mu)^2 / G$
+        \EndFor
+        \For{$j = 1, \ldots, G$}
+            \State $\hat{A}_j \gets (R_j - \mu) / \max(\sqrt{\sigma^2},\, \varepsilon_{\min})$
+        \EndFor
+    \EndFor
+    \Statex \hspace{\algorithmicindent}\textit{// Phase 3: Clipped surrogate update}
+    \For{epoch $= 1, \ldots, K$}
+        \For{each minibatch $\mathcal{B}$ of completions}
+            \State $L^{\text{GRPO}} \gets 0$, \; $D_{\text{KL}} \gets 0$
+            \For{each $(\mathbf{q}, \mathbf{o}_j, \hat{A}_j) \in \mathcal{B}$}
+                \For{$t = 1, \ldots, |\mathbf{o}_j|$}
+                    \State $\rho_{j,t} \gets \pi_{\boldsymbol{\theta}}(o_{j,t} \mid \mathbf{q}, \mathbf{o}_{j,<t}) / \pi_{\boldsymbol{\theta}_k}(o_{j,t} \mid \mathbf{q}, \mathbf{o}_{j,<t})$
+                    \State $L^{\text{GRPO}} \mathrel{+}= \frac{1}{|\mathcal{B}||\mathbf{o}_j|} \min\!\big(\rho_{j,t} \hat{A}_j,\; \text{clip}(\rho_{j,t}, 1{-}\epsilon, 1{+}\epsilon) \hat{A}_j\big)$
+                    \State $D_{\text{KL}} \mathrel{+}= \frac{1}{|\mathcal{B}|} \big[\frac{\pi_{\boldsymbol{\theta}}}{\pi_{\text{ref}}} - \log \frac{\pi_{\boldsymbol{\theta}}}{\pi_{\text{ref}}} - 1\big]$
+                \EndFor
+            \EndFor
+            \State $\boldsymbol{\theta} \gets \boldsymbol{\theta} + \alpha \nabla_{\boldsymbol{\theta}} (L^{\text{GRPO}} - \beta\, D_{\text{KL}})$
+        \EndFor
+    \EndFor
+\EndFor
+\end{algorithmic}
+\end{minipage}
+\end{algorithm}
+
+%% ============================================================
+%% Algorithm 3: CISPO
+%% ============================================================
+\begin{algorithm}[p]\small
+\caption{CISPO (Clipped Importance Sampling Policy Optimization)}\label{alg:cispo}
+\vspace{2pt}
+\noindent
+\begin{minipage}[t]{0.28\linewidth}
+\renewcommand{\arraystretch}{1.12}
+\textbf{Ensure} \\[2pt]
+Optimized policy $\pi_{\boldsymbol{\theta}}$
+
+\vspace{6pt}
+\textbf{Hyperparameters} \\[2pt]
+$\boldsymbol{\theta}_0$ — init policy params \\
+$\epsilon_{\text{high}}$ — upper clip (typ.\ $0.3$) \\
+$G$ — group size \\
+$\alpha$ — learning rate \\
+$K$ — epochs \\
+$R(\mathbf{q}, \mathbf{o})$ — reward function
+
+\vspace{6pt}
+\textbf{Notation} \\[2pt]
+Same as GRPO, plus: \\
+$\hat{\rho}_{j,t}$ — clamped IS ratio \\
+$\bar{\rho}_{j,t}$ — detached weight \\
+$\textsc{StopGrad}(\cdot)$ — detach \\
+\hspace*{1em}from computation graph \\
+$N_{\text{tokens}}$ — total tokens in batch
+\end{minipage}%
+\hfill
+\vrule
+\hfill
+\begin{minipage}[t]{0.68\linewidth}
+\begin{algorithmic}[1]
+\For{$k = 0, 1, 2, \ldots$}
+    \Statex \hspace{\algorithmicindent}\textit{// Phase 1: Group sampling (same as GRPO)}
+    \For{each query $\mathbf{q}$ in training batch}
+        \For{$j = 1, \ldots, G$}
+            \State Sample completion $\mathbf{o}_j \sim \pi_{\boldsymbol{\theta}_k}(\cdot \mid \mathbf{q})$
+            \State Compute reward $R_j \gets R(\mathbf{q}, \mathbf{o}_j)$
+            \For{$t = 1, \ldots, |\mathbf{o}_j|$}
+                \State Cache $\pi_{\boldsymbol{\theta}_k}(o_{j,t} \mid \mathbf{q},\, \mathbf{o}_{j,<t})$
+            \EndFor
+        \EndFor
+    \EndFor
+    \Statex \hspace{\algorithmicindent}\textit{// Phase 2: Group-relative advantage (same as GRPO)}
+    \For{each query group $\{R_1, \ldots, R_G\}$}
+        \State $\mu \gets 0$, \; $\sigma^2 \gets 0$
+        \For{$j = 1, \ldots, G$}
+            \State $\mu \gets \mu + R_j / G$
+        \EndFor
+        \For{$j = 1, \ldots, G$}
+            \State $\sigma^2 \gets \sigma^2 + (R_j - \mu)^2 / G$
+        \EndFor
+        \For{$j = 1, \ldots, G$}
+            \State $\hat{A}_j \gets (R_j - \mu) / \max(\sqrt{\sigma^2},\, \varepsilon_{\min})$
+        \EndFor
+    \EndFor
+    \Statex \hspace{\algorithmicindent}\textit{// Phase 3: Clipped IS weight update}
+    \Statex \hspace{\algorithmicindent}\textit{// Key: clip weight + detach $\rightarrow$ all tokens get gradient}
+    \For{epoch $= 1, \ldots, K$}
+        \For{each minibatch $\mathcal{B}$ of completions}
+            \State $L^{\text{CISPO}} \gets 0$, \; $N_{\text{tokens}} \gets 0$
+            \For{each $(\mathbf{q}, \mathbf{o}_j, \hat{A}_j) \in \mathcal{B}$}
+                \State $N_{\text{tokens}} \gets N_{\text{tokens}} + |\mathbf{o}_j|$
+                \For{$t = 1, \ldots, |\mathbf{o}_j|$}
+                    \State $\rho_{j,t} \gets \pi_{\boldsymbol{\theta}}(o_{j,t} \mid \mathbf{q}, \mathbf{o}_{j,<t}) / \pi_{\boldsymbol{\theta}_k}(o_{j,t} \mid \mathbf{q}, \mathbf{o}_{j,<t})$
+                    \State $\hat{\rho}_{j,t} \gets \text{clamp}(\rho_{j,t},\; \max = 1 + \epsilon_{\text{high}})$
+                    \State $\bar{\rho}_{j,t} \gets \textsc{StopGrad}(\hat{\rho}_{j,t})$
+                    \State $L^{\text{CISPO}} \mathrel{+}= \bar{\rho}_{j,t} \cdot \hat{A}_j \cdot \log \pi_{\boldsymbol{\theta}}(o_{j,t} \mid \mathbf{q}, \mathbf{o}_{j,<t})$
+                \EndFor
+            \EndFor
+            \State $L^{\text{CISPO}} \gets L^{\text{CISPO}} / N_{\text{tokens}}$
+            \State $\boldsymbol{\theta} \gets \boldsymbol{\theta} + \alpha \nabla_{\boldsymbol{\theta}} L^{\text{CISPO}}$
+        \EndFor
+    \EndFor
+\EndFor
+\end{algorithmic}
+\end{minipage}
+\end{algorithm}
+
+%% ============================================================
+%% Algorithm 2b: GRPO (Practical / Vectorized)
+%% ============================================================
+\begin{algorithm}[p]\small
+\caption{GRPO — Practical Vectorized Implementation}\label{alg:grpo-practical}
+\vspace{2pt}
+\noindent
+\begin{minipage}[t]{0.28\linewidth}
+\renewcommand{\arraystretch}{1.12}
+\textbf{Ensure} \\[2pt]
+Optimized policy $\pi_{\boldsymbol{\theta}}$
+
+\vspace{6pt}
+\textbf{Hyperparameters} \\[2pt]
+$\boldsymbol{\theta}_0$ — init policy params \\
+$\pi_{\text{ref}}$ — frozen ref.\ policy \\
+$\epsilon$ — clip ratio (typ.\ $0.2$) \\
+$G$ — group size \\
+$\beta$ — KL coefficient \\
+$\alpha$ — learning rate \\
+$K$ — epochs \\
+$M$ — minibatch size \\
+$R(\mathbf{q}, \mathbf{o})$ — reward function
+
+\vspace{6pt}
+\textbf{Tensors} \\[2pt]
+$B$ — queries per batch \\
+$L$ — max completion length \\[3pt]
+$\mathbf{Q} \in \mathbb{Z}^{B \times L_q}$ — queries \\
+$\mathbf{O} \in \mathbb{Z}^{B \times G \times L}$ — tokens \\
+$\boldsymbol{\pi}_{\text{old}} \in \mathbb{R}^{B \times G \times L}$ \\
+$\mathbf{M} \in \{0,1\}^{B \times G \times L}$ — mask \\
+$\mathbf{R} \in \mathbb{R}^{B \times G}$ — rewards \\
+$\hat{\mathbf{A}} \in \mathbb{R}^{B \times G}$ — advantages \\
+$\boldsymbol{\rho} \in \mathbb{R}^{M \times L}$
+\end{minipage}%
+\hfill
+\vrule
+\hfill
+\begin{minipage}[t]{0.68\linewidth}
+\begin{algorithmic}[1]
+\For{$k = 0, 1, 2, \ldots$}
+    \Statex \hspace{\algorithmicindent}\textit{// Phase 1: Batch generation} \hfill $\mathcal{O}(B \!\cdot\! G \!\cdot\! L \!\cdot\! C_\pi)$
+    \For{each query batch $\mathbf{Q}_{1:B}$}
+        \State $\mathbf{O}_{:,:,:} \sim \pi_{\boldsymbol{\theta}_k}(\cdot \mid \mathbf{Q})$ \hfill $B \!\cdot\! G$ completions in parallel
+        \State $\mathbf{R}_{:,:} \gets R(\mathbf{Q}, \mathbf{O})$ \hfill batch reward evaluation
+        \State $\boldsymbol{\pi}_{\text{old}} \gets \pi_{\boldsymbol{\theta}_k}(\mathbf{O} \mid \mathbf{Q})$ \hfill $\mathcal{O}(BGL \!\cdot\! C_\pi)$
+        \State $\mathbf{M} \gets \texttt{token\_mask}(\mathbf{O})$ \hfill $1$ where valid, $0$ for padding
+    \EndFor
+    \Statex \hspace{\algorithmicindent}\textit{// Phase 2: Group-relative advantage} \hfill $\mathcal{O}(BG)$
+    \State $\boldsymbol{\mu} \gets \texttt{mean}(\mathbf{R}, \text{dim}=G)$ \hfill $\in \mathbb{R}^{B}$
+    \State $\boldsymbol{\sigma} \gets \texttt{std}(\mathbf{R}, \text{dim}=G)$ \hfill $\in \mathbb{R}^{B}$
+    \State $\hat{\mathbf{A}} \gets (\mathbf{R} - \boldsymbol{\mu}) \,/\, \max(\boldsymbol{\sigma},\, \varepsilon_{\min})$ \hfill broadcast over $G$
+    \Statex \hspace{\algorithmicindent}\textit{// Phase 3: Minibatch SGD} \hfill $\mathcal{O}(K \!\cdot\! BG \!\cdot\! L \!\cdot\! C_\pi)$
+    \State Flatten $\mathcal{D}_k \gets$ reshape to $(B \!\cdot\! G, L)$ completions
+    \For{epoch $= 1, \ldots, K$}
+        \State $\mathcal{I} \gets \texttt{randperm}(B \!\cdot\! G)$ \hfill shuffle completions
+        \For{$b = 0, M, 2M, \ldots$} \hfill $\lceil BG/M \rceil$ minibatches
+            \State $\mathcal{B} \gets \mathcal{I}[b : b{+}M]$
+            \State $\boldsymbol{\rho} \gets \pi_{\boldsymbol{\theta}}(\mathbf{O}_\mathcal{B} \mid \mathbf{Q}_\mathcal{B}) \,/\, \boldsymbol{\pi}_{\text{old}_\mathcal{B}}$ \hfill $\mathcal{O}(ML \!\cdot\! C_\pi)$
+            \State $\mathbf{L}_{\text{tok}} \gets \min\!\big(\boldsymbol{\rho} \odot \hat{\mathbf{A}}_\mathcal{B},\; \texttt{clip}(\boldsymbol{\rho}, 1{-}\epsilon, 1{+}\epsilon) \odot \hat{\mathbf{A}}_\mathcal{B}\big)$
+            \State $L^{\text{GRPO}} \gets \texttt{sum}(\mathbf{L}_{\text{tok}} \odot \mathbf{M}_\mathcal{B}) \,/\, \texttt{sum}(\mathbf{M}_\mathcal{B})$ \hfill masked mean
+            \State $\mathbf{r}_{\text{ref}} \gets \pi_{\boldsymbol{\theta}}(\mathbf{O}_\mathcal{B} \mid \cdot) \,/\, \pi_{\text{ref}}(\mathbf{O}_\mathcal{B} \mid \cdot)$
+            \State $D_{\text{KL}} \gets \texttt{mean}\!\big((\mathbf{r}_{\text{ref}} - \log \mathbf{r}_{\text{ref}} - 1) \odot \mathbf{M}_\mathcal{B}\big)$
+            \State $\boldsymbol{\theta} \gets \boldsymbol{\theta} + \alpha \nabla_{\boldsymbol{\theta}} (L^{\text{GRPO}} - \beta\, D_{\text{KL}})$ \hfill $\mathcal{O}(ML \!\cdot\! C_\pi)$
+        \EndFor
+    \EndFor
+\EndFor
+\end{algorithmic}
+\vspace{4pt}
+\noindent\rule{\linewidth}{0.4pt}
+\vspace{2pt}
+\textit{Per-iteration complexity:} $\mathcal{O}\big(B \!\cdot\! G \!\cdot\! L \!\cdot\! C_\pi \,+\, K \!\cdot\! B \!\cdot\! G \!\cdot\! L \!\cdot\! C_\pi\big) = \mathcal{O}\big((1{+}K) \!\cdot\! BGL \!\cdot\! C_\pi\big)$ \\[2pt]
+$C_\pi$: policy forward/backward cost. No $C_V$ term (critic-free). \\
+Phase 2 is $\mathcal{O}(BG)$ arithmetic — negligible vs.\ neural forward passes.
+\end{minipage}
+\end{algorithm}
+
+%% ============================================================
+%% Algorithm 3b: CISPO (Practical / Vectorized)
+%% ============================================================
+\begin{algorithm}[p]\small
+\caption{CISPO — Practical Vectorized Implementation}\label{alg:cispo-practical}
+\vspace{2pt}
+\noindent
+\begin{minipage}[t]{0.28\linewidth}
+\renewcommand{\arraystretch}{1.12}
+\textbf{Ensure} \\[2pt]
+Optimized policy $\pi_{\boldsymbol{\theta}}$
+
+\vspace{6pt}
+\textbf{Hyperparameters} \\[2pt]
+$\boldsymbol{\theta}_0$ — init policy params \\
+$\epsilon_{\text{high}}$ — upper clip (typ.\ $0.3$) \\
+$G$ — group size \\
+$\alpha$ — learning rate \\
+$K$ — epochs \\
+$M$ — minibatch size \\
+$R(\mathbf{q}, \mathbf{o})$ — reward function
+
+\vspace{6pt}
+\textbf{Tensors} \\[2pt]
+$B$ — queries per batch \\
+$L$ — max completion length \\[3pt]
+$\mathbf{Q} \in \mathbb{Z}^{B \times L_q}$ — queries \\
+$\mathbf{O} \in \mathbb{Z}^{B \times G \times L}$ — tokens \\
+$\boldsymbol{\pi}_{\text{old}} \in \mathbb{R}^{B \times G \times L}$ \\
+$\mathbf{M} \in \{0,1\}^{B \times G \times L}$ — mask \\
+$\mathbf{R} \in \mathbb{R}^{B \times G}$ — rewards \\
+$\hat{\mathbf{A}} \in \mathbb{R}^{B \times G}$ — advantages \\
+$\boldsymbol{\rho}, \hat{\boldsymbol{\rho}}, \bar{\boldsymbol{\rho}} \in \mathbb{R}^{M \times L}$
+\end{minipage}%
+\hfill
+\vrule
+\hfill
+\begin{minipage}[t]{0.68\linewidth}
+\begin{algorithmic}[1]
+\For{$k = 0, 1, 2, \ldots$}
+    \Statex \hspace{\algorithmicindent}\textit{// Phase 1: Batch generation (same as GRPO)} \hfill $\mathcal{O}(BGL \!\cdot\! C_\pi)$
+    \For{each query batch $\mathbf{Q}_{1:B}$}
+        \State $\mathbf{O}_{:,:,:} \sim \pi_{\boldsymbol{\theta}_k}(\cdot \mid \mathbf{Q})$ \hfill $B \!\cdot\! G$ completions in parallel
+        \State $\mathbf{R}_{:,:} \gets R(\mathbf{Q}, \mathbf{O})$ \hfill batch reward evaluation
+        \State $\boldsymbol{\pi}_{\text{old}} \gets \pi_{\boldsymbol{\theta}_k}(\mathbf{O} \mid \mathbf{Q})$ \hfill $\mathcal{O}(BGL \!\cdot\! C_\pi)$
+        \State $\mathbf{M} \gets \texttt{token\_mask}(\mathbf{O})$ \hfill $1$ where valid, $0$ for padding
+    \EndFor
+    \Statex \hspace{\algorithmicindent}\textit{// Phase 2: Group-relative advantage (same as GRPO)} \hfill $\mathcal{O}(BG)$
+    \State $\boldsymbol{\mu} \gets \texttt{mean}(\mathbf{R}, \text{dim}=G)$ \hfill $\in \mathbb{R}^{B}$
+    \State $\boldsymbol{\sigma} \gets \texttt{std}(\mathbf{R}, \text{dim}=G)$ \hfill $\in \mathbb{R}^{B}$
+    \State $\hat{\mathbf{A}} \gets (\mathbf{R} - \boldsymbol{\mu}) \,/\, \max(\boldsymbol{\sigma},\, \varepsilon_{\min})$ \hfill broadcast over $G$
+    \Statex \hspace{\algorithmicindent}\textit{// Phase 3: Clipped IS weight SGD} \hfill $\mathcal{O}(K \!\cdot\! BG \!\cdot\! L \!\cdot\! C_\pi)$
+    \State Flatten $\mathcal{D}_k \gets$ reshape to $(B \!\cdot\! G, L)$ completions
+    \For{epoch $= 1, \ldots, K$}
+        \State $\mathcal{I} \gets \texttt{randperm}(B \!\cdot\! G)$
+        \For{$b = 0, M, 2M, \ldots$} \hfill $\lceil BG/M \rceil$ minibatches
+            \State $\mathcal{B} \gets \mathcal{I}[b : b{+}M]$
+            \State $\boldsymbol{\rho} \gets \pi_{\boldsymbol{\theta}}(\mathbf{O}_\mathcal{B} \mid \mathbf{Q}_\mathcal{B}) \,/\, \boldsymbol{\pi}_{\text{old}_\mathcal{B}}$ \hfill $\mathcal{O}(ML \!\cdot\! C_\pi)$
+            \State $\hat{\boldsymbol{\rho}} \gets \texttt{clamp}(\boldsymbol{\rho},\; \max = 1 + \epsilon_{\text{high}})$ \hfill $\mathcal{O}(ML)$
+            \State $\bar{\boldsymbol{\rho}} \gets \texttt{stop\_grad}(\hat{\boldsymbol{\rho}})$ \hfill detach from graph
+            \State $\mathbf{L}_{\text{tok}} \gets \bar{\boldsymbol{\rho}} \odot \hat{\mathbf{A}}_\mathcal{B} \odot \log \pi_{\boldsymbol{\theta}}(\mathbf{O}_\mathcal{B} \mid \mathbf{Q}_\mathcal{B})$
+            \State $L^{\text{CISPO}} \gets \texttt{sum}(\mathbf{L}_{\text{tok}} \odot \mathbf{M}_\mathcal{B}) \,/\, \texttt{sum}(\mathbf{M}_\mathcal{B})$ \hfill masked mean
+            \State $\boldsymbol{\theta} \gets \boldsymbol{\theta} + \alpha \nabla_{\boldsymbol{\theta}} L^{\text{CISPO}}$ \hfill $\mathcal{O}(ML \!\cdot\! C_\pi)$
+        \EndFor
+    \EndFor
+\EndFor
+\end{algorithmic}
+\vspace{4pt}
+\noindent\rule{\linewidth}{0.4pt}
+\vspace{2pt}
+\textit{Per-iteration complexity:} $\mathcal{O}\big((1{+}K) \!\cdot\! BGL \!\cdot\! C_\pi\big)$ — same as GRPO \\[2pt]
+No $\pi_{\text{ref}}$ forward pass needed (no KL term). \texttt{stop\_grad} is $\mathcal{O}(1)$. \\
+All tokens receive gradient (vs.\ GRPO where clipped tokens are masked out).
+\end{minipage}
+\end{algorithm}
+
+%% ============================================================
+%% Algorithm 4: Comparison summary box
+%% ============================================================
+\begin{algorithm}[t]
+\caption{Key Differences: PPO vs GRPO vs CISPO}\label{alg:compare}
+\begin{algorithmic}[0]
+\Statex \textbf{PPO} \textit{(Schulman et al., 2017):}
+\Statex \hspace{\algorithmicindent} $L^{\text{CLIP}} = \min\!\big(\rho_t\, \hat{A}_t,\;\; \text{clip}(\rho_t,\, 1{-}\epsilon,\, 1{+}\epsilon)\, \hat{A}_t\big)$ \; (ascent)
+\Statex \hspace{\algorithmicindent} Advantage via \textit{learned critic} $V_\phi$.
+\Statex \hspace{\algorithmicindent} When $\rho_t > 1{+}\epsilon$ and $\hat{A}_t > 0$: $\nabla_{\boldsymbol{\theta}} = \mathbf{0}$ \textit{(token masked out).}
+\Statex
+\Statex \textbf{GRPO} \textit{(DeepSeek, 2024):}
+\Statex \hspace{\algorithmicindent} $L = -\min\!\big(\rho_{j,t}\, \hat{A}_j,\;\; \text{clip}(\rho_{j,t},\, 1{-}\epsilon,\, 1{+}\epsilon)\, \hat{A}_j\big)$
+\Statex \hspace{\algorithmicindent} Advantage via \textit{group-relative normalization} (no critic).
+\Statex \hspace{\algorithmicindent} When $\rho_{j,t} > 1{+}\epsilon$ and $\hat{A}_j > 0$: $\nabla_{\boldsymbol{\theta}} = \mathbf{0}$ \textit{(token masked out).}
+\Statex
+\Statex \textbf{CISPO} \textit{(MiniMax-M1, 2025):}
+\Statex \hspace{\algorithmicindent} $L = -\textsc{sg}\!\big(\text{clamp}(\rho_{j,t},\, \max\!=\!1{+}\epsilon_h)\big) \cdot \hat{A}_j \cdot \log \pi_\theta$
+\Statex \hspace{\algorithmicindent} Advantage via \textit{group-relative normalization} (no critic).
+\Statex \hspace{\algorithmicindent} For all tokens: $\nabla_{\boldsymbol{\theta}} \neq \mathbf{0}$ \textit{(gradient always flows through $\log \pi$).}
+\end{algorithmic}
+\end{algorithm}
+
+\end{document}

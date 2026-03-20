@@ -2,6 +2,8 @@
 
 Level 3 task-specific configs that inherit from SL Neural Regression or SL Neural Classification. For base fields and metrics contract, see [sl_neural_fields.md](sl_neural_fields.md).
 
+All task-specific models are implemented as `LightningModule` subclasses. Architecture fields below go in `__init__()`, loss/metrics in `training_step()`/`validation_step()`, optimizer/scheduler in `configure_optimizers()`.
+
 ## Table of Contents
 
 - **Regression Tasks**: [LSTM](#lstm-regression) | [Transformer](#transformer-regression) | [CNN](#cnn-regression)

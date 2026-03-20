@@ -101,6 +101,11 @@ class SACTrainer:
         self.critic_target.load_state_dict(self.critic.state_dict())
 
         # Entropy coefficient
+        # When alpha=0 and auto_alpha is off, entropy is disabled entirely.
+        # We guard all entropy terms with _use_entropy to avoid computing
+        # alpha * log_prob, which produces 0 * (-inf) = NaN in IEEE 754
+        # when the TanhNormal log_prob saturates to -inf.
+        self._use_entropy = self.config.auto_alpha or self.config.alpha > 0.0
         if self.config.auto_alpha:
             # Learnable log_alpha
             self.log_alpha = torch.tensor(
@@ -113,7 +118,8 @@ class SACTrainer:
             )
             self.alpha_optimizer = Adam([self.log_alpha], lr=self.config.alpha_lr)
         else:
-            self.log_alpha = torch.tensor(np.log(self.config.alpha), device=self.device)
+            safe_alpha = max(self.config.alpha, 1e-10)
+            self.log_alpha = torch.tensor(np.log(safe_alpha), device=self.device)
 
         # Create optimizers
         self.actor_optimizer = Adam(
@@ -483,9 +489,9 @@ class SACTrainer:
                 # Target Q-values
                 q1_target, q2_target = self.critic_target(next_obs, next_action)
                 q_target = torch.min(q1_target, q2_target)
-                target_value = reward + (1 - done) * self.config.gamma * (
-                    q_target - self.alpha * next_log_prob.unsqueeze(-1)
-                )
+                if self._use_entropy:
+                    q_target = q_target - self.alpha * next_log_prob.unsqueeze(-1)
+                target_value = reward + (1 - done) * self.config.gamma * q_target
 
         # Current Q-values
         with amp_ctx:
@@ -519,7 +525,10 @@ class SACTrainer:
                 q_new = torch.min(q1_new, q2_new)
 
                 # Actor loss: maximize Q - alpha * log_prob
-                actor_loss = (self.alpha * log_prob.unsqueeze(-1) - q_new).mean()
+                if self._use_entropy:
+                    actor_loss = (self.alpha * log_prob.unsqueeze(-1) - q_new).mean()
+                else:
+                    actor_loss = (-q_new).mean()
 
             self.actor_optimizer.zero_grad()
             actor_loss.backward()  # OUTSIDE amp context

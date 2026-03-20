@@ -263,6 +263,10 @@ class Choi2025Config(SACConfig):
     # Target network update frequency (paper: every 8 critic updates)
     soft_update_period: int = 8
 
+    # Paper uses fp32; bf16 causes tanh to saturate at |x|>=3.5 vs |x|>=10 in fp32,
+    # which produces -inf log_probs much earlier during training.
+    use_amp: bool = False
+
     # Compose env + network + logging (paper network: 3×256)
     env: Choi2025EnvConfig = field(default_factory=Choi2025EnvConfig)
     network: Choi2025PaperNetworkConfig = field(default_factory=Choi2025PaperNetworkConfig)

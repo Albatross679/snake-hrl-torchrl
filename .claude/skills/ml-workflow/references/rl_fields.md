@@ -2,6 +2,8 @@
 
 Field specifications for Reinforcement Learning (Level 1c), classic control algorithms (PPO, SAC, DQN), and LLM alignment algorithms (DPO, GRPO, CISPO). All inherit Base fields and built-in infrastructure.
 
+**Framework note:** Classic control RL (PPO, SAC, DQN) uses **TorchRL** for environments, collectors, and replay buffers. Training loops may use raw PyTorch or Lightning depending on complexity. LLM alignment (DPO, GRPO, CISPO) uses Lightning for training with `WandbLogger` and standard callbacks. VRAM management for all neural RL uses `BatchSizeFinder` where applicable.
+
 ## Table of Contents
 
 - [RL Base](#level-1c-reinforcement-learning-rl)
@@ -438,32 +440,97 @@ Known failure modes and their detection/mitigation. Check these when monitoring 
 
 ---
 
+## Classic RL Stability (PPO/SAC — From Experience)
+
+Failure modes observed in continuous control RL with TorchRL. These complement the LLM alignment stability section above.
+
+### PPO: bf16 AMP Corrupts Importance Ratios
+
+**Symptom:** Actor loss spikes to 1e11+ intermittently, critic loss stays stable.
+
+**Cause:** bf16 autocast wraps the loss module including `TanhNormal.log_prob()`. bf16's ~3 decimal digits produce garbage log-probs → importance ratios exponentiate to inf.
+
+**Detection:** Intermittent actor loss spikes 10+ orders of magnitude above baseline.
+
+**Mitigation:** Keep loss computation (log-prob, importance ratio, advantage weighting) in f32. Only autocast network forward passes. Set `min_std >= 0.1`.
+
+### PPO: NaN Cascade from Unguarded Loss
+
+**Symptom:** All losses become NaN after step N, preceded by KL divergence spikes.
+
+**Cause:** Extreme actor loss → gradient corruption → NaN in weights → all subsequent computations NaN.
+
+**Detection:** Monitor `train/actor_loss` and `kl_divergence`. KL spikes precede NaN by a few updates.
+
+**Mitigation:** Three-layer NaN guard:
+1. `torch.isfinite(loss)` before `loss.backward()` — skip if false
+2. `torch.isfinite(grad_norm)` after clipping — skip `optimizer.step()` if false
+3. Per-batch KL early stopping at 1.5x `target_kl`
+
+### PPO: Loss Metrics Appear as Zero
+
+**Symptom:** All PPO metrics display 0.0000 despite rewards indicating learning.
+
+**Cause:** Metrics divided by `num_epochs * num_batches` (theoretical max). KL early stopping means actual updates << theoretical max.
+
+**Detection:** All loss metrics near-zero but `episode/reward` is improving.
+
+**Mitigation:** Track `actual_updates` counter incremented only on `optimizer.step()`. Divide metrics by `actual_updates`, not theoretical max.
+
+### PPO: Velocity-Based Reward Always Negative
+
+**Symptom:** Mean reward always negative, PPO cannot learn a useful policy.
+
+**Cause:** Velocity-based reward (v_g) is noisy, tiny magnitude, and negative whenever agent drifts. No positive signal to bootstrap.
+
+**Mitigation:** Replace with potential-based reward: `reward = gamma * phi(s') - phi(s)` where `phi(s) = -distance_to_target`. Guarantees: positive when approaching, negative when retreating, zero-sum over cycles.
+
+### SAC: Critic Divergence from Missing Gradient Clipping
+
+**Symptom:** Critic loss rises from normal to 10K+ over ~100K steps. Q-values swing wildly. Alpha collapses to near-zero.
+
+**Cause:** `max_grad_norm` exists in config but `_update()` never calls `clip_grad_norm_()`. With lr=0.001 and UTD>=4, one large gradient destabilizes the critic.
+
+**Detection:** Monitor critic grad_norm. If it exceeds 1000 while `max_grad_norm` is set to 0.5, clipping is not applied.
+
+**Mitigation:** Verify `nn.utils.clip_grad_norm_()` is actually called for both critic and actor in `_update()`.
+
+### SAC: Vectorized Env Never Auto-Resets
+
+**Symptom:** First batch of episodes OK (correct length), then all episodes length=1 with near-zero reward.
+
+**Cause:** `ParallelEnv.step()` in TorchRL 0.11.x does NOT auto-reset done environments.
+
+**Detection:** Episode length drops from expected (e.g., 200) to 1 after the first reset boundary.
+
+**Mitigation:** Use `env.step_and_maybe_reset()` instead of `env.step()` + `step_mdp()` for vectorized paths. Also ensure `self._device` is `torch.device`, not a string.
+
+---
+
 ## Auto Batch Size for DPO
 
-DPO has unique VRAM characteristics that affect auto batch size probing.
+DPO has unique VRAM characteristics that affect batch size tuning.
 
 **Memory profile:**
 - DPO has 4 forward passes per step (policy+ref × chosen+rejected), so activation memory is ~4x higher than standard training per sample.
 - Full-FT DPO loads 2 complete model copies (policy + frozen reference), consuming significant fixed VRAM before any batch processing.
 - LoRA DPO uses a single model with adapter toggling — roughly half the fixed VRAM cost, allowing larger batches.
 
-**Probing pattern for DPO:**
+**Lightning BatchSizeFinder for DPO:**
+Use `BatchSizeFinder(mode="binsearch")` as a Trainer callback. The `LightningModule.training_step()` must perform the full DPO forward pass (all 4 passes) so that BatchSizeFinder measures realistic peak memory.
+
 ```python
-# Sort by total sequence length for worst-case probing
-sample_lens = [len(dataset.chosen[i]) + len(dataset.rejected[i])
-               for i in range(len(dataset))]
-longest_indices = sorted(range(len(sample_lens)),
-                         key=lambda i: sample_lens[i], reverse=True)
+from lightning.pytorch.callbacks import BatchSizeFinder
 
-# Build worst-case batch
-worst_case = [dataset[longest_indices[i]] for i in range(bs)]
-batch = collate_fn(worst_case)
+# Ensure LightningDataModule exposes batch_size attribute
+class DPODataModule(L.LightningDataModule):
+    def __init__(self, batch_size=8, ...):
+        self.batch_size = batch_size  # BatchSizeFinder modifies this
 
-# Measure peak during full train step
-torch.cuda.reset_peak_memory_stats()
-train_step(model, batch, optimizer, ...)
-peak = torch.cuda.max_memory_allocated()
+trainer = Trainer(callbacks=[BatchSizeFinder(mode="binsearch")])
 ```
+
+**Note:** Because DPO's memory profile is ~4x standard training, start with a conservative `batch_size` (e.g., 4-8) so the binary search has room to scale up.
 
 ---
 

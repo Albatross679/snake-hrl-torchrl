@@ -8,6 +8,7 @@ A framework-agnostic specification for ML experiment configuration. Describes **
 2. **Batteries included** — every config gets output directory, console logging, checkpointing, metrics log, and experiment tracking by default (all individually disableable)
 3. **Serializable** — every config can be saved to JSON and loaded back
 4. **Framework-agnostic** — the spec defines semantics; the implementation adapts to the target framework
+5. **Lightning-native** — for neural training, configs map directly to Lightning Trainer args and callback params
 
 ## User Preferences
 
@@ -20,7 +21,7 @@ Each level adds fields on top of its parent. All levels include the built-in inf
 
 ```
 Base                                    (core fields + all infrastructure)
-├── SL Neural                           (epoch-based, gradient-based training)
+├── SL Neural                           (epoch-based, gradient-based training via Lightning)
 │   ├── SL Neural Regression            (regression loss, eval metrics, figures)
 │   │   ├── LSTM Regression             (hidden_size, num_layers, static branch, fusion head)
 │   │   ├── Transformer Regression      (d_model, n_heads, n_layers, positional encoding)
@@ -65,8 +66,8 @@ Every ML experiment config starts here. All other levels inherit these fields **
 | Field | Type | Default | Purpose |
 |-------|------|---------|---------|
 | name | string | `"experiment"` | Experiment name; used in run directory naming |
-| seed | integer | `42` | Random seed for reproducibility |
-| device | string | `"auto"` | Compute device: `"auto"`, `"cpu"`, `"cuda"`, `"cuda:0"`. For non-PyTorch frameworks, adapt to equivalent |
+| seed | integer | `42` | Random seed for reproducibility (use `lightning.seed_everything(seed)`) |
+| device | string | `"auto"` | Compute device: `"auto"`, `"cpu"`, `"cuda"`, `"cuda:0"`. Lightning uses `accelerator` and `devices` args instead |
 
 ### Built-in: Output Directory
 
@@ -93,16 +94,16 @@ Always present. Captures stdout/stderr to a log file. Grouped under `console`.
 
 ### Built-in: Checkpointing
 
-Always present. Controls model saving. Grouped under `checkpointing`.
+Always present. Controls model saving. For Lightning, maps to `ModelCheckpoint` callback. Grouped under `checkpointing`.
 
-| Field | Type | Default | Purpose |
-|-------|------|---------|---------|
-| checkpointing.enabled | boolean | `true` | Enable model checkpointing |
-| checkpointing.save_best | boolean | `true` | Save best model by tracked metric |
-| checkpointing.save_last | boolean | `true` | Save final model |
-| checkpointing.save_every_n | integer | `5` | Save every N epochs/rounds; 0 disables |
-| checkpointing.metric | string | `"loss"` | Metric to track for best model |
-| checkpointing.mode | string | `"min"` | `"min"` or `"max"` |
+| Field | Type | Default | Lightning Mapping |
+|-------|------|---------|-------------------|
+| checkpointing.enabled | boolean | `true` | Include `ModelCheckpoint` in callbacks |
+| checkpointing.save_best | boolean | `true` | `ModelCheckpoint(save_top_k=1)` |
+| checkpointing.save_last | boolean | `true` | `ModelCheckpoint(save_last=True)` |
+| checkpointing.save_every_n | integer | `5` | `ModelCheckpoint(every_n_epochs=5)` |
+| checkpointing.metric | string | `"loss"` | `ModelCheckpoint(monitor="val_loss")` |
+| checkpointing.mode | string | `"min"` | `ModelCheckpoint(mode="min")` |
 
 ### Built-in: Metrics Log
 
@@ -113,30 +114,39 @@ Always present. Appends one JSON object per epoch to a JSON-lines file. Grouped 
 | metricslog.enabled | boolean | `true` | Enable metrics logging |
 | metricslog.filename | string | `"metrics.jsonl"` | Log file name (relative to run dir) |
 
+Note: With Lightning, primary metrics go to W&B via `WandbLogger`. The metrics.jsonl is a local backup via custom callback.
+
 ### Built-in: Experiment Tracking
 
-Always present. Logs params, metrics, and artifacts to an experiment tracker (W&B, MLflow, etc.). Field names are project-specific — see codebase-structure.md for the current project's implementation.
+Always present. For Lightning, use `WandbLogger`:
 
-**Integration contract — training loops must:**
+```python
+from lightning.pytorch.loggers import WandbLogger
+logger = WandbLogger(project=cfg.wandb_project, name=cfg.name, log_model=False)
+trainer = Trainer(logger=logger)
+```
 
-1. **Start of training:** call `setup_run(cfg)` to initialize tracker, log all config params
-2. **Per epoch:** call `log_epoch_metrics(metrics_dict, step=epoch)`
-3. **One-time metadata:** call `log_extra_params(params_dict)` after model init
-4. **End of training:** call `end_run()` to close the active run
+**Integration contract — LightningModule must:**
+
+1. **`__init__`:** call `self.save_hyperparameters()` to log config to W&B automatically
+2. **`training_step` / `validation_step`:** use `self.log()` / `self.log_dict()` for metrics
+3. **One-time metadata:** log via `logger.experiment.config.update()` after model init
+4. **End of training:** call `wandb.finish()` after `trainer.fit()` completes
 
 ---
 
 ## Output Directory Structure
 
-### Neural Models
+### Neural Models (Lightning)
 
 ```
 {output.base_dir}/{name}_{YYYYMMDD_HHMMSS}/
-├── config.json              # full config snapshot
+├── config.json              # full config snapshot (saved manually)
 ├── console.log              # captured stdout/stderr
-├── metrics.jsonl            # per-epoch metrics (JSON-lines)
+├── metrics.jsonl            # per-epoch metrics (optional local backup)
 └── checkpoints/
-    └── model_best.*         # best model (.pt, .h5, .safetensors, etc.)
+    ├── best.ckpt            # best model by ModelCheckpoint
+    └── last.ckpt            # final epoch checkpoint
 ```
 
 ### Tree-Based Models
@@ -164,14 +174,31 @@ Always present. Logs params, metrics, and artifacts to an experiment tracker (W&
 3. **Add task-specific fields** — model architecture, data paths, task-unique hyperparameters
 4. **Override defaults** — change any inherited defaults to suit your experiment
 5. **Disable what you don't need** — `checkpointing.enabled = false`, etc.
+6. **Map to Lightning** — config fields should map cleanly to `Trainer(...)` args and callback params
 
 ## Framework Adaptation Guide
 
-| Framework | Config Format | Checkpoints | Device Handling |
-|-----------|--------------|-------------|-----------------|
-| **PyTorch** | Python dataclasses | `.pt` | `torch.device(cfg.device)` |
-| **Hugging Face** | Map to `TrainingArguments` | Handled by Trainer | Handled by Trainer |
-| **XGBoost** | Dicts or dataclasses | `.json` | `tree_method="gpu_hist"` |
-| **LightGBM** | Dicts or dataclasses | `.txt` | `device="gpu"` |
-| **CatBoost** | Dicts or dataclasses | `.cbm` | `task_type="GPU"` |
-| **JAX / Flax** | Dataclasses | `.msgpack` | `jax.devices()` |
+| Framework | Config Format | Checkpoints | Device Handling | Training |
+|-----------|--------------|-------------|-----------------|----------|
+| **PyTorch Lightning** | Python dataclasses → Trainer args | `.ckpt` via `ModelCheckpoint` | `Trainer(accelerator="auto")` | `trainer.fit()` |
+| **Hugging Face** | Map to `TrainingArguments` | Handled by Trainer | Handled by Trainer | `Trainer.train()` |
+| **XGBoost** | Dicts or dataclasses | `.json` | `tree_method="gpu_hist"` | `xgb.train()` |
+| **LightGBM** | Dicts or dataclasses | `.txt` | `device="gpu"` | `lgb.train()` |
+| **CatBoost** | Dicts or dataclasses | `.cbm` | `task_type="GPU"` | `model.fit()` |
+
+## Config → Lightning Trainer Mapping
+
+Key config fields and their Lightning equivalents:
+
+| Config Field | Lightning Trainer Arg |
+|---|---|
+| `num_epochs` | `max_epochs` |
+| `gradient_accumulation_steps` | `accumulate_grad_batches` |
+| `use_amp` / `precision` | `precision="bf16-mixed"` or `"32-true"` |
+| `grad_clip_norm` | `gradient_clip_val` |
+| `early_stopping_patience` | `EarlyStopping(patience=N)` callback |
+| `checkpointing.*` | `ModelCheckpoint(...)` callback |
+| `auto_batch_size` | `BatchSizeFinder(mode="binsearch")` callback |
+| `log_every_n_steps` | `log_every_n_steps` |
+| `device` | `accelerator="auto"`, `devices="auto"` |
+| `num_workers` | Set in `DataLoader` inside `LightningDataModule` |
