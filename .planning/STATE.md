@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-stopped_at: Completed 15-02-PLAN.md
-last_updated: "2026-03-19T22:36:12.125Z"
+stopped_at: Completed quick-260320-jsu (report rewrite)
+last_updated: "2026-03-20T14:32:12.393Z"
 progress:
   total_phases: 19
   completed_phases: 7
@@ -140,6 +140,7 @@ Plan: 2 of 2 (all complete)
 - [Phase 15]: Choi2025OTPGConfig mirrors PPO config structure for fair comparison (same network, env, parallelism)
 - [Phase 15]: SKIP_GPU_LOCK env var for concurrent multi-GPU training
 - [Phase 15]: 100K OTPG validation confirmed learning signal: reward 9->17 on follow_target
+- [Phase quick-260320-jsu]: Report restructured to 6 chapters: Intro, Related Work, Surrogate Model, RL-Elastica, RL-DisMech, PINN; physics derivations moved to appendix; issue tracker consolidated to longtable
 
 ### Pending Todos
 
@@ -192,5 +193,5 @@ None currently.
 
 ## Session Continuity
 
-Last session: 2026-03-19T22:31:45.532Z
-Stopped at: Completed 15-02-PLAN.md
+Last session: 2026-03-20T14:32:10.303Z
+Stopped at: Completed quick-260320-jsu (report rewrite)
