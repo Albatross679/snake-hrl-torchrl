@@ -190,6 +190,7 @@ None currently.
 | 260319-3kt | Create Markdown report mirroring LaTeX report.tex | 2026-03-19 | 998e78f | [260319-3kt-create-markdown-report-mirroring-latex-r](./quick/260319-3kt-create-markdown-report-mirroring-latex-r/) |
 | 260319-snc | Align choi2025 SAC and PPO configs to match paper | 2026-03-19 | b1bd7d1 | [260319-snc-align-choi2025-sac-and-ppo-configs-to-ma](./quick/260319-snc-align-choi2025-sac-and-ppo-configs-to-ma/) |
 | 260319-stp | Align PPO config to paper's 256x3 network | 2026-03-19 | b86b5c8 | [260319-stp-align-choi2025-sac-and-ppo-configs-to-ma](./quick/260319-stp-align-choi2025-sac-and-ppo-configs-to-ma/) |
+| 260320-jsu | Rewrite LaTeX report based on new structure with concise, structured style | 2026-03-20 | b1fa428 | [260320-jsu-rewrite-latex-report-based-on-new-struct](./quick/260320-jsu-rewrite-latex-report-based-on-new-struct/) |
 
 ## Session Continuity
 
