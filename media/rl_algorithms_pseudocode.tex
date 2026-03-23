@@ -4,11 +4,290 @@
 \usepackage{algpseudocode}
 \usepackage{amsmath, amssymb}
 \usepackage{booktabs, tabularx}
+\usepackage{hyperref}
 
 \begin{document}
 
 %% ============================================================
-%% Algorithm 1: PPO-Clip
+%% Table of Contents
+%% ============================================================
+\section*{Contents}
+
+\textbf{Part I --- Canonical Scalar Formulations}
+\begin{enumerate}
+\item \hyperref[alg:a2c]{A2C --- Advantage Actor-Critic}
+\item \hyperref[alg:ddpg-scalar]{DDPG --- Deep Deterministic Policy Gradient}
+\item \hyperref[alg:sac-scalar]{SAC --- Soft Actor-Critic with Automatic Entropy Tuning}
+\end{enumerate}
+
+\textbf{Part II --- Practical Vectorized Implementations}
+\begin{enumerate}\setcounter{enumi}{3}
+\item \hyperref[alg:ppo]{PPO-Clip (scalar)} / \hyperref[alg:ppo-practical]{PPO-Clip (vectorized)}
+\item \hyperref[alg:ddpg]{DDPG --- Vectorized}
+\item \hyperref[alg:sac]{SAC --- Vectorized}
+\item \hyperref[alg:otpg]{OTPG (scalar)} / \hyperref[alg:otpg-practical]{OTPG (vectorized)} --- Operator-Theoretic Policy Gradient (MM-RKHS)
+\end{enumerate}
+
+\textbf{Part III --- LLM Policy Optimization}
+\begin{enumerate}\setcounter{enumi}{7}
+\item \hyperref[alg:grpo]{GRPO (scalar)} / \hyperref[alg:grpo-practical]{GRPO (vectorized)}
+\item \hyperref[alg:cispo]{CISPO (scalar)} / \hyperref[alg:cispo-practical]{CISPO (vectorized)}
+\end{enumerate}
+
+\textbf{Appendices}
+\begin{itemize}
+\item \hyperref[alg:cispo]{Why CISPO: Fixing the Gradient Dead Zone}
+\item \hyperref[alg:compare]{Key Differences: All Nine Algorithms}
+\end{itemize}
+
+\clearpage
+
+%% ============================================================
+%% PART I --- Canonical Scalar Formulations
+%% ============================================================
+
+%% ============================================================
+%% Algorithm 1: A2C --- Advantage Actor-Critic (scalar)
+%% ============================================================
+\begin{algorithm}[p]\small
+\caption{A2C --- Advantage Actor-Critic}\label{alg:a2c}
+\vspace{2pt}
+\noindent
+\begin{minipage}[t]{0.28\linewidth}
+\renewcommand{\arraystretch}{1.12}
+\textbf{Ensure} \\[2pt]
+Optimized policy $\pi_{\boldsymbol{\theta}}$
+
+\vspace{6pt}
+\textbf{Hyperparameters} \\[2pt]
+$\boldsymbol{\theta}_0$ --- init policy params \\
+\hspace*{1em}(outputs action dist.) \\
+$\boldsymbol{\phi}_0$ --- init value params \\
+$\gamma$ --- discount factor \\
+$\alpha_\pi$ --- policy learning rate \\
+$\alpha_V$ --- value learning rate \\
+$c_e$ --- entropy coeff.\ (typ.\ $0.01$) \\
+$n$ --- $n$-step return length
+
+\vspace{6pt}
+\textbf{Notation} \\[2pt]
+$d_s$ --- state dimension \\
+$d_a$ --- action dimension \\
+$s_t \in \mathbb{R}^{d_s}$ --- state \\
+$a_t \in \mathbb{R}^{d_a}$ --- action \\
+$r_t \in \mathbb{R}$ --- reward \\
+$d_t \in \{0,1\}$ --- done flag \\
+$R_t^{(n)} \in \mathbb{R}$ --- $n$-step return \\
+$\hat{A}_t \in \mathbb{R}$ --- advantage \\
+$H[\cdot]$ --- policy entropy
+
+\vspace{6pt}
+\textbf{Networks} \\[2pt]
+$\pi_{\boldsymbol{\theta}}$: MLP $\mathbb{R}^{d_s} \to$ dist.\ over $\mathbb{R}^{d_a}$ \\
+$V_{\boldsymbol{\phi}}$: MLP $\mathbb{R}^{d_s} \to \mathbb{R}$
+\end{minipage}%
+\hfill
+\vrule
+\hfill
+\begin{minipage}[t]{0.68\linewidth}
+\begin{algorithmic}[1]
+\For{each episode}
+    \State $s_0 \gets \texttt{env.reset}()$
+    \For{$t = 0, 1, 2, \ldots$ until done}
+        \Statex \hspace{\algorithmicindent}\hspace{\algorithmicindent}\textit{// Act}
+        \State $a_t \sim \pi_{\boldsymbol{\theta}}(\cdot \mid s_t)$ \hfill sample from stochastic policy
+        \State $r_t, s_{t+1}, d_t \gets \texttt{env.step}(a_t)$ \hfill $d_t = 1$ if terminal
+        \Statex \hspace{\algorithmicindent}\hspace{\algorithmicindent}\textit{// Compute $n$-step return}
+        \State $R_t^{(n)} \gets \sum_{i=0}^{n-1} \gamma^i r_{t+i} + \gamma^n (1 - d_{t+n-1})\, V_{\boldsymbol{\phi}}(s_{t+n})$
+        \Statex \hspace{\algorithmicindent}\hspace{\algorithmicindent}\hfill bootstrap if not terminal
+        \Statex \hspace{\algorithmicindent}\hspace{\algorithmicindent}\textit{// Advantage estimate}
+        \State $\hat{A}_t \gets R_t^{(n)} - V_{\boldsymbol{\phi}}(s_t)$ \hfill how much better than expected
+        \Statex \hspace{\algorithmicindent}\hspace{\algorithmicindent}\textit{// Critic update --- regress $V_{\boldsymbol{\phi}}$ toward $n$-step return}
+        \State $L^V \gets (V_{\boldsymbol{\phi}}(s_t) - R_t^{(n)})^2$
+        \State $\boldsymbol{\phi} \gets \boldsymbol{\phi} - \alpha_V \nabla_{\boldsymbol{\phi}} L^V$
+        \Statex \hspace{\algorithmicindent}\hspace{\algorithmicindent}\textit{// Actor update --- policy gradient with baseline}
+        \State $L^\pi \gets -\log \pi_{\boldsymbol{\theta}}(a_t \mid s_t) \cdot \texttt{sg}(\hat{A}_t) - c_e \cdot H(\pi_{\boldsymbol{\theta}}(\cdot \mid s_t))$
+        \State $\boldsymbol{\theta} \gets \boldsymbol{\theta} - \alpha_\pi \nabla_{\boldsymbol{\theta}} L^\pi$
+    \EndFor
+\EndFor
+\end{algorithmic}
+\end{minipage}
+\end{algorithm}
+
+%% ============================================================
+%% Algorithm 2: DDPG --- Deep Deterministic Policy Gradient (scalar)
+%% ============================================================
+\begin{algorithm}[p]\small
+\caption{DDPG --- Deep Deterministic Policy Gradient}\label{alg:ddpg-scalar}
+\vspace{2pt}
+\noindent
+\begin{minipage}[t]{0.28\linewidth}
+\renewcommand{\arraystretch}{1.12}
+\textbf{Ensure} \\[2pt]
+Optimized deterministic policy $\mu_{\boldsymbol{\theta}}$
+
+\vspace{6pt}
+\textbf{Hyperparameters} \\[2pt]
+$\boldsymbol{\theta}_0$ --- init actor params \\
+$\boldsymbol{\phi}_0$ --- init critic params \\
+$\gamma$ --- discount factor \\
+$\tau$ --- soft update rate (typ.\ $0.005$) \\
+$\alpha_\mu$ --- actor learning rate \\
+$\alpha_Q$ --- critic learning rate \\
+$B$ --- batch size \\
+$W$ --- warmup steps (random actions) \\
+$|\mathcal{D}|$ --- replay buffer capacity \\
+$\theta_{\text{OU}}$ --- OU reversion (typ.\ $0.15$) \\
+$\sigma_{\text{OU}}$ --- OU volatility (typ.\ $0.2$)
+
+\vspace{6pt}
+\textbf{Notation} \\[2pt]
+$\mu_{\boldsymbol{\theta}}(s)$ --- deterministic actor \\
+$Q_{\boldsymbol{\phi}}(s,a)$ --- critic \\
+$\mu_{\boldsymbol{\theta}'},\, Q_{\boldsymbol{\phi}'}$ --- target networks \\
+$n$ --- OU noise state
+\end{minipage}%
+\hfill
+\vrule
+\hfill
+\begin{minipage}[t]{0.68\linewidth}
+\begin{algorithmic}[1]
+\State Init targets: $\boldsymbol{\theta}' \gets \boldsymbol{\theta}$, \; $\boldsymbol{\phi}' \gets \boldsymbol{\phi}$ \hfill copy params
+\State Init $\mathcal{D} \gets \texttt{ReplayBuffer}(|\mathcal{D}|)$, \; $n \gets 0$
+\For{each episode}
+    \State $s \gets \texttt{env.reset}()$, \; $n \gets 0$ \hfill reset noise at episode start
+    \For{$t = 0, 1, 2, \ldots$ until done}
+        \Statex \hspace{\algorithmicindent}\hspace{\algorithmicindent}\hspace{\algorithmicindent}\textit{// Act with exploration noise}
+        \If{total frames $< W$}
+            \State $a \sim \mathcal{U}[-1, 1]^{d_a}$ \hfill random warmup
+        \Else
+            \State $n \gets n + \theta_{\text{OU}}(0 - n) + \sigma_{\text{OU}}\,\epsilon$, \;\; $\epsilon \sim \mathcal{N}(0, I)^{d_a}$ \hfill OU step
+            \State $a \gets \texttt{clamp}(\mu_{\boldsymbol{\theta}}(s) + n,\; {-}1, 1)$ \hfill action + noise + clip
+        \EndIf
+        \State $r, s', d \gets \texttt{env.step}(a)$ \hfill $d = 1$ if terminal
+        \State $\mathcal{D} \gets \mathcal{D} \cup \{(s, a, r, s', d)\}$ \hfill store transition
+        \State $s \gets s'$
+        \If{total frames $< W$} \textbf{continue} \EndIf
+        \Statex \hspace{\algorithmicindent}\hspace{\algorithmicindent}\hspace{\algorithmicindent}\textit{// Sample minibatch and update}
+        \State $\{(s_i, a_i, r_i, s'_i, d_i)\}_{i=1}^B \sim \mathcal{D}$ \hfill sample $B$ transitions
+        \Statex \hspace{\algorithmicindent}\hspace{\algorithmicindent}\hspace{\algorithmicindent}\textit{// Critic update}
+        \State \textbf{with} $\texttt{no\_grad}$:
+        \State \hspace{\algorithmicindent} $a'_i \gets \mu_{\boldsymbol{\theta}'}(s'_i)$ \hfill target actor: next action
+        \State \hspace{\algorithmicindent} $q'_i \gets Q_{\boldsymbol{\phi}'}(s'_i, a'_i)$ \hfill target critic: next Q
+        \State \hspace{\algorithmicindent} $y_i \gets r_i + \gamma(1 - d_i)\, q'_i$ \hfill Bellman target; $(1{-}d)$ zeros at terminals
+        \State $L^Q \gets \frac{1}{B}\sum_{i=1}^B (Q_{\boldsymbol{\phi}}(s_i, a_i) - y_i)^2$ \hfill MSE critic loss
+        \State $\boldsymbol{\phi} \gets \boldsymbol{\phi} - \alpha_Q \nabla_{\boldsymbol{\phi}} L^Q$
+        \Statex \hspace{\algorithmicindent}\hspace{\algorithmicindent}\hspace{\algorithmicindent}\textit{// Actor update --- deterministic policy gradient}
+        \State $\hat{a}_i \gets \mu_{\boldsymbol{\theta}}(s_i)$ \hfill forward through actor
+        \State $L^\mu \gets -\frac{1}{B}\sum_{i=1}^B Q_{\boldsymbol{\phi}}(s_i, \hat{a}_i)$ \hfill $\nabla_{\boldsymbol{\theta}}$ flows $\mu \to Q$
+        \State $\boldsymbol{\theta} \gets \boldsymbol{\theta} - \alpha_\mu \nabla_{\boldsymbol{\theta}} L^\mu$
+        \Statex \hspace{\algorithmicindent}\hspace{\algorithmicindent}\hspace{\algorithmicindent}\textit{// Polyak-averaged target update}
+        \State $\boldsymbol{\theta}' \gets \tau\,\boldsymbol{\theta} + (1 - \tau)\,\boldsymbol{\theta}'$ \hfill slowly track actor
+        \State $\boldsymbol{\phi}' \gets \tau\,\boldsymbol{\phi} + (1 - \tau)\,\boldsymbol{\phi}'$ \hfill slowly track critic
+    \EndFor
+\EndFor
+\end{algorithmic}
+\end{minipage}
+\end{algorithm}
+
+%% ============================================================
+%% Algorithm 3: SAC --- Soft Actor-Critic (scalar)
+%% ============================================================
+\begin{algorithm}[p]\small
+\caption{SAC --- Soft Actor-Critic with Automatic Entropy Tuning}\label{alg:sac-scalar}
+\vspace{2pt}
+\noindent
+\begin{minipage}[t]{0.28\linewidth}
+\renewcommand{\arraystretch}{1.12}
+\textbf{Ensure} \\[2pt]
+Optimized stochastic policy $\pi_{\boldsymbol{\theta}}$
+
+\vspace{6pt}
+\textbf{Hyperparameters} \\[2pt]
+$\boldsymbol{\theta}_0$ --- init actor params \\
+\hspace*{1em}(outputs $\mu, \log\sigma$) \\
+$\boldsymbol{\phi}_{1,0}, \boldsymbol{\phi}_{2,0}$ --- init twin critics \\
+$\gamma$ --- discount factor \\
+$\tau$ --- soft update (typ.\ $0.005$) \\
+$\alpha_\pi$ --- actor learning rate \\
+$\alpha_Q$ --- critic learning rate \\
+$\alpha_\alpha$ --- entropy coeff.\ lr \\
+$B$ --- batch size \\
+$W$ --- warmup steps \\
+$|\mathcal{D}|$ --- replay buffer capacity \\
+$\bar{\mathcal{H}} = -d_a$ --- target entropy \\
+$f_\mu$ --- actor update freq.\ (typ.\ $2$)
+
+\vspace{6pt}
+\textbf{Networks} \\[2pt]
+$\pi_{\boldsymbol{\theta}}$: MLP $s \to (\mu, \log\sigma)$ \\
+\hspace*{1em}$\Rightarrow$ TanhNormal dist. \\
+$Q_{\boldsymbol{\phi}_1}, Q_{\boldsymbol{\phi}_2}$: twin critics \\
+$Q_{\boldsymbol{\phi}'_1}, Q_{\boldsymbol{\phi}'_2}$: target copies
+\end{minipage}%
+\hfill
+\vrule
+\hfill
+\begin{minipage}[t]{0.68\linewidth}
+\begin{algorithmic}[1]
+\State Init targets: $\boldsymbol{\phi}'_1 \gets \boldsymbol{\phi}_1$, \; $\boldsymbol{\phi}'_2 \gets \boldsymbol{\phi}_2$ \hfill copy params
+\State Init $\log\alpha \gets \log(\alpha_0)$, \; $\alpha \gets \exp(\log\alpha)$
+\State Init $\mathcal{D} \gets \texttt{ReplayBuffer}(|\mathcal{D}|)$
+\For{each episode}
+    \State $s \gets \texttt{env.reset}()$
+    \For{$t = 0, 1, 2, \ldots$ until done}
+        \Statex \hspace{\algorithmicindent}\hspace{\algorithmicindent}\hspace{\algorithmicindent}\textit{// Act}
+        \If{total frames $< W$}
+            \State $a \sim \mathcal{U}[-1, 1]^{d_a}$ \hfill random warmup
+        \Else
+            \State $\mu, \log\sigma \gets \pi_{\boldsymbol{\theta}}(s)$ \hfill actor forward
+            \State $\epsilon \sim \mathcal{N}(0, I)^{d_a}$ \hfill reparameterization noise
+            \State $u \gets \mu + \exp(\log\sigma) \odot \epsilon$ \hfill pre-squash action
+            \State $a \gets \tanh(u)$ \hfill squashed into $[-1, 1]$
+        \EndIf
+        \State $r, s', d \gets \texttt{env.step}(a)$ \hfill $d = 1$ if terminal
+        \State $\mathcal{D} \gets \mathcal{D} \cup \{(s, a, r, s', d)\}$, \; $s \gets s'$
+        \If{total frames $< W$} \textbf{continue} \EndIf
+        \State $\{(s_i, a_i, r_i, s'_i, d_i)\}_{i=1}^B \sim \mathcal{D}$ \hfill sample $B$ transitions
+        \Statex \hspace{\algorithmicindent}\hspace{\algorithmicindent}\hspace{\algorithmicindent}\textit{// Twin critic update}
+        \State \textbf{with} $\texttt{no\_grad}$: \hfill no gradient through $\boldsymbol{\theta}, \boldsymbol{\phi}'_1, \boldsymbol{\phi}'_2$
+        \State \hspace{\algorithmicindent} $\mu'_i, \log\sigma'_i \gets \pi_{\boldsymbol{\theta}}(s'_i)$
+        \State \hspace{\algorithmicindent} $u'_i \gets \mu'_i + \exp(\log\sigma'_i) \odot \epsilon'_i$, \;\; $\epsilon'_i \sim \mathcal{N}(0, I)$
+        \State \hspace{\algorithmicindent} $\tilde{a}'_i \gets \tanh(u'_i)$ \hfill squashed next action
+        \State \hspace{\algorithmicindent} $\ell'_i \!\gets\! \sum_{j=1}^{d_a}\!\big[\log\mathcal{N}(u'_{i,j} \!\mid\! \mu'_{i,j}, \sigma'_{i,j}) - \log(1 {-} \tanh^2\!(u'_{i,j}) {+} \varepsilon)\big]$
+        \Statex \hspace{\algorithmicindent}\hspace{\algorithmicindent}\hspace{\algorithmicindent}\hspace{\algorithmicindent}\hfill log-prob with Jacobian correction
+        \State \hspace{\algorithmicindent} $q'_{1,i} \gets Q_{\boldsymbol{\phi}'_1}(s'_i, \tilde{a}'_i)$, \;\; $q'_{2,i} \gets Q_{\boldsymbol{\phi}'_2}(s'_i, \tilde{a}'_i)$
+        \State \hspace{\algorithmicindent} $y_i \gets r_i + \gamma(1 {-} d_i)[\min(q'_{1,i}, q'_{2,i}) - \alpha \cdot \ell'_i]$ \hfill soft Bellman
+        \State $L^Q \!\gets\! \frac{1}{B}\!\sum_{i=1}^B\!(Q_{\boldsymbol{\phi}_1}(s_i, a_i) {-} y_i)^2 + \frac{1}{B}\!\sum_{i=1}^B\!(Q_{\boldsymbol{\phi}_2}(s_i, a_i) {-} y_i)^2$
+        \State $\boldsymbol{\phi}_1 \gets \boldsymbol{\phi}_1 - \alpha_Q \nabla_{\boldsymbol{\phi}_1} L^Q$, \;\; $\boldsymbol{\phi}_2 \gets \boldsymbol{\phi}_2 - \alpha_Q \nabla_{\boldsymbol{\phi}_2} L^Q$
+        \Statex \hspace{\algorithmicindent}\hspace{\algorithmicindent}\hspace{\algorithmicindent}\textit{// Actor update (every $f_\mu$ critic steps)}
+        \If{total steps $\bmod f_\mu = 0$}
+            \State $\mu_i, \log\sigma_i \gets \pi_{\boldsymbol{\theta}}(s_i)$
+            \State $u_i \gets \mu_i + \exp(\log\sigma_i) \odot \epsilon_i$, \;\; $\epsilon_i \sim \mathcal{N}(0, I)$
+            \State $\tilde{a}_i \gets \tanh(u_i)$ \hfill reparam.; $\nabla_{\boldsymbol{\theta}}$ flows through $\mu, \sigma$
+            \State $\ell_i \gets \sum_{j=1}^{d_a}\big[\log\mathcal{N}(u_{i,j} \mid \mu_{i,j}, \sigma_{i,j}) - \log(1 {-} \tanh^2\!(u_{i,j}) {+} \varepsilon)\big]$
+            \State $L^\pi \!\gets\! \frac{1}{B}\!\sum_{i=1}^B\!\big[\alpha \cdot \ell_i - \min(Q_{\boldsymbol{\phi}_1}(s_i, \tilde{a}_i),\, Q_{\boldsymbol{\phi}_2}(s_i, \tilde{a}_i))\big]$
+            \State $\boldsymbol{\theta} \gets \boldsymbol{\theta} - \alpha_\pi \nabla_{\boldsymbol{\theta}} L^\pi$
+            \Statex \hspace{\algorithmicindent}\hspace{\algorithmicindent}\hspace{\algorithmicindent}\hspace{\algorithmicindent}\textit{// Entropy coefficient update}
+            \State $L^\alpha \gets -\frac{1}{B}\sum_{i=1}^B \log\alpha \cdot \texttt{sg}(\ell_i + \bar{\mathcal{H}})$ \hfill dual gradient descent
+            \State $\log\alpha \gets \log\alpha - \alpha_\alpha \nabla_{\log\alpha} L^\alpha$
+            \State $\alpha \gets \exp(\log\alpha)$
+        \EndIf
+        \Statex \hspace{\algorithmicindent}\hspace{\algorithmicindent}\hspace{\algorithmicindent}\textit{// Polyak-averaged target update}
+        \State $\boldsymbol{\phi}'_1 \gets \tau\,\boldsymbol{\phi}_1 + (1 - \tau)\,\boldsymbol{\phi}'_1$
+        \State $\boldsymbol{\phi}'_2 \gets \tau\,\boldsymbol{\phi}_2 + (1 - \tau)\,\boldsymbol{\phi}'_2$
+    \EndFor
+\EndFor
+\end{algorithmic}
+\end{minipage}
+\end{algorithm}
+
+%% ============================================================
+%% PART II --- Practical Vectorized Implementations
+%% ============================================================
+
+%% ============================================================
+%% Algorithm 4: PPO-Clip (scalar)
 %% ============================================================
 \begin{algorithm}[p]\small
 \caption{PPO-Clip (Proximal Policy Optimization)}\label{alg:ppo}
@@ -21,31 +300,31 @@ Optimized policy $\pi_{\boldsymbol{\theta}}$
 
 \vspace{6pt}
 \textbf{Hyperparameters} \\[2pt]
-$\boldsymbol{\theta}_0$ — init policy params \\
-$\boldsymbol{\phi}_0$ — init value params \\
-$\epsilon$ — clip ratio (typ.\ $0.2$) \\
-$\gamma$ — discount factor \\
-$\lambda$ — GAE param \\
+$\boldsymbol{\theta}_0$ --- init policy params \\
+$\boldsymbol{\phi}_0$ --- init value params \\
+$\epsilon$ --- clip ratio (typ.\ $0.2$) \\
+$\gamma$ --- discount factor \\
+$\lambda$ --- GAE param \\
 \hspace*{1em}($0$=TD, $1$=MC) \\
-$N$ — actors \\
-$T$ — rollout length \\
-$K$ — epochs \\
-$M$ — minibatch size \\
-$\alpha_\pi$ — policy learning rate \\
-$\alpha_V$ — value learning rate \\
-$c_e$ — entropy coeff.\ (typ.\ $0.01$)
+$N$ --- actors \\
+$T$ --- rollout length \\
+$K$ --- epochs \\
+$M$ --- minibatch size \\
+$\alpha_\pi$ --- policy learning rate \\
+$\alpha_V$ --- value learning rate \\
+$c_e$ --- entropy coeff.\ (typ.\ $0.01$)
 
 \vspace{6pt}
 \textbf{Notation} \\[2pt]
-$s_t$ — state \\
-$a_t$ — action \\
-$r_t$ — reward \\
-$V_{\boldsymbol{\phi}}(s)$ — value function \\
-$\delta_t$ — TD error \\
-$\hat{A}_t$ — GAE advantage \\
-$\hat{R}_t$ — GAE-$\lambda$ return \\
-$\rho_t$ — IS ratio $\pi_{\boldsymbol{\theta}} / \pi_{\boldsymbol{\theta}_k}$ \\
-$H[\cdot]$ — policy entropy
+$s_t$ --- state \\
+$a_t$ --- action \\
+$r_t$ --- reward \\
+$V_{\boldsymbol{\phi}}(s)$ --- value function \\
+$\delta_t$ --- TD error \\
+$\hat{A}_t$ --- GAE advantage \\
+$\hat{R}_t$ --- GAE-$\lambda$ return \\
+$\rho_t$ --- IS ratio $\pi_{\boldsymbol{\theta}} / \pi_{\boldsymbol{\theta}_k}$ \\
+$H[\cdot]$ --- policy entropy
 \end{minipage}%
 \hfill
 \vrule
@@ -101,10 +380,10 @@ $H[\cdot]$ — policy entropy
 \end{algorithm}
 
 %% ============================================================
-%% Algorithm 1b: PPO-Clip (Practical / Vectorized)
+%% Algorithm 4b: PPO-Clip (Practical / Vectorized)
 %% ============================================================
 \begin{algorithm}[p]\small
-\caption{PPO-Clip — Practical Vectorized Implementation}\label{alg:ppo-practical}
+\caption{PPO-Clip --- Practical Vectorized Implementation}\label{alg:ppo-practical}
 \vspace{2pt}
 \noindent
 \begin{minipage}[t]{0.28\linewidth}
@@ -114,23 +393,23 @@ Optimized policy $\pi_{\boldsymbol{\theta}}$
 
 \vspace{6pt}
 \textbf{Hyperparameters} \\[2pt]
-$\boldsymbol{\theta}_0$ — init policy params \\
-$\boldsymbol{\phi}_0$ — init value params \\
-$\epsilon$ — clip ratio (typ.\ $0.2$) \\
-$\gamma$ — discount factor \\
-$\lambda$ — GAE param \\
-$N$ — parallel environments \\
-$T$ — rollout length \\
-$K$ — epochs \\
-$M$ — minibatch size \\
-$\alpha_\pi$ — policy learning rate \\
-$\alpha_V$ — value learning rate \\
-$c_e$ — entropy coeff.
+$\boldsymbol{\theta}_0$ --- init policy params \\
+$\boldsymbol{\phi}_0$ --- init value params \\
+$\epsilon$ --- clip ratio (typ.\ $0.2$) \\
+$\gamma$ --- discount factor \\
+$\lambda$ --- GAE param \\
+$N$ --- parallel environments \\
+$T$ --- rollout length \\
+$K$ --- epochs \\
+$M$ --- minibatch size \\
+$\alpha_\pi$ --- policy learning rate \\
+$\alpha_V$ --- value learning rate \\
+$c_e$ --- entropy coeff.
 
 \vspace{6pt}
 \textbf{Tensors} \\[2pt]
 $\mathbf{S}, \mathbf{A}, \mathbf{R} \in \mathbb{R}^{N \times T}$ \\
-$\mathbf{D} \in \{0,1\}^{N \times T}$ — done flags \\
+$\mathbf{D} \in \{0,1\}^{N \times T}$ --- done flags \\
 $\boldsymbol{\pi}_{\text{old}} \in \mathbb{R}^{N \times T}$ \\
 $\mathbf{V} \in \mathbb{R}^{N \times (T+1)}$ \\
 $\boldsymbol{\delta} \in \mathbb{R}^{N \times T}$ \\
@@ -143,48 +422,427 @@ $\boldsymbol{\rho} \in \mathbb{R}^{M}$
 \begin{minipage}[t]{0.68\linewidth}
 \begin{algorithmic}[1]
 \For{$k = 0, 1, 2, \ldots$}
-    \Statex \hspace{\algorithmicindent}\textit{// Phase 1: Vectorized rollout} \hfill $\mathcal{O}(T \cdot N \cdot C_\pi)$
+    \Statex \hspace{\algorithmicindent}\textit{// Phase 1: Vectorized rollout}
     \For{$t = 0, \ldots, T{-}1$}
-        \State $\mathbf{A}_{:,t} \sim \pi_{\boldsymbol{\theta}_k}(\cdot \mid \mathbf{S}_{:,t})$ \hfill $\mathcal{O}(N \cdot C_\pi)$
-        \State $\mathbf{R}_{:,t},\, \mathbf{S}_{:,t+1},\, \mathbf{D}_{:,t} \gets \texttt{envs.step}(\mathbf{A}_{:,t})$ \hfill $\mathcal{O}(N)$
+        \State $\mathbf{A}_{:,t} \sim \pi_{\boldsymbol{\theta}_k}(\cdot \mid \mathbf{S}_{:,t})$
+        \State $\mathbf{R}_{:,t},\, \mathbf{S}_{:,t+1},\, \mathbf{D}_{:,t} \gets \texttt{envs.step}(\mathbf{A}_{:,t})$
         \State $\boldsymbol{\pi}_{\text{old}_{:,t}} \gets \pi_{\boldsymbol{\theta}_k}(\mathbf{A}_{:,t} \mid \mathbf{S}_{:,t})$
     \EndFor
-    \Statex \hspace{\algorithmicindent}\textit{// Phase 2: Vectorized GAE} \hfill $\mathcal{O}(NT + N \cdot C_V)$
-    \State $\mathbf{V} \gets V_{\boldsymbol{\phi}_k}([\mathbf{S},\, \mathbf{S}_{:,T}])$ \hfill $\mathcal{O}(N \cdot C_V)$; shape $(N, T{+}1)$
-    \State $\boldsymbol{\delta} \gets \mathbf{R} + \gamma\,(1 - \mathbf{D}) \odot \mathbf{V}_{:,1:} - \mathbf{V}_{:,:-1}$ \hfill $\mathcal{O}(NT)$
+    \Statex \hspace{\algorithmicindent}\textit{// Phase 2: Vectorized GAE}
+    \State $\mathbf{V} \gets V_{\boldsymbol{\phi}_k}([\mathbf{S},\, \mathbf{S}_{:,T}])$ \hfill shape $(N, T{+}1)$
+    \State $\boldsymbol{\delta} \gets \mathbf{R} + \gamma\,(1 - \mathbf{D}) \odot \mathbf{V}_{:,1:} - \mathbf{V}_{:,:-1}$
     \State $\hat{\mathbf{A}}_{:,T-1} \gets \boldsymbol{\delta}_{:,T-1}$
     \For{$t = T{-}2, \ldots, 0$}
-        \State $\hat{\mathbf{A}}_{:,t} \gets \boldsymbol{\delta}_{:,t} + \gamma \lambda\,(1 - \mathbf{D}_{:,t}) \odot \hat{\mathbf{A}}_{:,t+1}$ \hfill $\mathcal{O}(N)$
+        \State $\hat{\mathbf{A}}_{:,t} \gets \boldsymbol{\delta}_{:,t} + \gamma \lambda\,(1 - \mathbf{D}_{:,t}) \odot \hat{\mathbf{A}}_{:,t+1}$
     \EndFor
-    \State $\hat{\mathbf{R}} \gets \hat{\mathbf{A}} + \mathbf{V}_{:,:-1}$ \hfill $\mathcal{O}(NT)$
-    \Statex \hspace{\algorithmicindent}\textit{// Phase 3: Minibatch SGD} \hfill $\mathcal{O}(K \!\cdot\! NT \!\cdot\! (C_\pi + C_V))$
+    \State $\hat{\mathbf{R}} \gets \hat{\mathbf{A}} + \mathbf{V}_{:,:-1}$
+    \Statex \hspace{\algorithmicindent}\textit{// Phase 3: Minibatch SGD}
     \State Flatten $\mathcal{D}_k \gets$ reshape all tensors to $(N \!\cdot\! T, \ldots)$
     \For{epoch $= 1, \ldots, K$}
         \State $\mathcal{I} \gets \texttt{randperm}(N \!\cdot\! T)$
         \For{$b = 0, M, 2M, \ldots$} \hfill $\lceil NT/M \rceil$ minibatches
             \State $\mathcal{B} \gets \mathcal{I}[b : b{+}M]$
-            \State $\hat{\mathbf{A}}_\mathcal{B} \gets (\hat{\mathbf{A}}_\mathcal{B} - \texttt{mean}(\hat{\mathbf{A}}_\mathcal{B})) / (\texttt{std}(\hat{\mathbf{A}}_\mathcal{B}) + \varepsilon)$ \hfill $\mathcal{O}(M)$
-            \State $\boldsymbol{\rho} \gets \pi_{\boldsymbol{\theta}}(\mathbf{A}_\mathcal{B} \mid \mathbf{S}_\mathcal{B}) \,/\, \boldsymbol{\pi}_{\text{old}_\mathcal{B}}$ \hfill $\mathcal{O}(M \cdot C_\pi)$
+            \State $\hat{\mathbf{A}}_\mathcal{B} \gets (\hat{\mathbf{A}}_\mathcal{B} - \texttt{mean}(\hat{\mathbf{A}}_\mathcal{B})) / (\texttt{std}(\hat{\mathbf{A}}_\mathcal{B}) + \varepsilon)$
+            \State $\boldsymbol{\rho} \gets \pi_{\boldsymbol{\theta}}(\mathbf{A}_\mathcal{B} \mid \mathbf{S}_\mathcal{B}) \,/\, \boldsymbol{\pi}_{\text{old}_\mathcal{B}}$
             \State $L^{\text{CLIP}} \gets \texttt{mean}\!\big(\min(\boldsymbol{\rho} \odot \hat{\mathbf{A}}_\mathcal{B},\; \texttt{clip}(\boldsymbol{\rho}, 1{-}\epsilon, 1{+}\epsilon) \odot \hat{\mathbf{A}}_\mathcal{B})\big)$
-            \State $L^{V} \gets \texttt{mean}\!\big((V_{\boldsymbol{\phi}}(\mathbf{S}_\mathcal{B}) - \hat{\mathbf{R}}_\mathcal{B})^2\big)$ \hfill $\mathcal{O}(M \cdot C_V)$
+            \State $L^{V} \gets \texttt{mean}\!\big((V_{\boldsymbol{\phi}}(\mathbf{S}_\mathcal{B}) - \hat{\mathbf{R}}_\mathcal{B})^2\big)$
             \State $H \gets \texttt{mean}\!\big(\texttt{entropy}(\pi_{\boldsymbol{\theta}}(\cdot \mid \mathbf{S}_\mathcal{B}))\big)$
-            \State $\boldsymbol{\theta} \gets \boldsymbol{\theta} + \alpha_\pi \nabla_{\boldsymbol{\theta}} (L^{\text{CLIP}} + c_e H)$ \hfill $\mathcal{O}(M \cdot C_\pi)$
-            \State $\boldsymbol{\phi} \gets \boldsymbol{\phi} - \alpha_V \nabla_{\boldsymbol{\phi}} L^{V}$ \hfill $\mathcal{O}(M \cdot C_V)$
+            \State $\boldsymbol{\theta} \gets \boldsymbol{\theta} + \alpha_\pi \nabla_{\boldsymbol{\theta}} (L^{\text{CLIP}} + c_e H)$
+            \State $\boldsymbol{\phi} \gets \boldsymbol{\phi} - \alpha_V \nabla_{\boldsymbol{\phi}} L^{V}$
         \EndFor
     \EndFor
 \EndFor
 \end{algorithmic}
-\vspace{4pt}
-\noindent\rule{\linewidth}{0.4pt}
-\vspace{2pt}
-\textit{Per-iteration complexity:} $\mathcal{O}\big(T \!\cdot\! N \!\cdot\! C_\pi + K \!\cdot\! N \!\cdot\! T \!\cdot\! (C_\pi + C_V)\big)$ \\[2pt]
-$C_\pi$: policy forward/backward cost, \; $C_V$: value forward/backward cost. \\
-Phase 3 dominates ($K$ epochs $\times$ full buffer); Phase 2 is $\mathcal{O}(NT)$ arithmetic.
 \end{minipage}
 \end{algorithm}
 
 %% ============================================================
-%% Algorithm 2: GRPO
+%% Algorithm 5: DDPG (Practical / Vectorized)
+%% ============================================================
+\begin{algorithm}[p]\small
+\caption{DDPG --- Practical Vectorized Implementation}\label{alg:ddpg}
+\vspace{2pt}
+\noindent
+\begin{minipage}[t]{0.28\linewidth}
+\renewcommand{\arraystretch}{1.12}
+\textbf{Ensure} \\[2pt]
+Optimized deterministic policy $\mu_{\boldsymbol{\theta}}$
+
+\vspace{6pt}
+\textbf{Hyperparameters} \\[2pt]
+$\boldsymbol{\theta}_0$ --- init actor params \\
+$\boldsymbol{\phi}_0$ --- init critic params \\
+$\gamma$ --- discount factor \\
+$\tau$ --- soft update rate (typ.\ $0.005$) \\
+$\alpha_\mu$ --- actor learning rate \\
+$\alpha_Q$ --- critic learning rate \\
+$B$ --- batch size \\
+$W$ --- warmup frames \\
+$|\mathcal{D}|$ --- replay buffer capacity \\
+$N$ --- parallel environments \\
+$\theta_{\text{OU}}$ --- OU reversion (typ.\ $0.15$) \\
+$\sigma_{\text{OU}}$ --- OU volatility (typ.\ $0.2$)
+
+\vspace{6pt}
+\textbf{Tensors} \\[2pt]
+$\mathbf{S} \in \mathbb{R}^{N \times d_s}$ --- env states \\
+$\mathbf{A} \in \mathbb{R}^{N \times d_a}$ --- env actions \\
+$\mathbf{N} \in \mathbb{R}^{N \times d_a}$ --- OU noise \\[3pt]
+$\mathbf{S}_\mathcal{B}, \mathbf{S}'_\mathcal{B} \in \mathbb{R}^{B \times d_s}$ \\
+$\mathbf{A}_\mathcal{B} \in \mathbb{R}^{B \times d_a}$ \\
+$\mathbf{R}_\mathcal{B} \in \mathbb{R}^{B}$ \\
+$\mathbf{D}_\mathcal{B} \in \{0,1\}^{B}$ --- terminal flags \\
+$\mathbf{Y} \in \mathbb{R}^{B}$ --- Bellman targets \\[3pt]
+\textbf{Networks} \\[2pt]
+$\mu_{\boldsymbol{\theta}}$: MLP $\to$ $\tanh$ actions \\
+$Q_{\boldsymbol{\phi}}(s,a)$: MLP $[s;a] \to \mathbb{R}$ \\
+$\mu_{\boldsymbol{\theta}'}, Q_{\boldsymbol{\phi}'}$: target copies \\
+\hspace*{1em}(same arch., separate params)
+\end{minipage}%
+\hfill
+\vrule
+\hfill
+\begin{minipage}[t]{0.68\linewidth}
+\begin{algorithmic}[1]
+\State Init targets: $\boldsymbol{\theta}' \gets \boldsymbol{\theta}$, \; $\boldsymbol{\phi}' \gets \boldsymbol{\phi}$ \hfill copy params
+\State Init $\mathcal{D} \gets \texttt{ReplayBuffer}(|\mathcal{D}|)$, \; $\mathbf{N} \gets \mathbf{0}^{N \times d_a}$
+\State $\mathbf{S} \gets \texttt{envs.reset}()$ \hfill start $N$ parallel envs
+\For{$t = 0, 1, 2, \ldots$}
+    \Statex \hspace{\algorithmicindent}\textit{// Phase 1: Vectorized environment interaction}
+    \If{$t < W/N$}
+        \State $\mathbf{A} \sim \mathcal{U}[-1, 1]^{N \times d_a}$ \hfill random warmup
+    \Else
+        \State $\mathbf{N} \gets \mathbf{N} + \theta_{\text{OU}}(0 - \mathbf{N}) + \sigma_{\text{OU}}\,\boldsymbol{\epsilon}$, \;\; $\boldsymbol{\epsilon} \sim \mathcal{N}(\mathbf{0}, \mathbf{I})$ \hfill OU step
+        \State $\mathbf{A} \gets \texttt{clamp}(\mu_{\boldsymbol{\theta}}(\mathbf{S}) + \mathbf{N},\; {-}1, 1)$ \hfill forward + noise + clip
+    \EndIf
+    \State $\mathbf{R},\, \mathbf{S}',\, \mathbf{D} \gets \texttt{envs.step}(\mathbf{A})$ \hfill $\mathbf{D}_i = 1$ if terminal
+    \State $\mathcal{D}.\texttt{extend}(\mathbf{S}, \mathbf{A}, \mathbf{R}, \mathbf{S}', \mathbf{D})$ \hfill store $N$ tuples
+    \State $\mathbf{S} \gets \mathbf{S}'$ \hfill auto-reset replaces terminal $s'$ with $s_0$
+    \State Reset $\mathbf{N}_i \gets \mathbf{0}$ for done envs
+    \If{$|\mathcal{D}| < W$} \textbf{continue} \EndIf
+    \Statex \hspace{\algorithmicindent}\textit{// Phase 2: Batched critic update}
+    \State $(\mathbf{S}_\mathcal{B}, \mathbf{A}_\mathcal{B}, \mathbf{R}_\mathcal{B}, \mathbf{S}'_\mathcal{B}, \mathbf{D}_\mathcal{B}) \sim \mathcal{D}$ \hfill sample $B$ transitions
+    \State \textbf{with} $\texttt{no\_grad}$: \hfill no gradient through $\boldsymbol{\theta}', \boldsymbol{\phi}'$
+    \State \hspace{\algorithmicindent} $\mathbf{A}_{\text{tgt}} \gets \mu_{\boldsymbol{\theta}'}(\mathbf{S}'_\mathcal{B})$ \hfill target actor $\to$ next actions $(B, d_a)$
+    \State \hspace{\algorithmicindent} $\mathbf{Q}_{\text{tgt}} \gets Q_{\boldsymbol{\phi}'}(\mathbf{S}'_\mathcal{B},\, \mathbf{A}_{\text{tgt}})$ \hfill target critic $\to$ next Q $(B,)$
+    \State \hspace{\algorithmicindent} $\mathbf{Y} \gets \mathbf{R}_\mathcal{B} + \gamma\,(1 {-} \mathbf{D}_\mathcal{B}) \odot \mathbf{Q}_{\text{tgt}}$ \hfill $(1{-}\mathbf{D})$ zeros at terminals
+    \State $L^Q \gets \texttt{mean}\!\big((Q_{\boldsymbol{\phi}}(\mathbf{S}_\mathcal{B}, \mathbf{A}_\mathcal{B}) - \mathbf{Y})^2\big)$ \hfill MSE critic loss
+    \State $\boldsymbol{\phi} \gets \boldsymbol{\phi} - \alpha_Q \nabla_{\boldsymbol{\phi}} L^Q$
+    \Statex \hspace{\algorithmicindent}\textit{// Phase 3: Batched actor update}
+    \State $\hat{\mathbf{A}} \gets \mu_{\boldsymbol{\theta}}(\mathbf{S}_\mathcal{B})$ \hfill actor forward $(B, d_a)$
+    \State $L^\mu \gets -\texttt{mean}\!\big(Q_{\boldsymbol{\phi}}(\mathbf{S}_\mathcal{B},\, \hat{\mathbf{A}})\big)$ \hfill $\nabla_{\boldsymbol{\theta}}$ flows $\mu \to Q$
+    \State $\boldsymbol{\theta} \gets \boldsymbol{\theta} - \alpha_\mu \nabla_{\boldsymbol{\theta}} L^\mu$
+    \Statex \hspace{\algorithmicindent}\textit{// Phase 4: Polyak-averaged target update}
+    \State $\boldsymbol{\theta}' \gets \tau\,\boldsymbol{\theta} + (1 - \tau)\,\boldsymbol{\theta}'$ \hfill slowly track actor
+    \State $\boldsymbol{\phi}' \gets \tau\,\boldsymbol{\phi} + (1 - \tau)\,\boldsymbol{\phi}'$ \hfill slowly track critic
+\EndFor
+\end{algorithmic}
+\end{minipage}
+\end{algorithm}
+
+%% ============================================================
+%% Algorithm 6: SAC (Practical / Vectorized)
+%% ============================================================
+\begin{algorithm}[p]\small
+\caption{SAC --- Practical Vectorized Implementation}\label{alg:sac}
+\vspace{2pt}
+\noindent
+\begin{minipage}[t]{0.28\linewidth}
+\renewcommand{\arraystretch}{1.12}
+\textbf{Ensure} \\[2pt]
+Optimized stochastic policy $\pi_{\boldsymbol{\theta}}$
+
+\vspace{6pt}
+\textbf{Hyperparameters} \\[2pt]
+$\boldsymbol{\theta}_0$ --- init actor (outputs \\
+\hspace*{1em}$\boldsymbol{\mu}, \log\boldsymbol{\sigma}$) \\
+$\boldsymbol{\phi}_{1,0}, \boldsymbol{\phi}_{2,0}$ --- init twin critics \\
+$\gamma$ --- discount factor \\
+$\tau$ --- soft update (typ.\ $0.005$) \\
+$\alpha_\pi$ --- actor learning rate \\
+$\alpha_Q$ --- critic learning rate \\
+$\alpha_\alpha$ --- entropy lr \\
+$B$ --- batch size \\
+$W$ --- warmup frames \\
+$|\mathcal{D}|$ --- replay buffer capacity \\
+$N$ --- parallel environments \\
+$\bar{\mathcal{H}} = -d_a$ --- target entropy \\
+$f_\mu$ --- actor update freq.\ (typ.\ $2$)
+
+\vspace{6pt}
+\textbf{Tensors} \\[2pt]
+$\mathbf{S}_\mathcal{B}, \mathbf{S}'_\mathcal{B} \in \mathbb{R}^{B \times d_s}$ \\
+$\mathbf{A}_\mathcal{B} \in \mathbb{R}^{B \times d_a}$ \\
+$\mathbf{R}_\mathcal{B} \in \mathbb{R}^{B}$ \\
+$\mathbf{D}_\mathcal{B} \in \{0,1\}^{B}$ --- terminal flags \\
+$\tilde{\mathbf{A}} \in \mathbb{R}^{B \times d_a}$ --- rsample actions \\
+$\boldsymbol{\ell} \in \mathbb{R}^{B}$ --- log-probabilities \\
+$\mathbf{Y} \in \mathbb{R}^{B}$ --- soft Bellman targets \\[3pt]
+\textbf{Networks} \\[2pt]
+$\pi_{\boldsymbol{\theta}}$: MLP $\to (\boldsymbol{\mu}, \log\boldsymbol{\sigma})$ \\
+\hspace*{1em}$\Rightarrow$ TanhNormal dist. \\
+$Q_{\boldsymbol{\phi}_i}$: MLP $[s;a] \to \mathbb{R}$ \\
+$Q_{\boldsymbol{\phi}'_i}$: target copies \\
+\hspace*{1em}(same arch., separate params)
+\end{minipage}%
+\hfill
+\vrule
+\hfill
+\begin{minipage}[t]{0.68\linewidth}
+\begin{algorithmic}[1]
+\State Init targets: $\boldsymbol{\phi}'_1 \gets \boldsymbol{\phi}_1$, \; $\boldsymbol{\phi}'_2 \gets \boldsymbol{\phi}_2$ \hfill copy params
+\State Init $\log\alpha \gets \log(\alpha_0)$, \; $\alpha \gets \exp(\log\alpha)$
+\State Init $\mathcal{D} \gets \texttt{ReplayBuffer}(|\mathcal{D}|)$
+\State $\mathbf{S} \gets \texttt{envs.reset}()$ \hfill start $N$ parallel envs
+\For{$t = 0, 1, 2, \ldots$}
+    \Statex \hspace{\algorithmicindent}\textit{// Phase 1: Vectorized environment interaction}
+    \If{$t < W/N$}
+        \State $\mathbf{A} \sim \mathcal{U}[-1, 1]^{N \times d_a}$ \hfill random warmup
+    \Else
+        \State $\boldsymbol{\mu},\, \log\boldsymbol{\sigma} \gets \pi_{\boldsymbol{\theta}}(\mathbf{S})$ \hfill actor forward $(N, d_a)$
+        \State $\boldsymbol{\epsilon} \sim \mathcal{N}(\mathbf{0}, \mathbf{I})^{N \times d_a}$ \hfill reparam.\ noise
+        \State $\mathbf{A} \gets \tanh\!\big(\boldsymbol{\mu} + \exp(\log\boldsymbol{\sigma}) \odot \boldsymbol{\epsilon}\big)$ \hfill TanhNormal rsample
+    \EndIf
+    \State $\mathbf{R},\, \mathbf{S}',\, \mathbf{D} \gets \texttt{envs.step}(\mathbf{A})$ \hfill $\mathbf{D}_i = 1$ if terminal
+    \State $\mathcal{D}.\texttt{extend}(\mathbf{S}, \mathbf{A}, \mathbf{R}, \mathbf{S}', \mathbf{D})$ \hfill store $N$ tuples
+    \State $\mathbf{S} \gets \mathbf{S}'$
+    \If{$|\mathcal{D}| < W$} \textbf{continue} \EndIf
+    \Statex \hspace{\algorithmicindent}\textit{// Phase 2: Batched twin critic update}
+    \State $(\mathbf{S}_\mathcal{B}, \mathbf{A}_\mathcal{B}, \mathbf{R}_\mathcal{B}, \mathbf{S}'_\mathcal{B}, \mathbf{D}_\mathcal{B}) \sim \mathcal{D}$ \hfill sample $B$ transitions
+    \State \textbf{with} $\texttt{no\_grad}$: \hfill no gradient through $\boldsymbol{\theta}, \boldsymbol{\phi}'_1, \boldsymbol{\phi}'_2$
+    \State \hspace{\algorithmicindent} $\boldsymbol{\mu}',\, \log\boldsymbol{\sigma}' \gets \pi_{\boldsymbol{\theta}}(\mathbf{S}'_\mathcal{B})$ \hfill actor on next states
+    \State \hspace{\algorithmicindent} $\mathbf{U}' \gets \boldsymbol{\mu}' + \exp(\log\boldsymbol{\sigma}') \odot \boldsymbol{\epsilon}'$, \;\; $\boldsymbol{\epsilon}' \sim \mathcal{N}(\mathbf{0}, \mathbf{I})$ \hfill pre-squash $(B, d_a)$
+    \State \hspace{\algorithmicindent} $\tilde{\mathbf{A}}' \gets \tanh(\mathbf{U}')$ \hfill squashed next actions
+    \State \hspace{\algorithmicindent} $\boldsymbol{\ell}' \gets \!\sum_{j=1}^{d_a}\!\big[\log\mathcal{N}(U'_j) - \log(1 {-} \tanh^2\!(U'_j) {+} \varepsilon)\big]$ \hfill log-prob w/ Jacobian
+    \State \hspace{\algorithmicindent} $\mathbf{Q}'_1 \gets Q_{\boldsymbol{\phi}'_1}(\mathbf{S}'_\mathcal{B}, \tilde{\mathbf{A}}')$, \;\; $\mathbf{Q}'_2 \gets Q_{\boldsymbol{\phi}'_2}(\mathbf{S}'_\mathcal{B}, \tilde{\mathbf{A}}')$ \hfill target Q's $(B,)$
+    \State \hspace{\algorithmicindent} $\mathbf{Y} \gets \mathbf{R}_\mathcal{B} + \gamma(1 {-} \mathbf{D}_\mathcal{B}) \odot [\min(\mathbf{Q}'_1, \mathbf{Q}'_2) - \alpha\,\boldsymbol{\ell}']$ \hfill soft Bellman
+    \State $\mathbf{Q}_1 \gets Q_{\boldsymbol{\phi}_1}(\mathbf{S}_\mathcal{B}, \mathbf{A}_\mathcal{B})$, \;\; $\mathbf{Q}_2 \gets Q_{\boldsymbol{\phi}_2}(\mathbf{S}_\mathcal{B}, \mathbf{A}_\mathcal{B})$ \hfill current Q's
+    \State $L^Q \gets \texttt{mean}((\mathbf{Q}_1 {-} \mathbf{Y})^2) + \texttt{mean}((\mathbf{Q}_2 {-} \mathbf{Y})^2)$ \hfill sum of MSE
+    \State $\boldsymbol{\phi}_1 \gets \boldsymbol{\phi}_1 - \alpha_Q \nabla_{\boldsymbol{\phi}_1} L^Q$, \;\; $\boldsymbol{\phi}_2 \gets \boldsymbol{\phi}_2 - \alpha_Q \nabla_{\boldsymbol{\phi}_2} L^Q$
+    \Statex \hspace{\algorithmicindent}\textit{// Phase 3: Batched actor update (every $f_\mu$ critic steps)}
+    \If{$t \bmod f_\mu = 0$}
+        \State $\boldsymbol{\mu},\, \log\boldsymbol{\sigma} \gets \pi_{\boldsymbol{\theta}}(\mathbf{S}_\mathcal{B})$ \hfill actor forward
+        \State $\mathbf{U} \gets \boldsymbol{\mu} + \exp(\log\boldsymbol{\sigma}) \odot \boldsymbol{\epsilon}$, \;\; $\boldsymbol{\epsilon} \sim \mathcal{N}(\mathbf{0}, \mathbf{I})$
+        \State $\tilde{\mathbf{A}} \gets \tanh(\mathbf{U})$ \hfill rsample; $\nabla_{\boldsymbol{\theta}}$ flows through $\boldsymbol{\mu}, \boldsymbol{\sigma}$
+        \State $\boldsymbol{\ell} \gets \sum_{j=1}^{d_a}\big[\log\mathcal{N}(U_j) - \log(1 {-} \tanh^2\!(U_j) {+} \varepsilon)\big]$ \hfill log-prob
+        \State $L^\pi \!\gets\! \texttt{mean}\!\big(\alpha\,\boldsymbol{\ell} - \min(Q_{\boldsymbol{\phi}_1}(\mathbf{S}_\mathcal{B}, \tilde{\mathbf{A}}),\, Q_{\boldsymbol{\phi}_2}(\mathbf{S}_\mathcal{B}, \tilde{\mathbf{A}}))\big)$
+        \State $\boldsymbol{\theta} \gets \boldsymbol{\theta} - \alpha_\pi \nabla_{\boldsymbol{\theta}} L^\pi$ \hfill $\nabla_{\boldsymbol{\theta}}$ backprops $\tilde{\mathbf{A}} \to Q$ (critics frozen)
+        \Statex \hspace{\algorithmicindent}\hspace{\algorithmicindent}\textit{// Phase 4: Entropy coefficient update}
+        \State $L^\alpha \gets -\texttt{mean}\!\big(\log\alpha \cdot \texttt{sg}(\boldsymbol{\ell} + \bar{\mathcal{H}})\big)$ \hfill dual gradient descent
+        \State $\log\alpha \gets \log\alpha - \alpha_\alpha \nabla_{\log\alpha} L^\alpha$
+        \State $\alpha \gets \exp(\log\alpha)$
+    \EndIf
+    \Statex \hspace{\algorithmicindent}\textit{// Phase 5: Polyak-averaged target update}
+    \State $\boldsymbol{\phi}'_1 \gets \tau\,\boldsymbol{\phi}_1 + (1 - \tau)\,\boldsymbol{\phi}'_1$ \hfill slowly track online critics
+    \State $\boldsymbol{\phi}'_2 \gets \tau\,\boldsymbol{\phi}_2 + (1 - \tau)\,\boldsymbol{\phi}'_2$
+\EndFor
+\end{algorithmic}
+\end{minipage}
+\end{algorithm}
+
+%% ============================================================
+%% Algorithm 7: OTPG --- Operator-Theoretic Policy Gradient (scalar)
+%% ============================================================
+\begin{algorithm}[p]\small
+\caption{OTPG --- Operator-Theoretic Policy Gradient (MM-RKHS)}\label{alg:otpg}
+\vspace{2pt}
+\noindent
+\begin{minipage}[t]{0.28\linewidth}
+\renewcommand{\arraystretch}{1.12}
+\textbf{Ensure} \\[2pt]
+Optimized policy $\pi_{\boldsymbol{\theta}}$
+
+\vspace{6pt}
+\textbf{Hyperparameters} \\[2pt]
+$\boldsymbol{\theta}_0$ --- init policy params \\
+\hspace*{1em}(outputs $\mu, \log\sigma$) \\
+$\boldsymbol{\phi}_0$ --- init value params \\
+$\beta$ --- majorization bound coeff. \\
+\hspace*{1em}(typ.\ $1.0$) \\
+$\eta$ --- mirror descent step size \\
+\hspace*{1em}(typ.\ $1.0$) \\
+$\sigma_k$ --- RBF kernel bandwidth \\
+$P$ --- MMD samples per state \\
+\hspace*{1em}(typ.\ $16$) \\
+$\gamma$ --- discount factor \\
+$\lambda$ --- GAE param \\
+$N$ --- actors \\
+$T$ --- rollout length \\
+$K$ --- epochs \\
+$M$ --- minibatch size \\
+$\alpha$ --- learning rate \\
+$c_V$ --- value coeff.\ (typ.\ $0.5$)
+
+\vspace{6pt}
+\textbf{Notation} \\[2pt]
+$s_t$ --- state \\
+$a_t$ --- action \\
+$r_t$ --- reward \\
+$V_{\boldsymbol{\phi}}(s)$ --- value function \\
+$\delta_t$ --- TD error \\
+$\hat{A}_t$ --- GAE advantage \\
+$\hat{R}_t$ --- GAE-$\lambda$ return \\
+$\rho_t$ --- IS ratio $\pi_{\boldsymbol{\theta}} / \pi_{\boldsymbol{\theta}_k}$ \\
+$k(\mathbf{a}, \mathbf{b})$ --- RBF kernel \\
+$\widehat{\text{MMD}}^2$ --- MMD estimator \\
+$D_{\text{KL}}$ --- KL approximation
+
+\vspace{6pt}
+\textbf{Networks} \\[2pt]
+$\pi_{\boldsymbol{\theta}}$: MLP $s \to (\mu, \log\sigma)$ \\
+\hspace*{1em}$\Rightarrow$ TanhNormal dist. \\
+$V_{\boldsymbol{\phi}}$: MLP $s \to \mathbb{R}$
+\end{minipage}%
+\hfill
+\vrule
+\hfill
+\begin{minipage}[t]{0.68\linewidth}
+\begin{algorithmic}[1]
+\For{$k = 0, 1, 2, \ldots$}
+    \Statex \hspace{\algorithmicindent}\textit{// Phase 1: Rollout collection (same as PPO)}
+    \For{actor $= 1, \ldots, N$}
+        \For{$t = 0, \ldots, T{-}1$}
+            \State $\mu_t, \log\sigma_t \gets \pi_{\boldsymbol{\theta}_k}(s_t)$ \hfill actor forward
+            \State $a_t \sim \text{TanhNormal}(\mu_t, \sigma_t)$
+            \State Execute $a_t$, observe $r_t, s_{t+1}$
+            \State Store $(s_t, a_t, r_t, s_{t+1},\, \pi_{\boldsymbol{\theta}_k}(a_t \mid s_t),\, \mu_t, \sigma_t)$
+        \EndFor
+    \EndFor
+    \State $\mathcal{D}_k \gets N \!\times\! T$ tuples
+    \Statex \hspace{\algorithmicindent}\textit{// Phase 2: Advantage estimation (GAE)}
+    \For{each actor trajectory}
+        \State $\hat{A}_T \gets 0$
+        \For{$t = T{-}1, \ldots, 0$}
+            \State $\delta_t \gets r_t + \gamma\, V_{\boldsymbol{\phi}_k}(s_{t+1}) - V_{\boldsymbol{\phi}_k}(s_t)$
+            \State $\hat{A}_t \gets \delta_t + \gamma \lambda\, \hat{A}_{t+1}$
+            \State $\hat{R}_t \gets \hat{A}_t + V_{\boldsymbol{\phi}_k}(s_t)$
+        \EndFor
+    \EndFor
+    \Statex \hspace{\algorithmicindent}\textit{// Phase 3: MM-RKHS policy update}
+    \State Shuffle $\mathcal{D}_k$, split into $\lceil N \!\cdot\! T / M \rceil$ minibatches
+    \For{epoch $= 1, \ldots, K$}
+        \For{each minibatch $\mathcal{B}$, $|\mathcal{B}| = M$}
+            \State $L^{\text{surr}} \gets 0$, \; $\widehat{\text{MMD}}^2 \gets 0$, \; $D_{\text{KL}} \gets 0$, \; $L^V \gets 0$
+            \For{each $(s_t, a_t, \hat{A}_t, \hat{R}_t, \pi_{\boldsymbol{\theta}_k}, \mu_t^{\text{old}}, \sigma_t^{\text{old}}) \in \mathcal{B}$}
+                \State $\hat{A}_t \gets (\hat{A}_t - \mu_{\hat{A}}) / (\sigma_{\hat{A}} + \varepsilon)$ \hfill normalize
+                \Statex \hspace{\algorithmicindent}\hspace{\algorithmicindent}\hspace{\algorithmicindent}\hspace{\algorithmicindent}\textit{// Surrogate advantage (unclipped)}
+                \State $\rho_t \gets \pi_{\boldsymbol{\theta}}(a_t \mid s_t) / \pi_{\boldsymbol{\theta}_k}(a_t \mid s_t)$
+                \State $L^{\text{surr}} \mathrel{+}= \frac{1}{M}\, \rho_t\, \hat{A}_t$
+                \Statex \hspace{\algorithmicindent}\hspace{\algorithmicindent}\hspace{\algorithmicindent}\hspace{\algorithmicindent}\textit{// MMD trust region (RBF kernel)}
+                \State Sample $\{\mathbf{x}_1, \mathbf{x}_2\} \sim \text{TanhNormal}(\mu_t^{\text{old}}, \sigma_t^{\text{old}})$, \; $P/2$ pairs
+                \State Sample $\{\mathbf{y}_1, \mathbf{y}_2\} \sim \pi_{\boldsymbol{\theta}}(\cdot \mid s_t)$, \; $P/2$ pairs
+                \State $k(\mathbf{a}, \mathbf{b}) = \exp\!\big({-}\|\mathbf{a} - \mathbf{b}\|^2 / (2\sigma_k^2)\big)$ \hfill RBF kernel
+                \State $\widehat{\text{MMD}}^2 \mathrel{+}= \frac{1}{M}\big[k(\mathbf{x}_1, \mathbf{x}_2) {+} k(\mathbf{y}_1, \mathbf{y}_2) {-} k(\mathbf{x}_1, \mathbf{y}_2) {-} k(\mathbf{x}_2, \mathbf{y}_1)\big]$
+                \Statex \hspace{\algorithmicindent}\hspace{\algorithmicindent}\hspace{\algorithmicindent}\hspace{\algorithmicindent}\textit{// Mirror descent KL regularizer}
+                \State $D_{\text{KL}} \mathrel{+}= \frac{1}{M}\big[(\rho_t - 1) - \log \rho_t\big]$
+                \Statex \hspace{\algorithmicindent}\hspace{\algorithmicindent}\hspace{\algorithmicindent}\hspace{\algorithmicindent}\textit{// Value loss}
+                \State $L^V \mathrel{+}= \frac{1}{M}(V_{\boldsymbol{\phi}}(s_t) - \hat{R}_t)^2$
+            \EndFor
+            \Statex \hspace{\algorithmicindent}\hspace{\algorithmicindent}\hspace{\algorithmicindent}\textit{// Combined MM-RKHS objective (Eq.\ 7.1)}
+            \State $L \gets -L^{\text{surr}} + \beta \cdot \widehat{\text{MMD}}^2 + \tfrac{1}{\eta}\, D_{\text{KL}} + c_V \cdot L^V$
+            \State $\boldsymbol{\theta} \gets \boldsymbol{\theta} - \alpha \nabla_{\boldsymbol{\theta}} L$
+            \State $\boldsymbol{\phi} \gets \boldsymbol{\phi} - \alpha \nabla_{\boldsymbol{\phi}} L$
+        \EndFor
+    \EndFor
+\EndFor
+\end{algorithmic}
+\end{minipage}
+\end{algorithm}
+
+%% ============================================================
+%% Algorithm 7b: OTPG (Practical / Vectorized)
+%% ============================================================
+\begin{algorithm}[p]\small
+\caption{OTPG --- Practical Vectorized Implementation}\label{alg:otpg-practical}
+\vspace{2pt}
+\noindent
+\begin{minipage}[t]{0.28\linewidth}
+\renewcommand{\arraystretch}{1.12}
+\textbf{Ensure} \\[2pt]
+Optimized policy $\pi_{\boldsymbol{\theta}}$
+
+\vspace{6pt}
+\textbf{Hyperparameters} \\[2pt]
+$\boldsymbol{\theta}_0$ --- init policy params \\
+$\boldsymbol{\phi}_0$ --- init value params \\
+$\beta$ --- majorization bound coeff. \\
+\hspace*{1em}(typ.\ $1.0$) \\
+$\eta$ --- mirror descent step size \\
+\hspace*{1em}(typ.\ $1.0$) \\
+$\sigma$ --- RBF kernel bandwidth \\
+$P$ --- MMD samples per state \\
+\hspace*{1em}(typ.\ $16$) \\
+$\gamma$ --- discount factor \\
+$\lambda$ --- GAE param \\
+$N$ --- parallel environments \\
+$T$ --- rollout length \\
+$K$ --- epochs \\
+$M$ --- minibatch size \\
+$\alpha$ --- learning rate \\
+$c_V$ --- value coeff.\ (typ.\ $0.5$)
+
+\vspace{6pt}
+\textbf{Notation} \\[2pt]
+$\boldsymbol{\mu}_{\text{old}}, \boldsymbol{\sigma}_{\text{old}}$ --- old dist.\ params \\
+$k(\mathbf{a}, \mathbf{b})$ --- RBF kernel \\
+$\widehat{\text{MMD}}^2$ --- MMD estimator \\
+$D_{\text{KL}}$ --- KL approximation \\
+$\rho$ --- importance ratio
+\end{minipage}%
+\hfill
+\vrule
+\hfill
+\begin{minipage}[t]{0.68\linewidth}
+\begin{algorithmic}[1]
+\For{$k = 0, 1, 2, \ldots$}
+    \Statex \hspace{\algorithmicindent}\textit{// Phase 1: Vectorized rollout (same as PPO)}
+    \For{$t = 0, \ldots, T{-}1$}
+        \State $\mathbf{A}_{:,t} \sim \pi_{\boldsymbol{\theta}_k}(\cdot \mid \mathbf{S}_{:,t})$ \hfill TanhNormal
+        \State $\mathbf{R}_{:,t},\, \mathbf{S}_{:,t+1},\, \mathbf{D}_{:,t} \gets \texttt{envs.step}(\mathbf{A}_{:,t})$
+        \State Store $\boldsymbol{\pi}_{\text{old}_{:,t}},\; \boldsymbol{\mu}_{\text{old}_{:,t}},\; \boldsymbol{\sigma}_{\text{old}_{:,t}}$
+    \EndFor
+    \Statex \hspace{\algorithmicindent}\textit{// Phase 2: Vectorized GAE (same as PPO)}
+    \State $\mathbf{V} \gets V_{\boldsymbol{\phi}_k}([\mathbf{S},\, \mathbf{S}_{:,T}])$ \hfill shape $(N, T{+}1)$
+    \State $\boldsymbol{\delta} \gets \mathbf{R} + \gamma\,(1 - \mathbf{D}) \odot \mathbf{V}_{:,1:} - \mathbf{V}_{:,:-1}$
+    \State $\hat{\mathbf{A}}_{:,T-1} \gets \boldsymbol{\delta}_{:,T-1}$
+    \For{$t = T{-}2, \ldots, 0$}
+        \State $\hat{\mathbf{A}}_{:,t} \gets \boldsymbol{\delta}_{:,t} + \gamma \lambda\,(1 - \mathbf{D}_{:,t}) \odot \hat{\mathbf{A}}_{:,t+1}$
+    \EndFor
+    \State $\hat{\mathbf{R}} \gets \hat{\mathbf{A}} + \mathbf{V}_{:,:-1}$
+    \Statex \hspace{\algorithmicindent}\textit{// Phase 3: MM-RKHS policy update}
+    \State Flatten $\mathcal{D}_k \gets$ reshape to $(N \!\cdot\! T, \ldots)$
+    \For{epoch $= 1, \ldots, K$}
+        \State $\mathcal{I} \gets \texttt{randperm}(N \!\cdot\! T)$
+        \For{$b = 0, M, 2M, \ldots$} \hfill $\lceil NT/M \rceil$ minibatches
+            \State $\mathcal{B} \gets \mathcal{I}[b : b{+}M]$
+            \State $\hat{\mathbf{A}}_\mathcal{B} \gets (\hat{\mathbf{A}}_\mathcal{B} - \texttt{mean}) / (\texttt{std} + \varepsilon)$ \hfill normalize
+            \Statex \hspace{\algorithmicindent}\hspace{\algorithmicindent}\hspace{\algorithmicindent}\textit{// Surrogate advantage (unclipped)}
+            \State $\boldsymbol{\rho} \gets \exp\!\big(\texttt{clamp}(\log\pi_{\boldsymbol{\theta}} - \log\boldsymbol{\pi}_{\text{old}_\mathcal{B}},\; {-}20, 20)\big)$
+            \State $L^{\text{surr}} \gets \texttt{mean}(\boldsymbol{\rho} \odot \hat{\mathbf{A}}_\mathcal{B})$
+            \Statex \hspace{\algorithmicindent}\hspace{\algorithmicindent}\hspace{\algorithmicindent}\textit{// MMD trust region penalty (RBF kernel)}
+            \State $\{\mathbf{x}_1, \mathbf{x}_2\} \sim \text{TanhNormal}(\boldsymbol{\mu}_{\text{old}}, \boldsymbol{\sigma}_{\text{old}})$ \hfill $P/2$ pairs
+            \State $\{\mathbf{y}_1, \mathbf{y}_2\} \sim \pi_{\boldsymbol{\theta}}(\cdot \mid \mathbf{S}_\mathcal{B})$ \hfill $P/2$ pairs
+            \State $k(\mathbf{a}, \mathbf{b}) = \exp(-\|\mathbf{a} - \mathbf{b}\|^2 / (2\sigma^2))$
+            \State $\widehat{\text{MMD}}^2 \!\gets\! \texttt{mean}\!\big(k(\mathbf{x}_1, \mathbf{x}_2) + k(\mathbf{y}_1, \mathbf{y}_2) - k(\mathbf{x}_1, \mathbf{y}_2) - k(\mathbf{x}_2, \mathbf{y}_1)\big)$
+            \Statex \hspace{\algorithmicindent}\hspace{\algorithmicindent}\hspace{\algorithmicindent}\textit{// Mirror descent KL regularizer}
+            \State $D_{\text{KL}} \gets \texttt{mean}\!\big((\boldsymbol{\rho} - 1) - \log\boldsymbol{\rho}\big)$
+            \Statex \hspace{\algorithmicindent}\hspace{\algorithmicindent}\hspace{\algorithmicindent}\textit{// Combined MM-RKHS objective}
+            \State $L^V \gets \texttt{mean}\!\big((V_{\boldsymbol{\phi}}(\mathbf{S}_\mathcal{B}) - \hat{\mathbf{R}}_\mathcal{B})^2\big)$
+            \State $L \gets -L^{\text{surr}} + \beta \cdot \widehat{\text{MMD}}^2 + \tfrac{1}{\eta}\, D_{\text{KL}} + c_V \cdot L^V$
+            \State $\boldsymbol{\theta}, \boldsymbol{\phi} \gets \boldsymbol{\theta}, \boldsymbol{\phi} - \alpha \nabla_{\boldsymbol{\theta}, \boldsymbol{\phi}} L$
+        \EndFor
+    \EndFor
+\EndFor
+\end{algorithmic}
+\end{minipage}
+\end{algorithm}
+
+%% ============================================================
+%% PART III --- LLM Policy Optimization
+%% ============================================================
+
+%% ============================================================
+%% Algorithm 8: GRPO (scalar)
 %% ============================================================
 \begin{algorithm}[p]\small
 \caption{GRPO (Group Relative Policy Optimization)}\label{alg:grpo}
@@ -197,25 +855,25 @@ Optimized policy $\pi_{\boldsymbol{\theta}}$
 
 \vspace{6pt}
 \textbf{Hyperparameters} \\[2pt]
-$\boldsymbol{\theta}_0$ — init policy params \\
-$\pi_{\text{ref}}$ — frozen reference policy \\
-$\epsilon$ — clip ratio (typ.\ $0.2$) \\
-$G$ — group size \\
-$\beta$ — KL coefficient \\
-$\alpha$ — learning rate \\
-$K$ — epochs \\
-$R(\mathbf{q}, \mathbf{o})$ — reward function
+$\boldsymbol{\theta}_0$ --- init policy params \\
+$\pi_{\text{ref}}$ --- frozen reference policy \\
+$\epsilon$ --- clip ratio (typ.\ $0.2$) \\
+$G$ --- group size \\
+$\beta$ --- KL coefficient \\
+$\alpha$ --- learning rate \\
+$K$ --- epochs \\
+$R(\mathbf{q}, \mathbf{o})$ --- reward function
 
 \vspace{6pt}
 \textbf{Notation} \\[2pt]
-$\mathbf{q}$ — input query (prompt) \\
-$\mathbf{o}_j$ — $j$-th completion \\
-$o_{j,t}$ — token $t$ of completion $j$ \\
-$\mathbf{o}_{j,<t}$ — preceding tokens \\
-$|\mathbf{o}_j|$ — completion length \\
-$\hat{A}_j$ — group-relative advantage \\
-$\rho_{j,t}$ — IS ratio $\pi_{\boldsymbol{\theta}} / \pi_{\boldsymbol{\theta}_k}$ \\
-$D_{\text{KL}}$ — KL divergence
+$\mathbf{q}$ --- input query (prompt) \\
+$\mathbf{o}_j$ --- $j$-th completion \\
+$o_{j,t}$ --- token $t$ of completion $j$ \\
+$\mathbf{o}_{j,<t}$ --- preceding tokens \\
+$|\mathbf{o}_j|$ --- completion length \\
+$\hat{A}_j$ --- group-relative advantage \\
+$\rho_{j,t}$ --- IS ratio $\pi_{\boldsymbol{\theta}} / \pi_{\boldsymbol{\theta}_k}$ \\
+$D_{\text{KL}}$ --- KL divergence
 \end{minipage}%
 \hfill
 \vrule
@@ -266,7 +924,79 @@ $D_{\text{KL}}$ — KL divergence
 \end{algorithm}
 
 %% ============================================================
-%% Algorithm 3: CISPO
+%% Algorithm 8b: GRPO (Practical / Vectorized)
+%% ============================================================
+\begin{algorithm}[p]\small
+\caption{GRPO --- Practical Vectorized Implementation}\label{alg:grpo-practical}
+\vspace{2pt}
+\noindent
+\begin{minipage}[t]{0.28\linewidth}
+\renewcommand{\arraystretch}{1.12}
+\textbf{Ensure} \\[2pt]
+Optimized policy $\pi_{\boldsymbol{\theta}}$
+
+\vspace{6pt}
+\textbf{Hyperparameters} \\[2pt]
+$\boldsymbol{\theta}_0$ --- init policy params \\
+$\pi_{\text{ref}}$ --- frozen ref.\ policy \\
+$\epsilon$ --- clip ratio (typ.\ $0.2$) \\
+$G$ --- group size \\
+$\beta$ --- KL coefficient \\
+$\alpha$ --- learning rate \\
+$K$ --- epochs \\
+$M$ --- minibatch size \\
+$R(\mathbf{q}, \mathbf{o})$ --- reward function
+
+\vspace{6pt}
+\textbf{Tensors} \\[2pt]
+$B$ --- queries per batch \\
+$L$ --- max completion length \\[3pt]
+$\mathbf{Q} \in \mathbb{Z}^{B \times L_q}$ --- queries \\
+$\mathbf{O} \in \mathbb{Z}^{B \times G \times L}$ --- tokens \\
+$\boldsymbol{\pi}_{\text{old}} \in \mathbb{R}^{B \times G \times L}$ \\
+$\mathbf{M} \in \{0,1\}^{B \times G \times L}$ --- mask \\
+$\mathbf{R} \in \mathbb{R}^{B \times G}$ --- rewards \\
+$\hat{\mathbf{A}} \in \mathbb{R}^{B \times G}$ --- advantages \\
+$\boldsymbol{\rho} \in \mathbb{R}^{M \times L}$
+\end{minipage}%
+\hfill
+\vrule
+\hfill
+\begin{minipage}[t]{0.68\linewidth}
+\begin{algorithmic}[1]
+\For{$k = 0, 1, 2, \ldots$}
+    \Statex \hspace{\algorithmicindent}\textit{// Phase 1: Batch generation}
+    \For{each query batch $\mathbf{Q}_{1:B}$}
+        \State $\mathbf{O}_{:,:,:} \sim \pi_{\boldsymbol{\theta}_k}(\cdot \mid \mathbf{Q})$ \hfill $B \!\cdot\! G$ completions in parallel
+        \State $\mathbf{R}_{:,:} \gets R(\mathbf{Q}, \mathbf{O})$ \hfill batch reward evaluation
+        \State $\boldsymbol{\pi}_{\text{old}} \gets \pi_{\boldsymbol{\theta}_k}(\mathbf{O} \mid \mathbf{Q})$
+        \State $\mathbf{M} \gets \texttt{token\_mask}(\mathbf{O})$ \hfill $1$ where valid, $0$ for padding
+    \EndFor
+    \Statex \hspace{\algorithmicindent}\textit{// Phase 2: Group-relative advantage}
+    \State $\boldsymbol{\mu} \gets \texttt{mean}(\mathbf{R}, \text{dim}=G)$ \hfill $\in \mathbb{R}^{B}$
+    \State $\boldsymbol{\sigma} \gets \texttt{std}(\mathbf{R}, \text{dim}=G)$ \hfill $\in \mathbb{R}^{B}$
+    \State $\hat{\mathbf{A}} \gets (\mathbf{R} - \boldsymbol{\mu}) \,/\, \max(\boldsymbol{\sigma},\, \varepsilon_{\min})$ \hfill broadcast over $G$
+    \Statex \hspace{\algorithmicindent}\textit{// Phase 3: Minibatch SGD}
+    \State Flatten $\mathcal{D}_k \gets$ reshape to $(B \!\cdot\! G, L)$ completions
+    \For{epoch $= 1, \ldots, K$}
+        \State $\mathcal{I} \gets \texttt{randperm}(B \!\cdot\! G)$ \hfill shuffle completions
+        \For{$b = 0, M, 2M, \ldots$} \hfill $\lceil BG/M \rceil$ minibatches
+            \State $\mathcal{B} \gets \mathcal{I}[b : b{+}M]$
+            \State $\boldsymbol{\rho} \gets \pi_{\boldsymbol{\theta}}(\mathbf{O}_\mathcal{B} \mid \mathbf{Q}_\mathcal{B}) \,/\, \boldsymbol{\pi}_{\text{old}_\mathcal{B}}$
+            \State $\mathbf{L}_{\text{tok}} \gets \min\!\big(\boldsymbol{\rho} \odot \hat{\mathbf{A}}_\mathcal{B},\; \texttt{clip}(\boldsymbol{\rho}, 1{-}\epsilon, 1{+}\epsilon) \odot \hat{\mathbf{A}}_\mathcal{B}\big)$
+            \State $L^{\text{GRPO}} \gets \texttt{sum}(\mathbf{L}_{\text{tok}} \odot \mathbf{M}_\mathcal{B}) \,/\, \texttt{sum}(\mathbf{M}_\mathcal{B})$ \hfill masked mean
+            \State $\mathbf{r}_{\text{ref}} \gets \pi_{\boldsymbol{\theta}}(\mathbf{O}_\mathcal{B} \mid \cdot) \,/\, \pi_{\text{ref}}(\mathbf{O}_\mathcal{B} \mid \cdot)$
+            \State $D_{\text{KL}} \gets \texttt{mean}\!\big((\mathbf{r}_{\text{ref}} - \log \mathbf{r}_{\text{ref}} - 1) \odot \mathbf{M}_\mathcal{B}\big)$
+            \State $\boldsymbol{\theta} \gets \boldsymbol{\theta} + \alpha \nabla_{\boldsymbol{\theta}} (L^{\text{GRPO}} - \beta\, D_{\text{KL}})$
+        \EndFor
+    \EndFor
+\EndFor
+\end{algorithmic}
+\end{minipage}
+\end{algorithm}
+
+%% ============================================================
+%% Algorithm 9: CISPO (scalar)
 %% ============================================================
 \begin{algorithm}[p]\small
 \caption{CISPO (Clipped Importance Sampling Policy Optimization)}\label{alg:cispo}
@@ -279,21 +1009,21 @@ Optimized policy $\pi_{\boldsymbol{\theta}}$
 
 \vspace{6pt}
 \textbf{Hyperparameters} \\[2pt]
-$\boldsymbol{\theta}_0$ — init policy params \\
-$\epsilon_{\text{high}}$ — upper clip (typ.\ $0.3$) \\
-$G$ — group size \\
-$\alpha$ — learning rate \\
-$K$ — epochs \\
-$R(\mathbf{q}, \mathbf{o})$ — reward function
+$\boldsymbol{\theta}_0$ --- init policy params \\
+$\epsilon_{\text{high}}$ --- upper clip (typ.\ $0.3$) \\
+$G$ --- group size \\
+$\alpha$ --- learning rate \\
+$K$ --- epochs \\
+$R(\mathbf{q}, \mathbf{o})$ --- reward function
 
 \vspace{6pt}
 \textbf{Notation} \\[2pt]
 Same as GRPO, plus: \\
-$\hat{\rho}_{j,t}$ — clamped IS ratio \\
-$\bar{\rho}_{j,t}$ — detached weight \\
-$\textsc{StopGrad}(\cdot)$ — detach \\
+$\hat{\rho}_{j,t}$ --- clamped IS ratio \\
+$\bar{\rho}_{j,t}$ --- detached weight \\
+$\textsc{StopGrad}(\cdot)$ --- detach \\
 \hspace*{1em}from computation graph \\
-$N_{\text{tokens}}$ — total tokens in batch
+$N_{\text{tokens}}$ --- total tokens in batch
 \end{minipage}%
 \hfill
 \vrule
@@ -345,91 +1075,33 @@ $N_{\text{tokens}}$ — total tokens in batch
 \EndFor
 \end{algorithmic}
 \end{minipage}
-\end{algorithm}
-
-%% ============================================================
-%% Algorithm 2b: GRPO (Practical / Vectorized)
-%% ============================================================
-\begin{algorithm}[p]\small
-\caption{GRPO — Practical Vectorized Implementation}\label{alg:grpo-practical}
-\vspace{2pt}
-\noindent
-\begin{minipage}[t]{0.28\linewidth}
-\renewcommand{\arraystretch}{1.12}
-\textbf{Ensure} \\[2pt]
-Optimized policy $\pi_{\boldsymbol{\theta}}$
-
 \vspace{6pt}
-\textbf{Hyperparameters} \\[2pt]
-$\boldsymbol{\theta}_0$ — init policy params \\
-$\pi_{\text{ref}}$ — frozen ref.\ policy \\
-$\epsilon$ — clip ratio (typ.\ $0.2$) \\
-$G$ — group size \\
-$\beta$ — KL coefficient \\
-$\alpha$ — learning rate \\
-$K$ — epochs \\
-$M$ — minibatch size \\
-$R(\mathbf{q}, \mathbf{o})$ — reward function
-
-\vspace{6pt}
-\textbf{Tensors} \\[2pt]
-$B$ — queries per batch \\
-$L$ — max completion length \\[3pt]
-$\mathbf{Q} \in \mathbb{Z}^{B \times L_q}$ — queries \\
-$\mathbf{O} \in \mathbb{Z}^{B \times G \times L}$ — tokens \\
-$\boldsymbol{\pi}_{\text{old}} \in \mathbb{R}^{B \times G \times L}$ \\
-$\mathbf{M} \in \{0,1\}^{B \times G \times L}$ — mask \\
-$\mathbf{R} \in \mathbb{R}^{B \times G}$ — rewards \\
-$\hat{\mathbf{A}} \in \mathbb{R}^{B \times G}$ — advantages \\
-$\boldsymbol{\rho} \in \mathbb{R}^{M \times L}$
-\end{minipage}%
-\hfill
-\vrule
-\hfill
-\begin{minipage}[t]{0.68\linewidth}
-\begin{algorithmic}[1]
-\For{$k = 0, 1, 2, \ldots$}
-    \Statex \hspace{\algorithmicindent}\textit{// Phase 1: Batch generation} \hfill $\mathcal{O}(B \!\cdot\! G \!\cdot\! L \!\cdot\! C_\pi)$
-    \For{each query batch $\mathbf{Q}_{1:B}$}
-        \State $\mathbf{O}_{:,:,:} \sim \pi_{\boldsymbol{\theta}_k}(\cdot \mid \mathbf{Q})$ \hfill $B \!\cdot\! G$ completions in parallel
-        \State $\mathbf{R}_{:,:} \gets R(\mathbf{Q}, \mathbf{O})$ \hfill batch reward evaluation
-        \State $\boldsymbol{\pi}_{\text{old}} \gets \pi_{\boldsymbol{\theta}_k}(\mathbf{O} \mid \mathbf{Q})$ \hfill $\mathcal{O}(BGL \!\cdot\! C_\pi)$
-        \State $\mathbf{M} \gets \texttt{token\_mask}(\mathbf{O})$ \hfill $1$ where valid, $0$ for padding
-    \EndFor
-    \Statex \hspace{\algorithmicindent}\textit{// Phase 2: Group-relative advantage} \hfill $\mathcal{O}(BG)$
-    \State $\boldsymbol{\mu} \gets \texttt{mean}(\mathbf{R}, \text{dim}=G)$ \hfill $\in \mathbb{R}^{B}$
-    \State $\boldsymbol{\sigma} \gets \texttt{std}(\mathbf{R}, \text{dim}=G)$ \hfill $\in \mathbb{R}^{B}$
-    \State $\hat{\mathbf{A}} \gets (\mathbf{R} - \boldsymbol{\mu}) \,/\, \max(\boldsymbol{\sigma},\, \varepsilon_{\min})$ \hfill broadcast over $G$
-    \Statex \hspace{\algorithmicindent}\textit{// Phase 3: Minibatch SGD} \hfill $\mathcal{O}(K \!\cdot\! BG \!\cdot\! L \!\cdot\! C_\pi)$
-    \State Flatten $\mathcal{D}_k \gets$ reshape to $(B \!\cdot\! G, L)$ completions
-    \For{epoch $= 1, \ldots, K$}
-        \State $\mathcal{I} \gets \texttt{randperm}(B \!\cdot\! G)$ \hfill shuffle completions
-        \For{$b = 0, M, 2M, \ldots$} \hfill $\lceil BG/M \rceil$ minibatches
-            \State $\mathcal{B} \gets \mathcal{I}[b : b{+}M]$
-            \State $\boldsymbol{\rho} \gets \pi_{\boldsymbol{\theta}}(\mathbf{O}_\mathcal{B} \mid \mathbf{Q}_\mathcal{B}) \,/\, \boldsymbol{\pi}_{\text{old}_\mathcal{B}}$ \hfill $\mathcal{O}(ML \!\cdot\! C_\pi)$
-            \State $\mathbf{L}_{\text{tok}} \gets \min\!\big(\boldsymbol{\rho} \odot \hat{\mathbf{A}}_\mathcal{B},\; \texttt{clip}(\boldsymbol{\rho}, 1{-}\epsilon, 1{+}\epsilon) \odot \hat{\mathbf{A}}_\mathcal{B}\big)$
-            \State $L^{\text{GRPO}} \gets \texttt{sum}(\mathbf{L}_{\text{tok}} \odot \mathbf{M}_\mathcal{B}) \,/\, \texttt{sum}(\mathbf{M}_\mathcal{B})$ \hfill masked mean
-            \State $\mathbf{r}_{\text{ref}} \gets \pi_{\boldsymbol{\theta}}(\mathbf{O}_\mathcal{B} \mid \cdot) \,/\, \pi_{\text{ref}}(\mathbf{O}_\mathcal{B} \mid \cdot)$
-            \State $D_{\text{KL}} \gets \texttt{mean}\!\big((\mathbf{r}_{\text{ref}} - \log \mathbf{r}_{\text{ref}} - 1) \odot \mathbf{M}_\mathcal{B}\big)$
-            \State $\boldsymbol{\theta} \gets \boldsymbol{\theta} + \alpha \nabla_{\boldsymbol{\theta}} (L^{\text{GRPO}} - \beta\, D_{\text{KL}})$ \hfill $\mathcal{O}(ML \!\cdot\! C_\pi)$
-        \EndFor
-    \EndFor
-\EndFor
-\end{algorithmic}
-\vspace{4pt}
 \noindent\rule{\linewidth}{0.4pt}
-\vspace{2pt}
-\textit{Per-iteration complexity:} $\mathcal{O}\big(B \!\cdot\! G \!\cdot\! L \!\cdot\! C_\pi \,+\, K \!\cdot\! B \!\cdot\! G \!\cdot\! L \!\cdot\! C_\pi\big) = \mathcal{O}\big((1{+}K) \!\cdot\! BGL \!\cdot\! C_\pi\big)$ \\[2pt]
-$C_\pi$: policy forward/backward cost. No $C_V$ term (critic-free). \\
-Phase 2 is $\mathcal{O}(BG)$ arithmetic — negligible vs.\ neural forward passes.
-\end{minipage}
+\vspace{4pt}
+\noindent\textbf{Why CISPO: Fixing the Gradient Dead Zone}
+
+\smallskip\noindent
+\textit{The PPO/GRPO problem} --- In the clipped surrogate
+$\min(\rho_t \hat{A}_t,\; \text{clip}(\rho_t, 1{-}\epsilon, 1{+}\epsilon)\hat{A}_t)$,
+any token where $\rho_t > 1{+}\epsilon$ and $\hat{A}_t > 0$ receives
+$\nabla_{\boldsymbol{\theta}} = \mathbf{0}$.
+The policy improved on that token, but once the ratio exceeds the clip boundary,
+learning stops entirely. Over multiple epochs more tokens fall into this dead zone,
+wasting compute on samples that produce zero gradient.
+
+\smallskip\noindent
+\textit{CISPO's fix} --- Decouple the weight from the gradient path:
+(1)~\textbf{Clamp} the ratio $\hat{\rho} = \text{clamp}(\rho, \max\!=\!1{+}\epsilon_h)$, bounding update magnitude (same safety goal as PPO's clip);
+(2)~\textbf{Detach} the clamped weight $\bar{\rho} = \textsc{StopGrad}(\hat{\rho})$, so it scales the loss but is absent from the gradient graph;
+(3)~\textbf{Multiply through} $\log\pi$: the loss becomes $\bar{\rho} \cdot \hat{A} \cdot \log\pi_{\boldsymbol{\theta}}$, so the gradient always flows through $\log\pi_{\boldsymbol{\theta}}$ regardless of $\rho$.
+Every token contributes a nonzero gradient at every epoch --- eliminating the ``wasted epochs'' problem.
 \end{algorithm}
 
 %% ============================================================
-%% Algorithm 3b: CISPO (Practical / Vectorized)
+%% Algorithm 9b: CISPO (Practical / Vectorized)
 %% ============================================================
 \begin{algorithm}[p]\small
-\caption{CISPO — Practical Vectorized Implementation}\label{alg:cispo-practical}
+\caption{CISPO --- Practical Vectorized Implementation}\label{alg:cispo-practical}
 \vspace{2pt}
 \noindent
 \begin{minipage}[t]{0.28\linewidth}
@@ -439,24 +1111,24 @@ Optimized policy $\pi_{\boldsymbol{\theta}}$
 
 \vspace{6pt}
 \textbf{Hyperparameters} \\[2pt]
-$\boldsymbol{\theta}_0$ — init policy params \\
-$\epsilon_{\text{high}}$ — upper clip (typ.\ $0.3$) \\
-$G$ — group size \\
-$\alpha$ — learning rate \\
-$K$ — epochs \\
-$M$ — minibatch size \\
-$R(\mathbf{q}, \mathbf{o})$ — reward function
+$\boldsymbol{\theta}_0$ --- init policy params \\
+$\epsilon_{\text{high}}$ --- upper clip (typ.\ $0.3$) \\
+$G$ --- group size \\
+$\alpha$ --- learning rate \\
+$K$ --- epochs \\
+$M$ --- minibatch size \\
+$R(\mathbf{q}, \mathbf{o})$ --- reward function
 
 \vspace{6pt}
 \textbf{Tensors} \\[2pt]
-$B$ — queries per batch \\
-$L$ — max completion length \\[3pt]
-$\mathbf{Q} \in \mathbb{Z}^{B \times L_q}$ — queries \\
-$\mathbf{O} \in \mathbb{Z}^{B \times G \times L}$ — tokens \\
+$B$ --- queries per batch \\
+$L$ --- max completion length \\[3pt]
+$\mathbf{Q} \in \mathbb{Z}^{B \times L_q}$ --- queries \\
+$\mathbf{O} \in \mathbb{Z}^{B \times G \times L}$ --- tokens \\
 $\boldsymbol{\pi}_{\text{old}} \in \mathbb{R}^{B \times G \times L}$ \\
-$\mathbf{M} \in \{0,1\}^{B \times G \times L}$ — mask \\
-$\mathbf{R} \in \mathbb{R}^{B \times G}$ — rewards \\
-$\hat{\mathbf{A}} \in \mathbb{R}^{B \times G}$ — advantages \\
+$\mathbf{M} \in \{0,1\}^{B \times G \times L}$ --- mask \\
+$\mathbf{R} \in \mathbb{R}^{B \times G}$ --- rewards \\
+$\hat{\mathbf{A}} \in \mathbb{R}^{B \times G}$ --- advantages \\
 $\boldsymbol{\rho}, \hat{\boldsymbol{\rho}}, \bar{\boldsymbol{\rho}} \in \mathbb{R}^{M \times L}$
 \end{minipage}%
 \hfill
@@ -465,52 +1137,67 @@ $\boldsymbol{\rho}, \hat{\boldsymbol{\rho}}, \bar{\boldsymbol{\rho}} \in \mathbb
 \begin{minipage}[t]{0.68\linewidth}
 \begin{algorithmic}[1]
 \For{$k = 0, 1, 2, \ldots$}
-    \Statex \hspace{\algorithmicindent}\textit{// Phase 1: Batch generation (same as GRPO)} \hfill $\mathcal{O}(BGL \!\cdot\! C_\pi)$
+    \Statex \hspace{\algorithmicindent}\textit{// Phase 1: Batch generation (same as GRPO)}
     \For{each query batch $\mathbf{Q}_{1:B}$}
         \State $\mathbf{O}_{:,:,:} \sim \pi_{\boldsymbol{\theta}_k}(\cdot \mid \mathbf{Q})$ \hfill $B \!\cdot\! G$ completions in parallel
         \State $\mathbf{R}_{:,:} \gets R(\mathbf{Q}, \mathbf{O})$ \hfill batch reward evaluation
-        \State $\boldsymbol{\pi}_{\text{old}} \gets \pi_{\boldsymbol{\theta}_k}(\mathbf{O} \mid \mathbf{Q})$ \hfill $\mathcal{O}(BGL \!\cdot\! C_\pi)$
+        \State $\boldsymbol{\pi}_{\text{old}} \gets \pi_{\boldsymbol{\theta}_k}(\mathbf{O} \mid \mathbf{Q})$
         \State $\mathbf{M} \gets \texttt{token\_mask}(\mathbf{O})$ \hfill $1$ where valid, $0$ for padding
     \EndFor
-    \Statex \hspace{\algorithmicindent}\textit{// Phase 2: Group-relative advantage (same as GRPO)} \hfill $\mathcal{O}(BG)$
+    \Statex \hspace{\algorithmicindent}\textit{// Phase 2: Group-relative advantage (same as GRPO)}
     \State $\boldsymbol{\mu} \gets \texttt{mean}(\mathbf{R}, \text{dim}=G)$ \hfill $\in \mathbb{R}^{B}$
     \State $\boldsymbol{\sigma} \gets \texttt{std}(\mathbf{R}, \text{dim}=G)$ \hfill $\in \mathbb{R}^{B}$
     \State $\hat{\mathbf{A}} \gets (\mathbf{R} - \boldsymbol{\mu}) \,/\, \max(\boldsymbol{\sigma},\, \varepsilon_{\min})$ \hfill broadcast over $G$
-    \Statex \hspace{\algorithmicindent}\textit{// Phase 3: Clipped IS weight SGD} \hfill $\mathcal{O}(K \!\cdot\! BG \!\cdot\! L \!\cdot\! C_\pi)$
+    \Statex \hspace{\algorithmicindent}\textit{// Phase 3: Clipped IS weight SGD}
     \State Flatten $\mathcal{D}_k \gets$ reshape to $(B \!\cdot\! G, L)$ completions
     \For{epoch $= 1, \ldots, K$}
         \State $\mathcal{I} \gets \texttt{randperm}(B \!\cdot\! G)$
         \For{$b = 0, M, 2M, \ldots$} \hfill $\lceil BG/M \rceil$ minibatches
             \State $\mathcal{B} \gets \mathcal{I}[b : b{+}M]$
-            \State $\boldsymbol{\rho} \gets \pi_{\boldsymbol{\theta}}(\mathbf{O}_\mathcal{B} \mid \mathbf{Q}_\mathcal{B}) \,/\, \boldsymbol{\pi}_{\text{old}_\mathcal{B}}$ \hfill $\mathcal{O}(ML \!\cdot\! C_\pi)$
-            \State $\hat{\boldsymbol{\rho}} \gets \texttt{clamp}(\boldsymbol{\rho},\; \max = 1 + \epsilon_{\text{high}})$ \hfill $\mathcal{O}(ML)$
+            \State $\boldsymbol{\rho} \gets \pi_{\boldsymbol{\theta}}(\mathbf{O}_\mathcal{B} \mid \mathbf{Q}_\mathcal{B}) \,/\, \boldsymbol{\pi}_{\text{old}_\mathcal{B}}$
+            \State $\hat{\boldsymbol{\rho}} \gets \texttt{clamp}(\boldsymbol{\rho},\; \max = 1 + \epsilon_{\text{high}})$
             \State $\bar{\boldsymbol{\rho}} \gets \texttt{stop\_grad}(\hat{\boldsymbol{\rho}})$ \hfill detach from graph
             \State $\mathbf{L}_{\text{tok}} \gets \bar{\boldsymbol{\rho}} \odot \hat{\mathbf{A}}_\mathcal{B} \odot \log \pi_{\boldsymbol{\theta}}(\mathbf{O}_\mathcal{B} \mid \mathbf{Q}_\mathcal{B})$
             \State $L^{\text{CISPO}} \gets \texttt{sum}(\mathbf{L}_{\text{tok}} \odot \mathbf{M}_\mathcal{B}) \,/\, \texttt{sum}(\mathbf{M}_\mathcal{B})$ \hfill masked mean
-            \State $\boldsymbol{\theta} \gets \boldsymbol{\theta} + \alpha \nabla_{\boldsymbol{\theta}} L^{\text{CISPO}}$ \hfill $\mathcal{O}(ML \!\cdot\! C_\pi)$
+            \State $\boldsymbol{\theta} \gets \boldsymbol{\theta} + \alpha \nabla_{\boldsymbol{\theta}} L^{\text{CISPO}}$
         \EndFor
     \EndFor
 \EndFor
 \end{algorithmic}
-\vspace{4pt}
-\noindent\rule{\linewidth}{0.4pt}
-\vspace{2pt}
-\textit{Per-iteration complexity:} $\mathcal{O}\big((1{+}K) \!\cdot\! BGL \!\cdot\! C_\pi\big)$ — same as GRPO \\[2pt]
-No $\pi_{\text{ref}}$ forward pass needed (no KL term). \texttt{stop\_grad} is $\mathcal{O}(1)$. \\
-All tokens receive gradient (vs.\ GRPO where clipped tokens are masked out).
 \end{minipage}
 \end{algorithm}
 
 %% ============================================================
-%% Algorithm 4: Comparison summary box
+%% Comparison summary box
 %% ============================================================
 \begin{algorithm}[t]
-\caption{Key Differences: PPO vs GRPO vs CISPO}\label{alg:compare}
+\caption{Key Differences: All Nine Algorithms}\label{alg:compare}
 \begin{algorithmic}[0]
+\Statex \textbf{A2C} \textit{(Mnih et al., 2016):}
+\Statex \hspace{\algorithmicindent} $L^\pi = -\log\pi(a \mid s) \cdot \hat{A}$ \; (vanilla policy gradient with baseline, descent)
+\Statex \hspace{\algorithmicindent} Advantage via \textit{learned critic} $V_\phi$ ($n$-step returns). On-policy, single environment.
+\Statex \hspace{\algorithmicindent} Simplest actor-critic; no trust region, no replay buffer.
+\Statex
+\Statex \textbf{DDPG} \textit{(Lillicrap et al., 2016):}
+\Statex \hspace{\algorithmicindent} $L^\mu = -\mathbb{E}\big[Q_{\boldsymbol{\phi}}(\mathbf{s},\, \mu_{\boldsymbol{\theta}}(\mathbf{s}))\big]$ \; (deterministic policy gradient, ascent on $Q$)
+\Statex \hspace{\algorithmicindent} \textit{Deterministic} actor --- no log-prob, no entropy. Exploration via OU noise.
+\Statex \hspace{\algorithmicindent} Off-policy with \textit{replay buffer} + \textit{single Q-network} + target networks.
+\Statex
+\Statex \textbf{SAC} \textit{(Haarnoja et al., 2018):}
+\Statex \hspace{\algorithmicindent} $L^\pi = \mathbb{E}\big[\alpha \log\pi - \min(Q_1, Q_2)\big]$ \; (maximum entropy RL, descent)
+\Statex \hspace{\algorithmicindent} \textit{Stochastic} actor (TanhNormal). Automatic entropy tuning via dual variable $\alpha$.
+\Statex \hspace{\algorithmicindent} Off-policy with \textit{replay buffer} + \textit{twin Q-networks} + target networks.
+\Statex
 \Statex \textbf{PPO} \textit{(Schulman et al., 2017):}
 \Statex \hspace{\algorithmicindent} $L^{\text{CLIP}} = \min\!\big(\rho_t\, \hat{A}_t,\;\; \text{clip}(\rho_t,\, 1{-}\epsilon,\, 1{+}\epsilon)\, \hat{A}_t\big)$ \; (ascent)
-\Statex \hspace{\algorithmicindent} Advantage via \textit{learned critic} $V_\phi$.
-\Statex \hspace{\algorithmicindent} When $\rho_t > 1{+}\epsilon$ and $\hat{A}_t > 0$: $\nabla_{\boldsymbol{\theta}} = \mathbf{0}$ \textit{(token masked out).}
+\Statex \hspace{\algorithmicindent} Advantage via \textit{learned critic} $V_\phi$ (GAE). On-policy with \textit{rollout buffer}.
+\Statex \hspace{\algorithmicindent} When $\rho_t > 1{+}\epsilon$ and $\hat{A}_t > 0$: $\nabla_{\boldsymbol{\theta}} = \mathbf{0}$ \textit{(gradient masked out).}
+\Statex
+\Statex \textbf{OTPG} \textit{(Gupta \& Mahajan, 2026):}
+\Statex \hspace{\algorithmicindent} $L = -\mathbb{E}[\rho\, \hat{A}] + \beta \cdot \widehat{\text{MMD}}^2 + \tfrac{1}{\eta}\, D_{\text{KL}}$ \; (majorization-minimization, descent)
+\Statex \hspace{\algorithmicindent} Advantage via \textit{learned critic} $V_\phi$ (GAE). On-policy with \textit{rollout buffer}.
+\Statex \hspace{\algorithmicindent} No clipping --- trust region via \textit{MMD penalty} (RKHS) + \textit{KL regularizer} (mirror descent).
+\Statex \hspace{\algorithmicindent} For all transitions: $\nabla_{\boldsymbol{\theta}} \neq \mathbf{0}$ \textit{(no gradient masking).}
 \Statex
 \Statex \textbf{GRPO} \textit{(DeepSeek, 2024):}
 \Statex \hspace{\algorithmicindent} $L = -\min\!\big(\rho_{j,t}\, \hat{A}_j,\;\; \text{clip}(\rho_{j,t},\, 1{-}\epsilon,\, 1{+}\epsilon)\, \hat{A}_j\big)$

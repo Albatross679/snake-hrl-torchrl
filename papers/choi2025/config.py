@@ -247,7 +247,7 @@ class Choi2025Config(SACConfig):
     experiment_name: str = "choi2025"
 
     # SAC hyperparameters from paper (Table A.1)
-    total_frames: int = 5_000_000
+    total_frames: int = 20_000_000
     actor_lr: float = 0.001
     critic_lr: float = 0.001
     alpha_lr: float = 0.001
@@ -266,6 +266,12 @@ class Choi2025Config(SACConfig):
     # Paper uses fp32; bf16 causes tanh to saturate at |x|>=3.5 vs |x|>=10 in fp32,
     # which produces -inf log_probs much earlier during training.
     use_amp: bool = False
+
+    # Paper doesn't use gradient clipping (not in Table A.1)
+    max_grad_norm: float = None
+
+    # Standard SAC: update actor every critic update (paper doesn't specify delayed actor)
+    actor_update_frequency: int = 1
 
     # Compose env + network + logging (paper network: 3×256)
     env: Choi2025EnvConfig = field(default_factory=Choi2025EnvConfig)

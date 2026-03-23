@@ -395,16 +395,16 @@ See \Cref{app:physics} for detailed PDE derivations, staggered grid operators, e
   \small
   \caption{State vector $\mathbf{s}_t \in \mathbb{R}^{124}$ layout (Elastica).}
   \label{tab:state-vector}
-  \begin{tabular}{llrl}
+  \begin{tabular}{llrll}
     \toprule
-    Slice & Variable & Count & Meaning \\
+    Slice & Variable & Count & Meaning & Equation \\
     \midrule
-    \texttt{[0:21]}    & $x_i$          & 21 & Node $x$-positions (m)                 \\
-    \texttt{[21:42]}   & $y_i$          & 21 & Node $y$-positions (m)                 \\
-    \texttt{[42:63]}   & $\dot{x}_i$    & 21 & Node $x$-velocities (m\,s$^{-1}$)     \\
-    \texttt{[63:84]}   & $\dot{y}_i$    & 21 & Node $y$-velocities (m\,s$^{-1}$)     \\
-    \texttt{[84:104]}  & $\psi_e$       & 20 & Element yaw angle (rad)                \\
-    \texttt{[104:124]} & $\omega_{z,e}$ & 20 & Element angular velocity (rad\,s$^{-1}$) \\
+    \texttt{[0:21]}    & $x_i$          & 21 & Node $x$-positions (m)                   & Position kinematics \\
+    \texttt{[21:42]}   & $y_i$          & 21 & Node $y$-positions (m)                   & Position kinematics \\
+    \texttt{[42:63]}   & $\dot{x}_i$    & 21 & Node $x$-velocities (m\,s$^{-1}$)       & Linear momentum ODE \\
+    \texttt{[63:84]}   & $\dot{y}_i$    & 21 & Node $y$-velocities (m\,s$^{-1}$)       & Linear momentum ODE \\
+    \texttt{[84:104]}  & $\psi_e$       & 20 & Element yaw angle (rad)                  & Orientation kinematics \\
+    \texttt{[104:124]} & $\omega_{z,e}$ & 20 & Element angular velocity (rad\,s$^{-1}$) & Angular momentum ODE \\
     \bottomrule
   \end{tabular}
 \end{table}
@@ -1041,24 +1041,73 @@ No training instabilities observed.
     \toprule
     \textbf{Aspect} & \textbf{Paper} & \textbf{This Replication} \\
     \midrule
-    Physics backend & DisMech (C++ implicit) & Mock (DisMech not installed) \\
+    Physics backend & DisMech (C++ implicit) & DisMech (C++ implicit) \\
     Algorithm & SAC only & SAC + PPO + OTPG \\
     Seeds & 5 per config & 1 per config \\
-    Parallel envs & 500 & 1 (SAC/PPO), 32 (OTPG) \\
-    Network & 3$\times$256 ReLU & 3$\times$1024 (SAC), 3$\times$256 (PPO/OTPG) \\
-    Total frames & 1M per run & 10K--100K (quick validation) \\
+    Parallel envs & 500 & 100 (SAC/PPO), 32 (OTPG) \\
+    Network & 3$\times$256 ReLU & 3$\times$256 ReLU (all) \\
+    Total frames & 5M per run & 20M (SAC), 50M (PPO), 100K (OTPG) \\
+    Gradient clipping & Not specified & Disabled (SAC), 0.5 (PPO) \\
+    Entropy & $\alpha=0$ & $\alpha=0$ (SAC), 0.01 (PPO) \\
     \bottomrule
   \end{tabular}
 \end{table}
 
 \noindent
-\textbf{Key differences:} Mock physics simplifies rod dynamics (rewards and episode structure preserved, physical behavior differs).
-Single seed limits statistical significance.
-Quick validation is sufficient for pipeline validation but not convergence assessment.
+\textbf{Key differences:} Single seed limits statistical significance.
+The paper trains for 5M frames; we extended SAC to 20M and PPO to 50M to observe long-run behavior.
 
-\placeholder{DisMech/Choi2025 training curves: reward vs.\ frames for SAC, PPO, OTPG on follow\_target.}
+\subsubsection{Full Training Runs}
+\label{sec:rl-dismech:results:full}
 
-\placeholder{OTPG vs.\ PPO vs.\ SAC comparison plot across all 4 tasks.}
+Beyond quick validation, we trained SAC and PPO on the follow\_target task with 100 parallel environments and the paper-matching 3$\times$256 ReLU network.
+
+\begin{table}[H]
+  \centering
+  \small
+  \renewcommand{\arraystretch}{1.3}
+  \caption{Full training results on follow\_target.}
+  \label{tab:choi2025-full-training}
+  \begin{tabular}{@{}lrrrrrr@{}}
+    \toprule
+    \textbf{Algorithm} & \textbf{Frames} & \textbf{Envs} & \textbf{Best Reward} & \textbf{Avg Reward} & \textbf{Final-100 Avg} & \textbf{Wall Time} \\
+    \midrule
+    SAC  & 20M & 100 & 73.84 & 17.90 & 18.76 & 6.2\,h \\
+    PPO  & 50M & 100 & 55.61 & 16.66 & 17.08 & 9.8\,h \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+SAC reached its best reward of 73.84 early in training (${\sim}$2M frames) but was unable to sustain high performance, declining to an average of ${\sim}$18 for the remainder of the run.
+PPO showed more stable but lower performance, plateauing at an average of ${\sim}$17 across 50M frames with a best single episode of 55.61.
+
+\paragraph{Reward curves.}
+\Cref{fig:choi2025-reward-curves} shows episode reward over training steps for both algorithms.
+SAC exhibits a sharp early peak followed by degradation, while PPO maintains a flat trajectory.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\linewidth]{choi2025_reward_curves.pdf}
+  \caption{Episode reward vs.\ environment steps for SAC (20M frames) and PPO (50M frames) on follow\_target. Rolling average applied (500 episodes for SAC, 20 samples for PPO). Dashed red line indicates best reward achieved.}
+  \label{fig:choi2025-reward-curves}
+\end{figure}
+
+\paragraph{Gradient norm analysis.}
+\Cref{fig:choi2025-grad-norms} reveals a key instability in SAC training: the actor gradient norm grows from ${\sim}$0.04 to ${\sim}$1.5$\times 10^{10}$ over 20M frames (note log scale), while the critic gradient norm remains bounded at ${\sim}$1--40.
+Without entropy regularization ($\alpha=0$) and without gradient clipping, the actor's Q-value maximization objective produces increasingly sharp gradients as the policy becomes deterministic.
+PPO gradient norms remain bounded at 2--28, consistent with its clipped surrogate objective.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\linewidth]{choi2025_grad_norms.pdf}
+  \caption{Gradient norms over training for SAC (left, log scale) and PPO (right, linear scale). SAC actor gradients explode by 10 orders of magnitude while critic gradients remain stable. PPO gradients stay bounded throughout.}
+  \label{fig:choi2025-grad-norms}
+\end{figure}
+
+\paragraph{Implications.}
+The SAC actor gradient explosion explains the reward collapse after the early peak: effective learning rate decays as gradients overwhelm parameter updates.
+The paper's 5M frame budget may mask this instability, as the collapse onset occurs at ${\sim}$3--5M frames.
+Possible mitigations include mild entropy regularization ($\alpha > 0$), actor-specific gradient clipping, or learning rate scheduling.
 
 % ===========================================================================
 % CHAPTER 6: PHYSICS-INFORMED NEURAL NETWORK
@@ -1564,6 +1613,149 @@ PyElastica uses $\Delta t = 10^{-3}$\,s (safely below), forcing $n_{\text{sub}} 
   \end{tabular}
 \end{table}
 
+\subsection{How Spatial Discretization Converts PDEs to ODEs}
+\label{app:physics:discretization-intuition}
+
+This section provides an intuitive explanation of the two-stage PDE-to-ODE reduction summarized in \Cref{app:physics:mol}.
+
+\subsubsection{The Staggered Grid Layout}
+
+Recall that nodes and elements live at \emph{different} locations on the rod:
+\begin{center}
+\begin{tikzpicture}[>=Stealth, font=\small]
+  % Nodes
+  \foreach \i/\lbl in {0/n_0, 1/n_1, 2/n_2, 3/n_3, 4/n_4} {
+    \node[circle, draw, fill=blue!20, minimum size=0.55cm, inner sep=0pt]
+      (n\i) at (\i*2.2, 0) {$\lbl$};
+  }
+  % Elements
+  \foreach \i [evaluate=\i as \j using int(\i+1)] in {0,...,3} {
+    \draw[thick] (n\i) -- (n\j);
+    \node[fill=red!15, rounded corners=2pt, inner sep=2pt]
+      at ($(n\i)!0.5!(n\j) + (0,-0.55)$) {$e_{\i}$};
+  }
+  % Dots for continuation
+  \node at (9.7, 0) {$\cdots$};
+  \node at (9.7, -0.55) {$\cdots$};
+  % Labels
+  \node[blue!60!black, anchor=south] at (4.4, 0.55) {Nodes: positions, velocities};
+  \node[red!60!black, anchor=north] at (4.4, -1.1) {Elements: orientation, angular velocity};
+\end{tikzpicture}
+\end{center}
+
+\noindent
+\textbf{Nodes} ($N{=}21$) are at the physical vertices; they store translational DOFs $(x_i, y_i, \dot{x}_i, \dot{y}_i)$.
+\textbf{Elements} ($N_e{=}20$) are the segments between adjacent nodes; they store rotational DOFs $(\psi_e, \omega_{z,e})$.
+The difference operators $\mathbf{D}$ and $\mathbf{D}^T$ transfer information between these two layers.
+
+\subsubsection{The Difference Matrix $\mathbf{D}$ (Node $\to$ Element)}
+
+$\mathbf{D}$ is a $20 \times 21$ bidiagonal matrix that computes differences between adjacent nodes.
+For element~$e$:
+\begin{equation}
+  (\mathbf{D}\,\mathbf{x})_e = x_{e+1} - x_e
+  \label{eq:D-operator}
+\end{equation}
+Explicitly:
+\begin{equation}
+  \mathbf{D} =
+  \begin{pmatrix}
+    -1 & +1 &  0 &  0 & \cdots \\
+     0 & -1 & +1 &  0 & \cdots \\
+     0 &  0 & -1 & +1 & \cdots \\
+       &    &    & \ddots & \ddots
+  \end{pmatrix}
+  \in \mathbb{R}^{20 \times 21}
+  \label{eq:D-matrix}
+\end{equation}
+This approximates $\partial \mathbf{x}/\partial s$: the spatial derivative of position along the rod becomes a finite difference between adjacent nodes.
+Dividing by segment rest length $\ell_e^{\text{rest}}$ yields the actual derivative; the matrix itself performs only the differencing.
+
+\paragraph{Physical meaning.}
+$\mathbf{D}\,\mathbf{x}$ gives the \emph{tangent vector} of each element---the direction and length of each segment.
+This is required for the cross-product term $(\partial\mathbf{x}/\partial s) \times \mathbf{F}$ in the angular momentum equation~\eqref{eq:angular-momentum}.
+
+\subsubsection{The Transpose $\mathbf{D}^T$ (Element $\to$ Node)}
+
+$\mathbf{D}^T$ is the transpose---a $21 \times 20$ matrix that maps element quantities back to nodes.
+For node~$i$:
+\begin{equation}
+  (\mathbf{D}^T \mathbf{F})_i = F_i - F_{i-1}
+  \label{eq:DT-operator}
+\end{equation}
+with $F_{-1} = F_{20} = 0$ at the free boundaries.
+Explicitly:
+\begin{equation}
+  \mathbf{D}^T =
+  \begin{pmatrix}
+    -1 &  0 &  0 & \cdots \\
+    +1 & -1 &  0 & \cdots \\
+     0 & +1 & -1 & \cdots \\
+     0 &  0 & +1 & \cdots \\
+       &    &    & \ddots
+  \end{pmatrix}
+  \in \mathbb{R}^{21 \times 20}
+  \label{eq:DT-matrix}
+\end{equation}
+
+\paragraph{Physical meaning.}
+$\mathbf{D}^T \mathbf{F}$ computes the \emph{net force on each node} from its two neighboring elements.
+In the continuous PDE, $\partial \mathbf{F}/\partial s$ gives the net force per unit length at a point.
+In the discrete version, $\mathbf{D}^T \mathbf{F}_e$ gives the net force on each node:
+interior node~$i$ receives $F_i - F_{i-1}$ (force from the element ahead minus the element behind),
+while boundary nodes have only one adjacent element.
+
+\paragraph{Concrete example.}
+Consider 4 nodes with $x$-positions $[0.0,\; 0.25,\; 0.55,\; 1.0]$:
+\begin{align}
+  \mathbf{D}\,\mathbf{x} &= [0.25,\; 0.30,\; 0.45] && \text{(element tangent lengths)} \\
+  \intertext{If internal forces on those 3 elements are $\mathbf{F}_e = [10,\; 8,\; 12]$:}
+  \mathbf{D}^T \mathbf{F} &= [-10,\; 10{-}8,\; 8{-}12,\; 12] = [-10,\; 2,\; -4,\; 12] && \text{(net force per node)}
+\end{align}
+Node~0 has only element~0 pulling on it; node~1 has elements~0 and~1 pulling in opposite directions.
+
+\subsubsection{Adjoint Structure and Energy Conservation}
+
+The transpose relationship is not coincidental.
+$\mathbf{D}$ and $\mathbf{D}^T$ are \emph{adjoint} operators---the discrete analogue of the continuous identity where the gradient and divergence operators are adjoints:
+\begin{equation}
+  \langle \mathbf{D}\,\mathbf{x},\; \mathbf{F} \rangle_{\text{elements}}
+  = \langle \mathbf{x},\; \mathbf{D}^T \mathbf{F} \rangle_{\text{nodes}}
+  \label{eq:adjoint}
+\end{equation}
+This duality ensures \emph{discrete energy conservation}: the work done by forces on nodes is consistent with the strain energy stored in elements, preventing artificial energy gain or loss from the discretization.
+
+\subsubsection{Stage 1: Eliminating Spatial Derivatives}
+
+With these operators, every $\partial/\partial s$ in the governing PDEs is replaced by a matrix--vector product.
+For example, the linear momentum PDE
+\begin{equation}
+  \rho A \frac{\partial \mathbf{v}}{\partial t}
+  = \frac{\partial \mathbf{F}}{\partial s} + \mathbf{f}_{\text{ext}}
+\end{equation}
+becomes, at each node~$i$:
+\begin{equation}
+  \rho A \frac{d \mathbf{v}_i}{d t}
+  = (\mathbf{D}^T \mathbf{F}_e)_i + \mathbf{f}_{\text{ext},i}
+  \label{eq:node-ode}
+\end{equation}
+No spatial derivatives remain---only time derivatives and algebraic dependence on the discrete state.
+
+\subsubsection{Stage 2: Reduction to First-Order Form}
+
+The original PDEs are \emph{second-order} in time (they involve accelerations $\partial \mathbf{v}/\partial t$ and $\partial \boldsymbol{\omega}/\partial t$).
+To obtain first-order ODEs, velocities are introduced as independent state variables:
+\begin{alignat}{2}
+  \dot{x}_i &= v_{x,i}       &\qquad& \text{(definition of velocity)} \label{eq:first-order-pos}\\
+  \dot{v}_{x,i} &= \frac{1}{\rho A}\bigl[(\mathbf{D}^T \mathbf{F}_e)_i + f_{\text{ext},i}\bigr]
+    &\qquad& \text{(from linear momentum PDE)} \label{eq:first-order-vel}\\[4pt]
+  \dot{\psi}_e &= \omega_{z,e} &\qquad& \text{(definition of angular velocity)} \label{eq:first-order-angle}\\
+  \dot{\omega}_{z,e} &= \frac{1}{\rho I}\bigl[(\mathbf{D}_v \boldsymbol{\tau}_v)_e + m_{\text{ext},e} + \ldots\bigr]
+    &\qquad& \text{(from angular momentum PDE)} \label{eq:first-order-omega}
+\end{alignat}
+This doubles the number of variables (positions $+$ angles $\to$ positions $+$ angles $+$ velocities $+$ angular velocities) but makes every equation first-order.
+The result is the 124-dimensional system $\dot{\mathbf{s}} = \mathbf{g}(\mathbf{s}, \mathbf{a}, t)$ from \Cref{eq:ode-system}, ready for explicit time integration.
+
 \subsection{External Force Handling}
 \label{app:physics:forces}
 
@@ -1738,7 +1930,7 @@ S8 & System & Worker respawn investigation & Open & Pending: validate Numba fix 
 % ---------------------------------------------------------------------------
 % Bibliography
 % ---------------------------------------------------------------------------
-\bibliographystyle{plainnat}
+\bibliographystyle{plainnat-full}
 \bibliography{references}
 
 \end{document}
