@@ -22,6 +22,19 @@ ENV_FILE="${2:?Usage: setup.sh <repo-url> <env-file>}"
 PROJECT_DIR="/workspace/snake-hrl-torchrl"
 
 # ============================================================
+# 0. Verify Python version (project requires >=3.12)
+# ============================================================
+
+PYTHON_VERSION=$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
+PYTHON_MAJOR=$(echo "$PYTHON_VERSION" | cut -d. -f1)
+PYTHON_MINOR=$(echo "$PYTHON_VERSION" | cut -d. -f2)
+if [ "$PYTHON_MAJOR" -lt 3 ] || { [ "$PYTHON_MAJOR" -eq 3 ] && [ "$PYTHON_MINOR" -lt 12 ]; }; then
+    echo "Error: Python >=3.12 required, found $PYTHON_VERSION" >&2
+    exit 1
+fi
+echo "==> Python $PYTHON_VERSION detected."
+
+# ============================================================
 # 1. Load environment variables
 # ============================================================
 
@@ -100,34 +113,26 @@ fi
 echo "    GitHub CLI $(gh --version | head -1) installed."
 
 # ============================================================
-# 4. Python ML packages
+# 4. Python packages
 # ============================================================
 
-echo "==> Installing ML Python packages..."
+echo "==> Upgrading pip..."
 pip install -q --upgrade pip
 
+# Extra packages not in pyproject.toml but useful on cloud VMs
+echo "==> Installing extra cloud/ML packages..."
 pip install -q \
     transformers \
     accelerate \
     peft \
     datasets \
-    wandb \
     bitsandbytes \
-    torchrl \
-    tensordict \
-    gymnasium \
-    mujoco \
-    scipy \
-    matplotlib \
-    tqdm \
-    pyyaml \
+    huggingface_hub \
     numba \
     plotly \
-    pyelastica \
-    b2 \
-    huggingface_hub
+    b2
 
-echo "    ML packages installed."
+echo "    Extra packages installed."
 
 # ============================================================
 # 5. Clone / pull project repo
@@ -148,9 +153,22 @@ fi
 # 6. Install project dependencies
 # ============================================================
 
-echo "==> Installing project dependencies (editable)..."
-pip install -q -e .
+echo "==> Installing project dependencies (editable + monitoring extra)..."
+pip install -q -e ".[monitoring]"
 echo "    Project installed."
+
+# ============================================================
+# 6b. Thread control defaults (prevent over-subscription in parallel envs)
+# ============================================================
+
+echo "==> Setting thread control env vars..."
+for var in OPENBLAS_NUM_THREADS OMP_NUM_THREADS MKL_NUM_THREADS; do
+    if ! grep -q "export $var=" ~/.bashrc 2>/dev/null; then
+        echo "export $var=1" >> ~/.bashrc
+    fi
+done
+export OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 MKL_NUM_THREADS=1
+echo "    Thread control set (OPENBLAS/OMP/MKL = 1)."
 
 # ============================================================
 # 7. Download B2 assets
@@ -197,13 +215,15 @@ fi
 echo ""
 echo "==> Verifying installation..."
 python3 -c "
-import torch
-print(f'  Python:     {__import__(\"sys\").version.split()[0]}')
-print(f'  PyTorch:    {torch.__version__}')
-print(f'  CUDA:       {torch.version.cuda}')
-print(f'  GPU count:  {torch.cuda.device_count()}')
+import torch, torchrl, tensordict
+print(f'  Python:      {__import__(\"sys\").version.split()[0]}')
+print(f'  PyTorch:     {torch.__version__}')
+print(f'  TorchRL:     {torchrl.__version__}')
+print(f'  TensorDict:  {tensordict.__version__}')
+print(f'  CUDA:        {torch.version.cuda}')
+print(f'  GPU count:   {torch.cuda.device_count()}')
 for i in range(torch.cuda.device_count()):
-    print(f'  GPU {i}:      {torch.cuda.get_device_name(i)}')
+    print(f'  GPU {i}:       {torch.cuda.get_device_name(i)}')
 "
 
 echo ""
