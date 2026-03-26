@@ -47,6 +47,8 @@ from src.pinn._state_slices import (
     RAW_STATE_DIM,
 )
 from src.utils.cleanup import cleanup_vram
+from src.pinn.diagnostics import PINNDiagnostics, compute_ntk_eigenvalues
+from src.pinn.probe_pdes import run_probe_validation
 from src.wandb_utils import (
     setup_run, log_metrics, log_extra_params,
     log_model_artifact, end_run, _count_parameters, collect_hardware_info,
@@ -179,6 +181,8 @@ class DDPINNTrainConfig:
         p.add_argument("--sweep", action="store_true", default=False)
         p.add_argument("--val-fraction", type=float)
         p.add_argument("--seed", type=int)
+        p.add_argument("--skip-probes", action="store_true", default=False,
+                        help="Skip probe PDE pre-flight validation")
         p.add_argument("--generate-plots", action="store_true", default=False,
                         help="Generate comparison plots from existing results")
         p.add_argument("--baseline-dir", type=str, default=None)
@@ -214,7 +218,8 @@ class DDPINNTrainConfig:
         if args.run_name is not None:
             cfg.name = args.run_name
 
-        # Store plot-generation args (not part of config dataclass)
+        # Store non-dataclass args
+        cfg._skip_probes = args.skip_probes
         cfg._generate_plots = args.generate_plots
         cfg._baseline_dir = args.baseline_dir
         cfg._regularizer_dir = args.regularizer_dir
@@ -476,6 +481,20 @@ def train_single_config(cfg: DDPINNTrainConfig, run_dir: Path) -> dict:
         print(f"  Auto-batch: {cfg.batch_size} -> {probed_bs}")
         cfg.batch_size = probed_bs
 
+    # Probe PDE pre-flight validation (per D-04: auto-run by default)
+    skip_probes = getattr(cfg, '_skip_probes', False)
+    if not skip_probes:
+        print("\n--- Probe PDE Pre-flight Validation ---")
+        probe_results = run_probe_validation()
+        n_passed = sum(probe_results.values())
+        n_total = len(probe_results)
+        print(f"  Probes: {n_passed}/{n_total} passed")
+        if n_passed < n_total:
+            failed = [k for k, v in probe_results.items() if not v]
+            print(f"  WARNING: Failed probes: {failed}")
+            print(f"  Training will proceed but results may be unreliable.")
+        print("--- End Pre-flight ---\n")
+
     # Gradient accumulation
     grad_accum = cfg.gradient_accumulation_steps
     effective_batch = cfg.batch_size * grad_accum
@@ -520,6 +539,9 @@ def train_single_config(cfg: DDPINNTrainConfig, run_dir: Path) -> dict:
         "effective_batch_size": effective_batch,
         **hw_info,
     })
+
+    # PINNDiagnostics middleware (per D-05, D-06)
+    pinn_diag = PINNDiagnostics(wandb_run=wandb_run, ntk_interval=50, n_params_sample=500)
 
     _ensure_papers_path()
     from aprx_model_elastica.state import relative_to_raw, raw_to_relative
@@ -658,6 +680,14 @@ def train_single_config(cfg: DDPINNTrainConfig, run_dir: Path) -> dict:
             else:
                 loss = loss_data + phys_weight * loss_phys
 
+            # Per-loss gradient norms (expensive, every 10 epochs, first batch only)
+            if epoch % 10 == 0 and batch_idx == 0 and phys_weight > 0:
+                _diag_grad_metrics = pinn_diag.compute_per_loss_gradients(
+                    model, loss_data, loss_phys
+                )
+            elif batch_idx == 0:
+                _diag_grad_metrics = None
+
             # Scale loss for gradient accumulation, backward OUTSIDE AMP
             (loss / grad_accum).backward()
 
@@ -752,6 +782,24 @@ def train_single_config(cfg: DDPINNTrainConfig, run_dir: Path) -> dict:
             "timing/epoch_s": epoch_time,
             "system/n_collocation": len(t_colloc),
         }
+
+        # Diagnostic metrics (per D-06: non-invasive)
+        diag_loss_data = torch.tensor(epoch_data_loss)
+        diag_loss_phys = torch.tensor(epoch_phys_loss)
+        diag_metrics = pinn_diag.log_step(
+            epoch=epoch,
+            model=model,
+            loss_data=diag_loss_data,
+            loss_phys=diag_loss_phys,
+            balancer=balancer if cfg.use_relobralo else None,
+            residuals=None,  # Residuals computed per-batch; use epoch averages
+            collocation_inputs=t_colloc[:64].unsqueeze(-1) if len(t_colloc) > 0 else None,
+        )
+        epoch_metrics.update(diag_metrics)
+
+        # Merge per-loss gradient norms (computed every 10 epochs)
+        if _diag_grad_metrics is not None:
+            epoch_metrics.update(_diag_grad_metrics)
 
         metrics_file.write(json.dumps(epoch_metrics) + "\n")
         metrics_file.flush()
