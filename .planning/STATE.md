@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: Ready to execute
-stopped_at: Completed 17-03-PLAN.md
-last_updated: "2026-03-26T13:25:08.581Z"
+status: Phase complete — ready for verification
+stopped_at: Completed 17-01-PLAN.md
+last_updated: "2026-03-26T13:28:17.496Z"
 progress:
-  total_phases: 21
+  total_phases: 20
   completed_phases: 7
-  total_plans: 33
-  completed_plans: 25
+  total_plans: 30
+  completed_plans: 24
 ---
 
 # Project State
@@ -19,12 +19,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-09)
 
 **Core value:** Train and validate a surrogate model of snake robot dynamics for use in RL training
-**Current focus:** Phase 17 — design-pinn-debugging-workflow-and-diagnostic-pipeline
+**Current focus:** Phase 15 — implement-operator-theoretic-policy-gradient-arxiv-2603-17875-in-torchrl-alongside-ppo-and-sac
 
 ## Current Position
 
-Phase: 17 (design-pinn-debugging-workflow-and-diagnostic-pipeline) — EXECUTING
-Plan: 2 of 3
+Phase: 15 (implement-operator-theoretic-policy-gradient-arxiv-2603-17875-in-torchrl-alongside-ppo-and-sac) — COMPLETE
+Plan: 2 of 2 (all complete)
 
 ## Dataset Summary
 
@@ -74,7 +74,7 @@ Plan: 2 of 3
 | Phase 14 P03 | 20 min | 2 tasks | 10 files |
 | Phase 15 P01 | 6 min | 2 tasks | 5 files |
 | Phase 15 P02 | 18min | 2 tasks | 3 files |
-| Phase 17 P03 | 4min | 2 tasks | 2 files |
+| Phase 17 P01 | 7 min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -142,8 +142,9 @@ Plan: 2 of 3
 - [Phase 15]: SKIP_GPU_LOCK env var for concurrent multi-GPU training
 - [Phase 15]: 100K MM-RKHS validation confirmed learning signal: reward 9->17 on follow_target
 - [Phase quick-260320-jsu]: Report restructured to 6 chapters: Intro, Related Work, Surrogate Model, RL-Elastica, RL-DisMech, PINN; physics derivations moved to appendix; issue tracker consolidated to longtable
-- [Phase 17]: Mirrored rl-debug skill structure exactly: 4 phases, decision tree format, quick symptom lookup
-- [Phase 17]: Full decision tree inline in SKILL.md so Claude can diagnose without reading source code
+- [Phase 17]: Generic probe PDEs test fundamental PINN capabilities without Cosserat coupling
+- [Phase 17]: analyze_pde_system reports nondim_quality as good/acceptable/poor based on magnitude spread (100x/1000x thresholds)
+- [Phase 17]: Default CosseratRHS reports poor nondim quality, confirming diagnostic detects real magnitude imbalance
 
 ### Pending Todos
 
@@ -170,7 +171,6 @@ Plan: 2 of 3
 - Phase 13 added: Implement PINN and DD-PINN surrogate models
 - Phase 14 added: Replicate Choi2025 soft robot control paper using ML workflow
 - Phase 15 added: Implement Operator-Theoretic Policy Gradient (arXiv:2603.17875) in TorchRL alongside PPO and SAC
-- Phase 17 added: Design PINN debugging workflow and diagnostic pipeline
 
 ### Blockers/Concerns
 
@@ -198,5 +198,5 @@ None currently.
 
 ## Session Continuity
 
-Last session: 2026-03-26T13:25:08.573Z
-Stopped at: Completed 17-03-PLAN.md
+Last session: 2026-03-26T13:28:17.490Z
+Stopped at: Completed 17-01-PLAN.md
