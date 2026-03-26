@@ -2,11 +2,11 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: unknown
-stopped_at: Completed quick-260320-jsu (report rewrite)
-last_updated: "2026-03-20T14:32:12.393Z"
+status: Phase complete — ready for verification
+stopped_at: Completed 17-01-PLAN.md
+last_updated: "2026-03-26T13:28:17.496Z"
 progress:
-  total_phases: 19
+  total_phases: 20
   completed_phases: 7
   total_plans: 30
   completed_plans: 24
@@ -74,6 +74,7 @@ Plan: 2 of 2 (all complete)
 | Phase 14 P03 | 20 min | 2 tasks | 10 files |
 | Phase 15 P01 | 6 min | 2 tasks | 5 files |
 | Phase 15 P02 | 18min | 2 tasks | 3 files |
+| Phase 17 P01 | 7 min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -141,6 +142,9 @@ Plan: 2 of 2 (all complete)
 - [Phase 15]: SKIP_GPU_LOCK env var for concurrent multi-GPU training
 - [Phase 15]: 100K MM-RKHS validation confirmed learning signal: reward 9->17 on follow_target
 - [Phase quick-260320-jsu]: Report restructured to 6 chapters: Intro, Related Work, Surrogate Model, RL-Elastica, RL-DisMech, PINN; physics derivations moved to appendix; issue tracker consolidated to longtable
+- [Phase 17]: Generic probe PDEs test fundamental PINN capabilities without Cosserat coupling
+- [Phase 17]: analyze_pde_system reports nondim_quality as good/acceptable/poor based on magnitude spread (100x/1000x thresholds)
+- [Phase 17]: Default CosseratRHS reports poor nondim quality, confirming diagnostic detects real magnitude imbalance
 
 ### Pending Todos
 
@@ -194,5 +198,5 @@ None currently.
 
 ## Session Continuity
 
-Last session: 2026-03-20T14:32:10.303Z
-Stopped at: Completed quick-260320-jsu (report rewrite)
+Last session: 2026-03-26T13:28:17.490Z
+Stopped at: Completed 17-01-PLAN.md
