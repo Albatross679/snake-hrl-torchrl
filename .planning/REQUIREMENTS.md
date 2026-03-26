@@ -1,7 +1,7 @@
 # Requirements: Surrogate Data Collection & Validation
 
 **Defined:** 2026-03-09
-**Updated:** 2026-03-19
+**Updated:** 2026-03-26
 **Core Value:** Produce a high-quality, well-covered dataset of snake robot dynamics transitions ready for surrogate model training
 
 ## v1 Requirements
@@ -73,6 +73,15 @@ Requirements for initial release. Each maps to roadmap phases.
 - [x] **MMRKHS-05**: Choi2025 benchmark integration — `Choi2025MMRKHSConfig(MMRKHSConfig)` + `train_mmrkhs.py` entry point; 100K-frame quick validation on follow_target completes without crash
 - [x] **MMRKHS-06**: Checkpoint save/load — atomic saves with backup, round-trip restores actor/critic/optimizer state; follows PPOTrainer checkpoint pattern
 
+### PINN Debugging Pipeline (Phase 17)
+
+- [ ] **PDIAG-01**: Probe PDE validation suite — 4 generic probe PDEs (heat, advection, Burgers, reaction-diffusion) with analytical solutions and automated pass/fail criteria; each probe tests one additional PINN capability progressively; `ALL_PROBES` list and `run_probe_validation()` runner in `src/pinn/probe_pdes.py`
+- [ ] **PDIAG-02**: PDE system analysis — `analyze_pde_system()` function evaluating CosseratRHS per-term residual magnitudes, nondimensionalization quality (good/acceptable/poor), stiffness indicator (Jacobian condition number), and magnitude spread; validates actual physics setup before training
+- [ ] **PDIAG-03**: Diagnostic failure detection metrics — `PINNDiagnostics` middleware class computing loss component ratios, per-loss-term gradient norms, residual spatial distribution, per-component physics violation magnitudes, and ReLoBRaLo weight health; returns metrics dict each epoch for W&B logging (log-only, no `wandb.alert()` per D-07)
+- [ ] **PDIAG-04**: Probe pre-flight integration — `train_pinn.py` auto-runs `run_probe_validation()` before training (opt-out via `--skip-probes`); prints PASS/FAIL per probe with warning if any fail
+- [ ] **PDIAG-05**: NTK eigenvalue diagnostics — `compute_ntk_eigenvalues()` standalone function computing approximate NTK spectrum (eigenvalue_max, eigenvalue_min, condition_number, spectral_decay_rate) via parameter subsampling (n_params_sample=500); runs every 50 epochs via PINNDiagnostics middleware
+- [ ] **PDIAG-06**: pinn-debug Claude Code skill — `.claude/skills/pinn-debug/SKILL.md` with 4-phase diagnostic workflow (probe validation, dashboard metrics, loss decision tree, physics sub-tree), inline decision tree for fault isolation, quick symptom lookup table; `.claude/skills/pinn-debug/references/failure-modes.md` with 7 documented failure modes and literature citations
+
 ## v2 Requirements
 
 Deferred to future release. Tracked but not in current roadmap.
@@ -137,12 +146,18 @@ Deferred to future release. Tracked but not in current roadmap.
 | MMRKHS-04 | Phase 15 | Planned |
 | MMRKHS-05 | Phase 15 | Planned |
 | MMRKHS-06 | Phase 15 | Planned |
+| PDIAG-01 | Phase 17 | Planned |
+| PDIAG-02 | Phase 17 | Planned |
+| PDIAG-03 | Phase 17 | Planned |
+| PDIAG-04 | Phase 17 | Planned |
+| PDIAG-05 | Phase 17 | Planned |
+| PDIAG-06 | Phase 17 | Planned |
 
 **Coverage:**
-- v1 requirements: 41 total
-- Mapped to phases: 41
+- v1 requirements: 47 total
+- Mapped to phases: 47
 - Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-09*
-*Last updated: 2026-03-19 — added Phase 15 MM-RKHS requirements (MMRKHS-01 through MMRKHS-06)*
+*Last updated: 2026-03-26 — added Phase 17 PINN diagnostics requirements (PDIAG-01 through PDIAG-06)*
