@@ -30,6 +30,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 14: Replicate Choi2025 soft robot control** - Train SAC and PPO on 4 manipulation tasks using DisMech implicit time-stepping, validate learning signal (completed 2026-03-19)
 - [x] **Phase 15: MM-RKHS algorithm** - Implement Operator-Theoretic Policy Gradient (MM-RKHS) as third RL trainer, benchmark on Choi2025 tasks (completed 2026-03-19)
 - [ ] **Phase 16: RL debugging framework research** - Research systematic RL debugging methodologies, diagnostic tools, and frameworks for identifying common training failures (sparse rewards, reward stagnation, gradient explosion, etc.) and determine applicability to our TorchRL snake robot pipeline
+- [ ] **Phase 17: Design PINN debugging workflow and diagnostic pipeline** - Build diagnostic instrumentation and Claude Code skill for systematic PINN training failure detection
 
 ## Phase Details
 
@@ -270,6 +271,18 @@ Plans:
 Plans:
 - [ ] TBD (run /gsd:plan-phase 16 to break down)
 
+### Phase 17: Design PINN debugging workflow and diagnostic pipeline
+
+**Goal:** Build diagnostic instrumentation and a Claude Code skill for systematic PINN training failure detection. Covers: probe PDE pre-flight validation, runtime diagnostic metrics (loss ratios, gradient norms, residual statistics, NTK eigenvalues), decision tree for fault isolation, and a pinn-debug Claude Code skill.
+**Requirements**: PDIAG-01, PDIAG-02, PDIAG-03, PDIAG-04, PDIAG-05, PDIAG-06
+**Depends on:** Phase 16
+**Plans:** 3 plans
+
+Plans:
+- [ ] 17-01-PLAN.md — Probe PDE suite (4 generic probes + PDE system analysis) with tests
+- [ ] 17-02-PLAN.md — PINNDiagnostics middleware, NTK computation, train_pinn.py integration with tests
+- [ ] 17-03-PLAN.md — pinn-debug Claude Code skill (SKILL.md + failure-modes.md reference)
+
 ## Progress
 
 **Execution Order:**
@@ -280,6 +293,7 @@ Phase 13 can run in parallel with Phases 4-5 after Phase 3 (uses Phase 3 baselin
 Phase 14 can run in parallel after Phase 13.
 Phase 15 follows Phase 14 (extends Choi2025 benchmark with MM-RKHS).
 Phase 16 is a research phase investigating RL debugging frameworks, can run anytime after Phase 15.
+Phase 17 follows Phase 16 (builds PINN debugging tooling based on research).
 Phases 9-12 are future research directions.
 
 | Phase | Plans Complete | Status | Completed |
@@ -302,3 +316,4 @@ Phases 9-12 are future research directions.
 | 14. Choi2025 Replication | 3/3 | Complete    | 2026-03-19 |
 | 15. MM-RKHS Algorithm | 2/2 | Complete    | 2026-03-19 |
 | 16. RL Debugging Research | 0/0 | **RESEARCH** | - |
+| 17. PINN Debugging Pipeline | 0/3 | **PLANNED** | - |
