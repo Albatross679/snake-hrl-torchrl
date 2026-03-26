@@ -80,7 +80,7 @@ Requirements for initial release. Each maps to roadmap phases.
 - [ ] **PDIAG-03**: Diagnostic failure detection metrics — `PINNDiagnostics` middleware class computing loss component ratios, per-loss-term gradient norms, residual spatial distribution, per-component physics violation magnitudes, and ReLoBRaLo weight health; returns metrics dict each epoch for W&B logging (log-only, no `wandb.alert()` per D-07)
 - [ ] **PDIAG-04**: Probe pre-flight integration — `train_pinn.py` auto-runs `run_probe_validation()` before training (opt-out via `--skip-probes`); prints PASS/FAIL per probe with warning if any fail
 - [ ] **PDIAG-05**: NTK eigenvalue diagnostics — `compute_ntk_eigenvalues()` standalone function computing approximate NTK spectrum (eigenvalue_max, eigenvalue_min, condition_number, spectral_decay_rate) via parameter subsampling (n_params_sample=500); runs every 50 epochs via PINNDiagnostics middleware
-- [ ] **PDIAG-06**: pinn-debug Claude Code skill — `.claude/skills/pinn-debug/SKILL.md` with 4-phase diagnostic workflow (probe validation, dashboard metrics, loss decision tree, physics sub-tree), inline decision tree for fault isolation, quick symptom lookup table; `.claude/skills/pinn-debug/references/failure-modes.md` with 7 documented failure modes and literature citations
+- [x] **PDIAG-06**: pinn-debug Claude Code skill — `.claude/skills/pinn-debug/SKILL.md` with 4-phase diagnostic workflow (probe validation, dashboard metrics, loss decision tree, physics sub-tree), inline decision tree for fault isolation, quick symptom lookup table; `.claude/skills/pinn-debug/references/failure-modes.md` with 7 documented failure modes and literature citations
 
 ## v2 Requirements
 

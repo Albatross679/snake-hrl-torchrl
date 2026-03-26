@@ -276,12 +276,12 @@ Plans:
 **Goal:** Build diagnostic instrumentation and a Claude Code skill for systematic PINN training failure detection. Covers: probe PDE pre-flight validation, runtime diagnostic metrics (loss ratios, gradient norms, residual statistics, NTK eigenvalues), decision tree for fault isolation, and a pinn-debug Claude Code skill.
 **Requirements**: PDIAG-01, PDIAG-02, PDIAG-03, PDIAG-04, PDIAG-05, PDIAG-06
 **Depends on:** Phase 16
-**Plans:** 3 plans
+**Plans:** 1/3 plans executed
 
 Plans:
 - [ ] 17-01-PLAN.md — Probe PDE suite (4 generic probes + PDE system analysis) with tests
 - [ ] 17-02-PLAN.md — PINNDiagnostics middleware, NTK computation, train_pinn.py integration with tests
-- [ ] 17-03-PLAN.md — pinn-debug Claude Code skill (SKILL.md + failure-modes.md reference)
+- [x] 17-03-PLAN.md — pinn-debug Claude Code skill (SKILL.md + failure-modes.md reference)
 
 ## Progress
 
@@ -316,4 +316,4 @@ Phases 9-12 are future research directions.
 | 14. Choi2025 Replication | 3/3 | Complete    | 2026-03-19 |
 | 15. MM-RKHS Algorithm | 2/2 | Complete    | 2026-03-19 |
 | 16. RL Debugging Research | 0/0 | **RESEARCH** | - |
-| 17. PINN Debugging Pipeline | 0/3 | **PLANNED** | - |
+| 17. PINN Debugging Pipeline | 1/3 | In Progress|  |
