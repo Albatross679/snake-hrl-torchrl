@@ -316,4 +316,4 @@ Phases 9-12 are future research directions.
 | 14. Choi2025 Replication | 3/3 | Complete    | 2026-03-19 |
 | 15. MM-RKHS Algorithm | 2/2 | Complete    | 2026-03-19 |
 | 16. RL Debugging Research | 0/0 | **RESEARCH** | - |
-| 17. PINN Debugging Pipeline | 3/3 | Complete   | 2026-03-26 |
+| 17. PINN Debugging Pipeline | 3/3 | Complete    | 2026-03-26 |
