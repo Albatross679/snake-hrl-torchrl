@@ -1,9 +1,9 @@
-"""Training script for soft manipulator OTPG (Choi & Tong, 2025 setup).
+"""Training script for soft manipulator MM-RKHS (Choi & Tong, 2025 setup).
 
 Usage:
-    python -m choi2025.train_otpg --task follow_target --total-frames 1000000
-    python -m choi2025.train_otpg --task inverse_kinematics --seed 0
-    python -m choi2025.train_otpg --task tight_obstacles --max-wall-time 30m
+    python -m choi2025.train_mmrkhs --task follow_target --total-frames 1000000
+    python -m choi2025.train_mmrkhs --task inverse_kinematics --seed 0
+    python -m choi2025.train_mmrkhs --task tight_obstacles --max-wall-time 30m
 """
 
 import argparse
@@ -16,12 +16,12 @@ os.environ.setdefault("OMP_NUM_THREADS", "1")
 
 from torchrl.envs import RewardSum
 
-from choi2025.config import Choi2025OTPGConfig, Choi2025EnvConfig, TaskType
+from choi2025.config import Choi2025MMRKHSConfig, Choi2025EnvConfig, TaskType
 from choi2025.env import SoftManipulatorEnv
 from choi2025.train import parse_wall_time
 from src.configs import setup_run_dir, ConsoleLogger
 from src.configs.base import resolve_device
-from src.trainers.otpg import OTPGTrainer
+from src.trainers.mmrkhs import MMRKHSTrainer
 
 
 def _make_env(env_config, device):
@@ -30,7 +30,7 @@ def _make_env(env_config, device):
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Train soft manipulator OTPG")
+    parser = argparse.ArgumentParser(description="Train soft manipulator MM-RKHS (Gupta & Mahajan)")
     parser.add_argument(
         "--task",
         type=str,
@@ -69,7 +69,7 @@ def main():
 
     # Build config (construct env first so __post_init__ sees the task)
     env_config = Choi2025EnvConfig(task=TaskType(args.task), device=device)
-    config = Choi2025OTPGConfig(seed=args.seed, device=device, env=env_config)
+    config = Choi2025MMRKHSConfig(seed=args.seed, device=device, env=env_config)
 
     if args.total_frames is not None:
         config.total_frames = args.total_frames
@@ -105,7 +105,7 @@ def main():
     try:
         with ConsoleLogger(run_dir, config.console):
             # Create trainer
-            trainer = OTPGTrainer(
+            trainer = MMRKHSTrainer(
                 env=env,
                 config=config,
                 network_config=config.network,
@@ -124,7 +124,7 @@ def main():
             if config.max_wall_time is not None:
                 mins = config.max_wall_time / 60
                 wall_msg = f", max wall time {mins:.0f}min"
-            print(f"Training {args.task} with OTPG, {config.total_frames} frames{wall_msg}")
+            print(f"Training {args.task} with MM-RKHS, {config.total_frames} frames{wall_msg}")
             print(f"  Device: {device}")
             print(f"  Run directory: {run_dir}")
             results = trainer.train()

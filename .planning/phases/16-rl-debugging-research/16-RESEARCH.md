@@ -48,7 +48,7 @@ src/
 │   ├── logging_utils.py     # Existing (extend with new metrics)
 │   ├── sac.py               # Existing (add diagnostic hooks)
 │   ├── ppo.py               # Existing (add diagnostic hooks)
-│   └── otpg.py              # Existing (add diagnostic hooks)
+│   └── mmrkhs.py              # Existing (add diagnostic hooks)
 ```
 
 ### Pattern 1: Diagnostic Callback/Middleware
@@ -237,13 +237,13 @@ def check_and_alert(run, metrics, step):
 **Diagnostic signature:** `reward` plateau + `action_std` declining but not collapsed + reward components show one component dominant.
 
 ### Pitfall 5: Advantage Estimation Errors
-**What goes wrong:** PPO/OTPG updates are too large or too small despite correct hyperparameters.
+**What goes wrong:** PPO/MM-RKHS updates are too large or too small despite correct hyperparameters.
 **Why it happens:** Unnormalized advantages, broken GAE computation, or incorrect reward-to-go calculation.
 **How to avoid:** Log advantage mean (should be near zero when normalized), advantage std, advantage min/max. Check explained variance of value predictions.
 **Warning signs:** Advantages with mean far from zero. Explained variance near zero or negative.
 **Diagnostic signature:** `advantage_mean` != 0 + `explained_variance` < 0.
 
-### Pitfall 6: Stale Experience in On-Policy Methods (PPO/OTPG)
+### Pitfall 6: Stale Experience in On-Policy Methods (PPO/MM-RKHS)
 **What goes wrong:** KL divergence grows steadily across training, indicating policy has diverged from data-generating policy.
 **Why it happens:** Bug in data collection where old rollouts are reused, or too many epochs over the same batch.
 **How to avoid:** Verify rollout buffer is cleared between collection phases. Monitor KL per epoch within each update.
@@ -334,7 +334,7 @@ def check_alerts(wandb_run, metrics, step, algorithm="ppo"):
                            f"Step {step}: q1_mean={metrics['q1_mean']:.1f}"))
 
     # PPO-specific
-    if algorithm in ("ppo", "otpg"):
+    if algorithm in ("ppo", "mmrkhs"):
         if metrics.get("explained_variance", 1) < -0.5:
             alerts.append(("Value function anti-correlated", wandb.AlertLevel.WARN,
                            f"Step {step}: explained_var={metrics['explained_variance']:.3f}"))
@@ -379,16 +379,16 @@ def apply_spectral_norm_to_critic(critic):
 
 | Failure Mode | Key Diagnostic Metrics | Healthy Range | Alarm Threshold | Algorithm |
 |---|---|---|---|---|
-| Gradient explosion | actor_grad_norm | 0.01 - 10 | > 1e4 or 10x growth in 10 steps | SAC, PPO, OTPG |
-| Gradient vanishing | grad_norm | 0.01 - 10 | < 1e-6 for 100+ steps | PPO, OTPG |
-| Entropy collapse | entropy_proxy, action_std_min | 0.1 - 5.0 | entropy < 0.01 or action_std < 0.01 | PPO, OTPG |
+| Gradient explosion | actor_grad_norm | 0.01 - 10 | > 1e4 or 10x growth in 10 steps | SAC, PPO, MM-RKHS |
+| Gradient vanishing | grad_norm | 0.01 - 10 | < 1e-6 for 100+ steps | PPO, MM-RKHS |
+| Entropy collapse | entropy_proxy, action_std_min | 0.1 - 5.0 | entropy < 0.01 or action_std < 0.01 | PPO, MM-RKHS |
 | Q-value divergence | q1_mean, q2_mean | [-100, 100] | abs(q) > 1000 | SAC |
 | Q-sharpening | q_value_spread, actor_grad_norm | spread < 10 | spread > 100 + grad growth | SAC |
 | Reward collapse | reward vs best_reward | monotonically improving | reward < 0.5 * best_reward | All |
-| Value function failure | explained_variance | 0.5 - 1.0 | < 0 (anti-correlated) | PPO, OTPG |
-| Stale experience | kl_divergence trend | stable or declining | monotonically increasing | PPO, OTPG |
+| Value function failure | explained_variance | 0.5 - 1.0 | < 0 (anti-correlated) | PPO, MM-RKHS |
+| Stale experience | kl_divergence trend | stable or declining | monotonically increasing | PPO, MM-RKHS |
 | Policy collapse | action_std per dimension | > 0.05 | any dim < 0.01 | All |
-| Advantage explosion | advantage_max | < 20 | > 100 | PPO, OTPG |
+| Advantage explosion | advantage_max | < 20 | > 100 | PPO, MM-RKHS |
 
 ## Validation Architecture
 

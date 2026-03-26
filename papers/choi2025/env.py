@@ -174,6 +174,11 @@ class SoftManipulatorEnv(EnvBase):
         # Episode state
         self._step_count = 0
         self._prev_tip_pos = np.zeros(3)
+        self._prev_dist: float | None = None  # For PBRS
+        self._reward_components: dict = {}
+
+        # Curriculum tracking
+        self._episode_count = 0
 
         # Build specs
         self._make_spec()
@@ -204,6 +209,23 @@ class SoftManipulatorEnv(EnvBase):
         self.observation_spec = Composite(
             observation=Unbounded(
                 shape=(self._obs_dim,), dtype=torch.float32, device=self._device
+            ),
+            # Per-component reward diagnostics (registered in spec so ParallelEnv
+            # allocates shared memory for them; not part of the policy input).
+            dist_to_goal=Unbounded(
+                shape=(1,), dtype=torch.float32, device=self._device
+            ),
+            reward_dist=Unbounded(
+                shape=(1,), dtype=torch.float32, device=self._device
+            ),
+            reward_align=Unbounded(
+                shape=(1,), dtype=torch.float32, device=self._device
+            ),
+            reward_pbrs=Unbounded(
+                shape=(1,), dtype=torch.float32, device=self._device
+            ),
+            reward_improve=Unbounded(
+                shape=(1,), dtype=torch.float32, device=self._device
             ),
             shape=(),
         )
@@ -428,21 +450,41 @@ class SoftManipulatorEnv(EnvBase):
         # Reset controller
         self.controller.reset()
 
+        # Curriculum: ramp target speed from initial_frac to full over warmup episodes
+        curriculum = self.config.target.curriculum
+        speed_override = None
+        if curriculum.enabled and self.config.task == TaskType.FOLLOW_TARGET:
+            progress = min(1.0, self._episode_count / max(1, curriculum.warmup_episodes))
+            frac = curriculum.initial_speed_frac + (1.0 - curriculum.initial_speed_frac) * progress
+            speed_override = frac * self.config.target.target_speed
+
         # Sample target and obstacles
-        self._target.sample(self.config.task)
+        self._target.sample(self.config.task, speed_override=speed_override)
         self._obstacles.setup(self.config.task)
 
         self._step_count = 0
+        self._episode_count += 1
         self._prev_tip_pos = self._get_tip_pos()
+
+        # Initialize PBRS prev_dist from initial state
+        tip_pos = self._get_tip_pos()
+        target_pos = self._target.position
+        self._prev_dist = float(np.linalg.norm(tip_pos - target_pos))
 
         obs = self._get_obs()
 
+        _zero = torch.tensor([0.0], dtype=torch.float32, device=self._device)
         return TensorDict(
             {
                 "observation": torch.tensor(obs, dtype=torch.float32, device=self._device),
                 "done": torch.tensor([False], dtype=torch.bool, device=self._device),
                 "terminated": torch.tensor([False], dtype=torch.bool, device=self._device),
                 "truncated": torch.tensor([False], dtype=torch.bool, device=self._device),
+                "dist_to_goal": _zero.clone(),
+                "reward_dist": _zero.clone(),
+                "reward_align": _zero.clone(),
+                "reward_pbrs": _zero.clone(),
+                "reward_improve": _zero.clone(),
             },
             batch_size=self.batch_size,
             device=self._device,
@@ -482,14 +524,20 @@ class SoftManipulatorEnv(EnvBase):
 
         obs = self._get_obs()
 
+        td_dict = {
+            "observation": torch.tensor(obs, dtype=torch.float32, device=self._device),
+            "reward": torch.tensor([reward], dtype=torch.float32, device=self._device),
+            "done": torch.tensor([truncated], dtype=torch.bool, device=self._device),
+            "terminated": torch.tensor([False], dtype=torch.bool, device=self._device),
+            "truncated": torch.tensor([truncated], dtype=torch.bool, device=self._device),
+        }
+
+        # Add per-component reward diagnostics for fair cross-run comparison
+        for key, val in self._reward_components.items():
+            td_dict[key] = torch.tensor([val], dtype=torch.float32, device=self._device)
+
         return TensorDict(
-            {
-                "observation": torch.tensor(obs, dtype=torch.float32, device=self._device),
-                "reward": torch.tensor([reward], dtype=torch.float32, device=self._device),
-                "done": torch.tensor([truncated], dtype=torch.bool, device=self._device),
-                "terminated": torch.tensor([False], dtype=torch.bool, device=self._device),
-                "truncated": torch.tensor([truncated], dtype=torch.bool, device=self._device),
-            },
+            td_dict,
             batch_size=self.batch_size,
             device=self._device,
         )
@@ -501,7 +549,20 @@ class SoftManipulatorEnv(EnvBase):
         task = self.config.task
 
         if task == TaskType.FOLLOW_TARGET:
-            return compute_follow_target_reward(tip_pos, target_pos, self._prev_tip_pos)
+            tip_tangent = self._get_tip_tangent() if self.config.heading_weight > 0 else None
+            reward, self._reward_components = compute_follow_target_reward(
+                tip_pos, target_pos, self._prev_tip_pos,
+                tip_tangent=tip_tangent,
+                heading_weight=self.config.heading_weight,
+                prev_dist=self._prev_dist,
+                pbrs_gamma=self.config.pbrs_gamma,
+                pbrs_only=self.config.pbrs_only,
+                improvement_weight=self.config.improvement_weight,
+                return_components=True,
+            )
+            # Update prev_dist for next PBRS computation
+            self._prev_dist = float(np.linalg.norm(tip_pos - target_pos))
+            return reward
 
         elif task == TaskType.INVERSE_KINEMATICS:
             tip_tangent = self._get_tip_tangent()
@@ -523,8 +584,8 @@ class SoftManipulatorEnv(EnvBase):
 
         return 0.0
 
-    def close(self):
+    def close(self, **kwargs):
         self._dismech_robot = None
         self._time_stepper = None
         self._mock_state = None
-        super().close()
+        super().close(**kwargs)

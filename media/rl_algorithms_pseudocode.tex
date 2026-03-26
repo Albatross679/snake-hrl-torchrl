@@ -25,7 +25,7 @@
 \item \hyperref[alg:ppo]{PPO-Clip (scalar)} / \hyperref[alg:ppo-practical]{PPO-Clip (vectorized)}
 \item \hyperref[alg:ddpg]{DDPG --- Vectorized}
 \item \hyperref[alg:sac]{SAC --- Vectorized}
-\item \hyperref[alg:otpg]{OTPG (scalar)} / \hyperref[alg:otpg-practical]{OTPG (vectorized)} --- Operator-Theoretic Policy Gradient (MM-RKHS)
+\item \hyperref[alg:mmrkhs]{MM-RKHS (scalar)} / \hyperref[alg:mmrkhs-practical]{MM-RKHS (vectorized)} --- MM-RKHS (Gupta \Operator-Theoretic Policy Gradient (MM-RKHS) Mahajan)
 \end{enumerate}
 
 \textbf{Part III --- LLM Policy Optimization}
@@ -641,10 +641,10 @@ $Q_{\boldsymbol{\phi}'_i}$: target copies \\
 \end{algorithm}
 
 %% ============================================================
-%% Algorithm 7: OTPG --- Operator-Theoretic Policy Gradient (scalar)
+%% Algorithm 7: MM-RKHS --- Operator-Theoretic Policy Gradient (scalar)
 %% ============================================================
 \begin{algorithm}[p]\small
-\caption{OTPG --- Operator-Theoretic Policy Gradient (MM-RKHS)}\label{alg:otpg}
+\caption{MM-RKHS --- Gupta \& Mahajan}\label{alg:mmrkhs}
 \vspace{2pt}
 \noindent
 \begin{minipage}[t]{0.28\linewidth}
@@ -750,10 +750,10 @@ $V_{\boldsymbol{\phi}}$: MLP $s \to \mathbb{R}$
 \end{algorithm}
 
 %% ============================================================
-%% Algorithm 7b: OTPG (Practical / Vectorized)
+%% Algorithm 7b: MM-RKHS (Practical / Vectorized)
 %% ============================================================
 \begin{algorithm}[p]\small
-\caption{OTPG --- Practical Vectorized Implementation}\label{alg:otpg-practical}
+\caption{MM-RKHS --- Practical Vectorized Implementation}\label{alg:mmrkhs-practical}
 \vspace{2pt}
 \noindent
 \begin{minipage}[t]{0.28\linewidth}
@@ -1193,7 +1193,7 @@ $\boldsymbol{\rho}, \hat{\boldsymbol{\rho}}, \bar{\boldsymbol{\rho}} \in \mathbb
 \Statex \hspace{\algorithmicindent} Advantage via \textit{learned critic} $V_\phi$ (GAE). On-policy with \textit{rollout buffer}.
 \Statex \hspace{\algorithmicindent} When $\rho_t > 1{+}\epsilon$ and $\hat{A}_t > 0$: $\nabla_{\boldsymbol{\theta}} = \mathbf{0}$ \textit{(gradient masked out).}
 \Statex
-\Statex \textbf{OTPG} \textit{(Gupta \& Mahajan, 2026):}
+\Statex \textbf{MM-RKHS} \textit{(Gupta \& Mahajan, 2026):}
 \Statex \hspace{\algorithmicindent} $L = -\mathbb{E}[\rho\, \hat{A}] + \beta \cdot \widehat{\text{MMD}}^2 + \tfrac{1}{\eta}\, D_{\text{KL}}$ \; (majorization-minimization, descent)
 \Statex \hspace{\algorithmicindent} Advantage via \textit{learned critic} $V_\phi$ (GAE). On-policy with \textit{rollout buffer}.
 \Statex \hspace{\algorithmicindent} No clipping --- trust region via \textit{MMD penalty} (RKHS) + \textit{KL regularizer} (mirror descent).

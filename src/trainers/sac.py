@@ -33,6 +33,12 @@ from src.networks.actor import create_actor
 from src.networks.critic import TwinQNetwork
 from src import wandb_utils
 from .logging_utils import collect_system_metrics, compute_grad_norm
+from .diagnostics import (
+    compute_q_value_stats,
+    compute_action_stats,
+    compute_log_prob_stats,
+    check_alerts,
+)
 
 
 # Default STOP file path (relative to working directory)
@@ -533,8 +539,10 @@ class SACTrainer:
             self.actor_optimizer.zero_grad()
             actor_loss.backward()  # OUTSIDE amp context
             actor_grad_norm = compute_grad_norm(self.actor)
-            if self.config.max_grad_norm is not None:
-                nn.utils.clip_grad_norm_(self.actor.parameters(), self.config.max_grad_norm)
+            # Use actor-specific grad clip if set, else fall back to shared max_grad_norm
+            actor_clip = self.config.actor_max_grad_norm or self.config.max_grad_norm
+            if actor_clip is not None:
+                nn.utils.clip_grad_norm_(self.actor.parameters(), actor_clip)
             self.actor_optimizer.step()
 
             # Update alpha
@@ -559,9 +567,27 @@ class SACTrainer:
             "q1_mean": q1.mean().item(),
             "q2_mean": q2.mean().item(),
         }
+
+        # --- Diagnostics: Q-value health ---
+        q_stats = compute_q_value_stats(q1, q2, target_value)
+        for k, v in q_stats.items():
+            metrics[k] = v
+
         if actor_loss is not None:
             metrics["actor_loss"] = actor_loss.item()
             metrics["actor_grad_norm"] = actor_grad_norm
+
+            # Action distribution stats (from actor update)
+            with torch.no_grad():
+                action_stats = compute_action_stats(new_action)
+                for k, v in action_stats.items():
+                    metrics[k] = v
+
+                # Log probability stats
+                lp_stats = compute_log_prob_stats(log_prob)
+                for k, v in lp_stats.items():
+                    metrics[k] = v
+
         if alpha_loss is not None:
             metrics["alpha_loss"] = alpha_loss.item()
         return metrics
@@ -580,9 +606,10 @@ class SACTrainer:
         wandb_utils.log_metrics(
             self.wandb_run,
             {
-                "episode/reward": episode_reward,
-                "episode/length": episode_length,
+                "episode/mean_reward": episode_reward,
+                "episode/mean_length": float(episode_length),
                 "episode/count": self.total_episodes,
+                "tracking/best_reward": self.best_reward,
             },
             step=self.total_frames,
         )
@@ -602,6 +629,20 @@ class SACTrainer:
         wall = time.monotonic() - self._train_start_time
         wandb_log["timing/wall_clock_mins"] = wall / 60.0
 
+        # Diagnostics: Q-value health, action stats, log prob stats
+        for key in (
+            "q_value_spread", "q_max", "q_min",
+            "target_value_mean", "target_value_std",
+            "action_mean", "action_std_mean", "action_std_min",
+            "log_prob_mean", "log_prob_std", "entropy_proxy",
+        ):
+            if key in metrics:
+                wandb_log[f"diagnostics/{key}"] = metrics[key]
+        # Per-dimension action stds
+        for key in metrics:
+            if key.startswith("action_dim") and key.endswith("_std"):
+                wandb_log[f"diagnostics/{key}"] = metrics[key]
+
         # Per-section timing metrics
         for key in (
             "timing/env_step_seconds", "timing/data_seconds",
@@ -617,6 +658,9 @@ class SACTrainer:
         wandb_log.update(sys_metrics)
 
         wandb_utils.log_metrics(self.wandb_run, wandb_log, step=self.total_frames)
+
+        # Check for failure signatures and fire W&B alerts
+        check_alerts(self.wandb_run, metrics, self.total_frames, algorithm="sac")
 
     def save_checkpoint(self, name: str) -> None:
         """Save training checkpoint."""

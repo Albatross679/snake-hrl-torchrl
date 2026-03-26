@@ -15,6 +15,7 @@ os.environ.setdefault("MKL_NUM_THREADS", "1")
 os.environ.setdefault("OMP_NUM_THREADS", "1")
 
 from torchrl.envs import RewardSum
+from torchrl.envs.transforms import ObservationNorm, RewardScaling
 
 from choi2025.config import Choi2025PPOConfig, Choi2025EnvConfig, TaskType
 from choi2025.env import SoftManipulatorEnv
@@ -58,6 +59,40 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Path to checkpoint to resume from (e.g. output/.../checkpoints/final.pt)",
     )
+    parser.add_argument(
+        "--curriculum",
+        action="store_true",
+        help="Enable curriculum: ramp target speed from 0 to full over warmup episodes",
+    )
+    parser.add_argument(
+        "--warmup-episodes",
+        type=int,
+        default=200,
+        help="Per-worker episodes before reaching full target speed (default: 200)",
+    )
+    parser.add_argument(
+        "--heading-weight",
+        type=float,
+        default=0.0,
+        help="Heading reward weight: bonus for pointing tip toward target (default: 0.0, try 0.3)",
+    )
+    parser.add_argument(
+        "--pbrs-gamma",
+        type=float,
+        default=0.0,
+        help="PBRS discount factor (0.0=disabled, 0.99=typical). Adds policy-invariant shaping F=prev_dist-gamma*dist.",
+    )
+    parser.add_argument(
+        "--pbrs-only",
+        action="store_true",
+        help="Use ONLY the PBRS shaping signal (no base distance reward). Requires --pbrs-gamma > 0.",
+    )
+    parser.add_argument(
+        "--improvement-weight",
+        type=float,
+        default=0.0,
+        help="Improvement bonus multiplier: w*(prev_dist - dist). Paper uses 10.0. 0.0=disabled.",
+    )
     return parser.parse_args()
 
 
@@ -69,6 +104,26 @@ def main():
 
     # Build config (construct env first so __post_init__ sees the task)
     env_config = Choi2025EnvConfig(task=TaskType(args.task), device=device)
+
+    # Enable heading reward if requested
+    if args.heading_weight > 0:
+        env_config.heading_weight = args.heading_weight
+
+    # Enable PBRS if requested
+    if args.pbrs_gamma > 0:
+        env_config.pbrs_gamma = args.pbrs_gamma
+    if args.pbrs_only:
+        env_config.pbrs_only = True
+    if args.improvement_weight > 0:
+        env_config.improvement_weight = args.improvement_weight
+
+    # Enable curriculum learning if requested
+    if args.curriculum:
+        from choi2025.config import CurriculumConfig
+        env_config.target.curriculum = CurriculumConfig(
+            enabled=True, warmup_episodes=args.warmup_episodes,
+        )
+
     config = Choi2025PPOConfig(seed=args.seed, device=device, env=env_config)
 
     if args.total_frames is not None:
@@ -98,6 +153,17 @@ def main():
         )
     else:
         env = SoftManipulatorEnv(config.env, device=device)
+
+    # Normalize observations (running mean/std) — critical for PPO with
+    # heterogeneous-scale observations (positions, velocities, curvatures).
+    obs_norm = ObservationNorm(in_keys=["observation"], standard_normal=True)
+    env = env.append_transform(obs_norm)
+
+    # Initialize running stats from a few random rollouts
+    if config.num_envs > 1:
+        obs_norm.init_stats(num_iter=200, reduce_dim=[0, 1], cat_dim=0)
+    else:
+        obs_norm.init_stats(num_iter=200, reduce_dim=0)
 
     # Accumulate per-step rewards into episode_reward for monitoring
     env = env.append_transform(RewardSum())

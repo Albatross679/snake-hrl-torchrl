@@ -74,7 +74,7 @@ Read the ENTIRE old report/report.tex in chunks (lines 1-500, 501-1000, 1001-150
 Also read:
 - experiments/choi2025-full-results.md — for Ch.5 (RL on DisMech) content
 - experiments/choi2025-quick-validation.md — for Ch.5 content
-- experiments/otpg-100k-validation-follow-target.md — for Ch.5 OTPG content
+- experiments/otpg-100k-validation-follow-target.md — for Ch.5 MM-RKHS content
 
 Do NOT write anything yet. This task is read-only to build context for Task 2.
   </action>
@@ -139,10 +139,10 @@ This is the BIG restructure. Condense physics + data + surrogate into one chapte
 Write using content from experiment files. Structure:
 
 - \subsection{Task Description} — Describe the follow_target task from Choi2025 paper. Brief paragraph.
-- \subsection{Algorithm Comparison} — Table comparing PPO, SAC, OTPG configurations and results.
+- \subsection{Algorithm Comparison} — Table comparing PPO, SAC, MM-RKHS configurations and results.
   - PPO: from choi2025-full-results.md
   - SAC: from choi2025-full-results.md and choi2025-quick-validation.md
-  - OTPG: from otpg-100k-validation-follow-target.md
+  - MM-RKHS: from mmrkhs-100k-validation-follow-target.md
 - \subsection{Results} — Write available results. Use \placeholder{} for missing long-run results.
 - Include rl_algorithms_pseudocode figure from media/ if appropriate.
 
@@ -197,7 +197,7 @@ Extract issue name, status, one-line resolution from each \paragraph in old repo
 - \placeholder{Surrogate architecture diagram}
 - \placeholder{PINN loss curves}
 - \placeholder{DisMech/Choi2025 training curves}
-- \placeholder{OTPG vs PPO vs SAC comparison plot}
+- \placeholder{MM-RKHS vs PPO vs SAC comparison plot}
 
 **WHAT TO AVOID:**
 - Do NOT drop any existing equations that are central to understanding (CPG, loss functions, PINN losses). Move derivation steps to appendix but keep final-form equations in main text.
@@ -235,7 +235,7 @@ Extract issue name, status, one-line resolution from each \paragraph in old repo
 - All old content migrated (nothing lost, only reorganized and condensed)
 - Structured format: tables for comparisons/parameters/issues, bullets for enumerations, algorithms for procedures
 - Physics derivations in appendix with forward references from Ch.3
-- Ch.5 populated with available Choi2025/OTPG data, placeholders for gaps
+- Ch.5 populated with available Choi2025/MM-RKHS data, placeholders for gaps
 </success_criteria>
 
 <output>

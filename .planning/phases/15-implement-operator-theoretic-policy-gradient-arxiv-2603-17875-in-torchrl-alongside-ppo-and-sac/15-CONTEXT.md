@@ -6,7 +6,7 @@
 <domain>
 ## Phase Boundary
 
-Add OTPG (Operator-Theoretic Policy Gradient) as a third RL trainer alongside PPO and SAC, implementing the MM-RKHS algorithm from Gupta & Mahajan (2026) adapted for continuous action spaces with neural network function approximation. Benchmark on the Choi2025 4-task suite for direct comparison with Phase 14's PPO/SAC results. This is a learning-signal validation (100K frames), not a full training campaign.
+Add MM-RKHS (Operator-Theoretic Policy Gradient) as a third RL trainer alongside PPO and SAC, implementing the MM-RKHS algorithm from Gupta & Mahajan (2026) adapted for continuous action spaces with neural network function approximation. Benchmark on the Choi2025 4-task suite for direct comparison with Phase 14's PPO/SAC results. This is a learning-signal validation (100K frames), not a full training campaign.
 
 </domain>
 
@@ -48,7 +48,7 @@ Add OTPG (Operator-Theoretic Policy Gradient) as a third RL trainer alongside PP
 - Diagnosis via logged MMD/KL values to determine if trust region is too tight or too loose
 
 ### W&B logging
-- Log OTPG-specific metrics: mmd_penalty, kl_divergence, surr_advantage, critic_loss (as separate scalars)
+- Log MM-RKHS-specific metrics: mmd_penalty, kl_divergence, surr_advantage, critic_loss (as separate scalars)
 - Also log policy_entropy and grad_norm for diagnostics
 - Standard reward/episode metrics via existing logging infrastructure
 
@@ -68,16 +68,16 @@ Add OTPG (Operator-Theoretic Policy Gradient) as a third RL trainer alongside PP
 **Downstream agents MUST read these before planning or implementing.**
 
 ### Algorithm
-- `media/rl_algorithms_pseudocode.pdf` — RL algorithms pseudocode reference (if relevant OTPG content)
+- `media/rl_algorithms_pseudocode.pdf` — RL algorithms pseudocode reference (if relevant MM-RKHS content)
 - arXiv:2603.17875 — Source paper: MM-RKHS algorithm (Eq 7.1-7.2), majorization bound (Eq 6.1), IPM framework (Section 6)
 
 ### Existing trainers (follow these patterns)
 - `src/trainers/ppo.py` — PPOTrainer class: `__init__`/`train()`/`_update()` pattern, GAE, SyncDataCollector, checkpointing, bf16 AMP
 - `src/trainers/sac.py` — SACTrainer class: alternative trainer pattern for reference
-- `src/trainers/__init__.py` — Trainer exports (add OTPGTrainer here)
+- `src/trainers/__init__.py` — Trainer exports (add MMRKHSTrainer here)
 
 ### Config hierarchy
-- `src/configs/training.py` — RLConfig base → PPOConfig/SACConfig hierarchy. OTPGConfig extends RLConfig.
+- `src/configs/training.py` — RLConfig base → PPOConfig/SACConfig hierarchy. MMRKHSConfig extends RLConfig.
 - `src/configs/network.py` — NetworkConfig, ActorConfig, CriticConfig
 
 ### Network factories
@@ -87,8 +87,8 @@ Add OTPG (Operator-Theoretic Policy Gradient) as a third RL trainer alongside PP
 ### Choi2025 benchmark
 - `papers/choi2025/config.py` — Choi2025Config hierarchy, task types, physics/env/control configs
 - `papers/choi2025/env.py` — TorchRL EnvBase wrapper, action spec (5-dim continuous [-1,1])
-- `papers/choi2025/train.py` — SAC training entry point (pattern for OTPG train script)
-- `papers/choi2025/train_ppo.py` — PPO training entry point (pattern for OTPG train script)
+- `papers/choi2025/train.py` — SAC training entry point (pattern for MM-RKHS train script)
+- `papers/choi2025/train_ppo.py` — PPO training entry point (pattern for MM-RKHS train script)
 
 ### Phase 15 research
 - `.planning/phases/15-implement-operator-theoretic-policy-gradient-arxiv-2603-17875-in-torchrl-alongside-ppo-and-sac/15-RESEARCH.md` — Detailed architecture patterns, code examples, pitfalls, MMD implementation
@@ -99,7 +99,7 @@ Add OTPG (Operator-Theoretic Policy Gradient) as a third RL trainer alongside PP
 ## Existing Code Insights
 
 ### Reusable Assets
-- `PPOTrainer` (`src/trainers/ppo.py`): On-policy trainer with GAE, SyncDataCollector, mini-batch updates — OTPG reuses ~90% of this
+- `PPOTrainer` (`src/trainers/ppo.py`): On-policy trainer with GAE, SyncDataCollector, mini-batch updates — MM-RKHS reuses ~90% of this
 - `create_actor()` (`src/networks/actor.py`): ProbabilisticActor with TanhNormal distribution — reuse directly
 - `create_critic()` (`src/networks/critic.py`): ValueOperator wrapper — reuse directly
 - `GAE` (`torchrl.objectives.value`): Generalized Advantage Estimation — reuse directly
@@ -117,10 +117,10 @@ Add OTPG (Operator-Theoretic Policy Gradient) as a third RL trainer alongside PP
 - `ConsoleLogger` for structured terminal output
 
 ### Integration Points
-- `src/trainers/__init__.py` — add `OTPGTrainer` export
-- `src/configs/training.py` — add `OTPGConfig` dataclass
-- `papers/choi2025/` — new `train_otpg.py` entry point (mirrors `train_ppo.py`)
-- `papers/choi2025/config.py` — add `Choi2025OTPGConfig(OTPGConfig)` (mirrors `Choi2025PPOConfig`)
+- `src/trainers/__init__.py` — add `MMRKHSTrainer` export
+- `src/configs/training.py` — add `MMRKHSConfig` dataclass
+- `papers/choi2025/` — new `train_mmrkhs.py` entry point (mirrors `train_ppo.py`)
+- `papers/choi2025/config.py` — add `Choi2025MMRKHSConfig(MMRKHSConfig)` (mirrors `Choi2025PPOConfig`)
 
 </code_context>
 

@@ -67,6 +67,8 @@ def setup_run(
     wandb.define_metric("tracking/*", step_metric="total_frames")
     wandb.define_metric("reward/*", step_metric="total_frames")
     wandb.define_metric("gradients/*", step_metric="total_frames")
+    wandb.define_metric("diagnostics/*", step_metric="total_frames")
+    wandb.define_metric("q_values/*", step_metric="total_frames")
 
     return run
 

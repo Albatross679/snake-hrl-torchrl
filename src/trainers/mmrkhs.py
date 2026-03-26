@@ -1,4 +1,4 @@
-"""OTPG (Operator-Theoretic Policy Gradient) trainer using TorchRL.
+"""MM-RKHS (Gupta & Mahajan) trainer using TorchRL.
 
 Implements the MM-RKHS algorithm from Gupta & Mahajan (2026, arXiv:2603.17875),
 adapted for continuous action spaces with neural network function approximation.
@@ -30,6 +30,13 @@ from torch.optim.lr_scheduler import LambdaLR
 import numpy as np
 
 from .logging_utils import collect_system_metrics
+from .diagnostics import (
+    compute_explained_variance,
+    compute_action_stats,
+    compute_advantage_stats,
+    compute_log_prob_stats,
+    check_alerts,
+)
 
 from torchrl.envs import EnvBase
 from torchrl.objectives.value import GAE
@@ -38,7 +45,7 @@ from torchrl.modules import TanhNormal
 from tensordict import TensorDict
 from tqdm import tqdm
 
-from src.configs.training import OTPGConfig
+from src.configs.training import MMRKHSConfig
 from src.configs.network import NetworkConfig
 from src.configs.base import resolve_device
 from src.configs.run_dir import setup_run_dir
@@ -58,10 +65,10 @@ def _amp_context(use_amp: bool, device: str):
     return nullcontext()
 
 
-class OTPGTrainer:
-    """OTPG trainer for continuous control tasks.
+class MMRKHSTrainer:
+    """MM-RKHS trainer for continuous control tasks (Gupta & Mahajan, 2026).
 
-    Implements Operator-Theoretic Policy Gradient with MM-RKHS loss:
+    Implements Majorization-Minimization in RKHS with MM-RKHS loss:
     L = -E[ratio * A] + beta * MMD^2(pi_new, pi_old) + (1/eta) * KL + value_coef * critic_loss
 
     Trust region enforced entirely by MMD penalty + KL regularizer (no PPO clipping).
@@ -70,13 +77,13 @@ class OTPGTrainer:
     def __init__(
         self,
         env: EnvBase,
-        config: Optional[OTPGConfig] = None,
+        config: Optional[MMRKHSConfig] = None,
         network_config: Optional[NetworkConfig] = None,
         device: str = "cpu",
         run_dir: Optional[Path] = None,
     ):
         self.env = env
-        self.config = config or OTPGConfig()
+        self.config = config or MMRKHSConfig()
         self.network_config = network_config or NetworkConfig()
         self.device = resolve_device(device)
 
@@ -185,7 +192,7 @@ class OTPGTrainer:
         extra_params["num_envs"] = self.config.num_envs
         extra_params["use_amp"] = self.config.use_amp
         extra_params["amp_dtype"] = "bfloat16" if self.config.use_amp else "float32"
-        extra_params["algorithm"] = "OTPG"
+        extra_params["algorithm"] = "MM-RKHS"
         extra_params["beta"] = self.config.beta
         extra_params["eta"] = self.config.eta
         extra_params["mmd_bandwidth"] = self.config.mmd_bandwidth
@@ -218,7 +225,7 @@ class OTPGTrainer:
         self,
         callback: Optional[Callable[[Dict[str, Any]], None]] = None,
     ) -> Dict[str, Any]:
-        """Run OTPG training loop.
+        """Run MM-RKHS training loop.
 
         Returns:
             Dictionary with training statistics
@@ -289,10 +296,10 @@ class OTPGTrainer:
                     self.advantage_module(batch)
                 data_dt = time.monotonic() - t0
 
-                # --- Timing: backward (OTPG update epochs) ---
+                # --- Timing: backward (MM-RKHS update epochs) ---
                 t0 = time.monotonic()
 
-                # OTPG update
+                # MM-RKHS update
                 metrics = self._update(batch)
                 backward_dt = time.monotonic() - t0
 
@@ -516,7 +523,7 @@ class OTPGTrainer:
         return mmd_sq.clamp(min=0.0)
 
     def _update(self, batch: TensorDict) -> Dict[str, float]:
-        """Perform OTPG update on batch using MM-RKHS loss.
+        """Perform MM-RKHS update on batch.
 
         Loss = -E[ratio * A] + beta * MMD^2 + (1/eta) * KL + value_coef * critic_loss
 
@@ -531,6 +538,43 @@ class OTPGTrainer:
             "grad_norm": 0.0,
             "policy_entropy": 0.0,
         }
+
+        # --- Diagnostics: compute stats from batch before update ---
+        with torch.no_grad():
+            advantages = batch["advantage"]
+            metrics.update(compute_advantage_stats(advantages))
+
+            # Explained variance
+            if "value_target" in batch.keys() and "state_value" in batch.keys():
+                metrics["explained_variance"] = compute_explained_variance(
+                    batch["state_value"], batch["value_target"],
+                )
+            elif "value_target" in batch.keys():
+                v_pred = self.critic(batch)
+                if "state_value" in v_pred.keys():
+                    metrics["explained_variance"] = compute_explained_variance(
+                        v_pred["state_value"], batch["value_target"],
+                    )
+
+            # Action distribution stats
+            if "action" in batch.keys():
+                metrics.update({
+                    f"diagnostics/{k}": v
+                    for k, v in compute_action_stats(batch["action"]).items()
+                })
+
+            # Log probability stats
+            if "action_log_prob" in batch.keys():
+                metrics.update({
+                    f"diagnostics/{k}": v
+                    for k, v in compute_log_prob_stats(batch["action_log_prob"]).items()
+                })
+
+            # Reward stats (step-level)
+            if "next" in batch.keys() and "reward" in batch["next"].keys():
+                rewards = batch["next"]["reward"]
+                metrics["diagnostics/reward_mean"] = rewards.mean().item()
+                metrics["diagnostics/reward_std"] = rewards.std().item()
 
         # Multiple epochs over the batch
         actual_updates = 0
@@ -663,7 +707,7 @@ class OTPGTrainer:
         """Log training metrics to console and W&B."""
         # Console output
         log_str = f"Step {self.total_frames}: "
-        log_str += f"policy_loss={metrics['loss_policy']:.4f}, "
+        log_str += f"actor_loss={metrics['loss_policy']:.4f}, "
         log_str += f"critic_loss={metrics['loss_critic']:.4f}, "
         log_str += f"mmd={metrics['mmd_penalty']:.4f}, "
         log_str += f"kl={metrics['kl_divergence']:.4f}"
@@ -677,8 +721,8 @@ class OTPGTrainer:
 
         # Build W&B log dict
         wandb_log = {
-            "train/loss_policy": metrics["loss_policy"],
-            "train/loss_critic": metrics["loss_critic"],
+            "train/actor_loss": metrics["loss_policy"],
+            "train/critic_loss": metrics["loss_critic"],
             "train/mmd_penalty": metrics["mmd_penalty"],
             "train/kl_divergence": metrics["kl_divergence"],
             "train/policy_entropy": metrics.get("policy_entropy", 0.0),
@@ -754,8 +798,18 @@ class OTPGTrainer:
         )
         wandb_log.update(sys_metrics)
 
+        # Diagnostics: explained variance, action stats, advantage stats, log prob stats
+        if "explained_variance" in metrics:
+            wandb_log["diagnostics/explained_variance"] = metrics["explained_variance"]
+        for key in metrics:
+            if key.startswith("diagnostics/"):
+                wandb_log[key] = metrics[key]
+
         # Log via shared utility
         wandb_utils.log_metrics(self.wandb_run, wandb_log, step=self.total_frames)
+
+        # Check for failure signatures and fire W&B alerts
+        check_alerts(self.wandb_run, {**metrics, **wandb_log}, self.total_frames, algorithm="mmrkhs")
 
     def save_checkpoint(self, name: str) -> None:
         """Save training checkpoint atomically.

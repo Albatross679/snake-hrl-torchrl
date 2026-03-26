@@ -1,4 +1,4 @@
-# Phase 15: OTPG Benchmark Environment Research
+# Phase 15: MM-RKHS Benchmark Environment Research
 
 **Researched:** 2026-03-19
 **Domain:** Standard RL benchmark environments for algorithm validation
@@ -6,11 +6,11 @@
 
 ## Summary
 
-This research identifies the best standard RL benchmark environments for validating the OTPG algorithm before deploying on the complex Choi2025 snake robot tasks. The goal is fast iteration on simple, well-understood environments with known PPO/SAC baselines, continuous action spaces, and training times under 500K frames.
+This research identifies the best standard RL benchmark environments for validating the MM-RKHS algorithm before deploying on the complex Choi2025 snake robot tasks. The goal is fast iteration on simple, well-understood environments with known PPO/SAC baselines, continuous action spaces, and training times under 500K frames.
 
 The recommended benchmark suite is a three-tier ladder: (1) **Pendulum-v1** (no MuJoCo needed, 3-dim obs, 1-dim action, ~100K frames to converge), (2) **InvertedPendulum-v4** (trivial MuJoCo task, 4-dim obs, 1-dim action, ~100K frames), and (3) **HalfCheetah-v4** (standard MuJoCo benchmark, 17-dim obs, 6-dim action, ~500K-1M frames). These cover increasing complexity and action-space dimensionality while all being environments where PPO and SAC have well-documented baselines.
 
-**Primary recommendation:** Start with Pendulum-v1 (zero MuJoCo dependency, fastest iteration). Graduate to HalfCheetah-v4 once OTPG shows learning signal on Pendulum. Use `gymnasium[mujoco]` for MuJoCo environments -- no separate mujoco-py installation needed.
+**Primary recommendation:** Start with Pendulum-v1 (zero MuJoCo dependency, fastest iteration). Graduate to HalfCheetah-v4 once MM-RKHS shows learning signal on Pendulum. Use `gymnasium[mujoco]` for MuJoCo environments -- no separate mujoco-py installation needed.
 
 <user_constraints>
 ## User Constraints (from CONTEXT.md)
@@ -86,7 +86,7 @@ This single command installs gymnasium and the mujoco package together.
 - Max episode length: 200 steps
 - Reward: negative cost, best possible ~0, typical good policy ~-150 to -200
 - **Training time:** ~50K-100K frames with PPO/SAC, ~30 seconds on GPU
-- **Use case:** First smoke test. If OTPG cannot learn Pendulum, it will not learn anything else.
+- **Use case:** First smoke test. If MM-RKHS cannot learn Pendulum, it will not learn anything else.
 
 ### Tier 2: MuJoCo Sanity Check (InvertedPendulum-v4)
 - Observation: [cart_pos, pole_angle, cart_vel, pole_vel] (4-dim)
@@ -103,7 +103,7 @@ This single command installs gymnasium and the mujoco package together.
 - PPO baseline: ~5000-8000 at 1M frames (SB3/SpinningUp)
 - SAC baseline: ~10000-12000 at 1M frames
 - **Training time:** ~500K-1M frames, ~10-30 minutes on GPU
-- **Use case:** True algorithm comparison. Multi-dimensional action space. If OTPG matches or exceeds PPO here, it validates the continuous adaptation.
+- **Use case:** True algorithm comparison. Multi-dimensional action space. If MM-RKHS matches or exceeds PPO here, it validates the continuous adaptation.
 
 ### Tier 4: Optional Additional (Hopper-v4)
 - Observation: body positions, velocities (11-dim)
@@ -156,19 +156,19 @@ def make_benchmark_env(env_name: str, device: str = "cpu") -> TransformedEnv:
 ```
 
 ### Pattern 2: Benchmark Training Script
-**What:** A standalone script that trains OTPG (and optionally PPO/SAC) on a benchmark environment.
+**What:** A standalone script that trains MM-RKHS (and optionally PPO/SAC) on a benchmark environment.
 **When to use:** For quick algorithm validation before Choi2025 deployment.
 ```python
-# scripts/benchmark_otpg.py
-"""Quick OTPG validation on standard benchmark environments."""
+# scripts/benchmark_mmrkhs.py
+"""Quick MM-RKHS validation on standard benchmark environments."""
 
 import argparse
 from torchrl.envs import GymEnv, TransformedEnv
 from torchrl.envs.transforms import Compose, DoubleToFloat, StepCounter
 
-from src.configs.training import OTPGConfig
+from src.configs.training import MMRKHSConfig
 from src.configs.network import NetworkConfig, ActorConfig, CriticConfig
-from src.trainers.otpg import OTPGTrainer
+from src.trainers.otpg import MMRKHSTrainer
 
 BENCHMARKS = {
     "pendulum": {
@@ -209,7 +209,7 @@ def main():
     bench = BENCHMARKS[args.benchmark]
     env = make_env(bench["env_name"], args.device)
 
-    config = OTPGConfig(
+    config = MMRKHSConfig(
         name=f"otpg-{args.benchmark}",
         total_frames=args.total_frames or bench["total_frames"],
         frames_per_batch=bench["frames_per_batch"],
@@ -222,7 +222,7 @@ def main():
         critic=CriticConfig(hidden_dims=[256, 256]),
     )
 
-    trainer = OTPGTrainer(
+    trainer = MMRKHSTrainer(
         env=env,
         config=config,
         network_config=net_config,
@@ -238,24 +238,24 @@ if __name__ == "__main__":
 ```
 
 ### Pattern 3: Comparison Script (PPO vs OTPG)
-**What:** Run PPO and OTPG on the same environment for direct comparison.
-**When to use:** After OTPG shows basic learning signal.
+**What:** Run PPO and MM-RKHS on the same environment for direct comparison.
+**When to use:** After MM-RKHS shows basic learning signal.
 ```python
 # Run both algorithms on the same benchmark
-for algo in ["ppo", "otpg"]:
+for algo in ["ppo", "mmrkhs"]:
     for benchmark in ["pendulum", "halfcheetah"]:
         env = make_env(BENCHMARKS[benchmark]["env_name"])
         if algo == "ppo":
             config = PPOConfig(name=f"ppo-{benchmark}", ...)
             trainer = PPOTrainer(env, config, ...)
         else:
-            config = OTPGConfig(name=f"otpg-{benchmark}", ...)
-            trainer = OTPGTrainer(env, config, ...)
+            config = MMRKHSConfig(name=f"otpg-{benchmark}", ...)
+            trainer = MMRKHSTrainer(env, config, ...)
         trainer.train()
 ```
 
 ### Anti-Patterns to Avoid
-- **Skipping Pendulum and going straight to HalfCheetah:** Pendulum trains in 30 seconds. If OTPG fails on it, you save hours of debugging on harder envs.
+- **Skipping Pendulum and going straight to HalfCheetah:** Pendulum trains in 30 seconds. If MM-RKHS fails on it, you save hours of debugging on harder envs.
 - **Using ObservationNorm with MuJoCo envs:** MuJoCo observations are already well-scaled. Adding ObservationNorm requires a separate normalization pass and can hurt performance if the statistics are computed from too few samples.
 - **Using 3x1024 networks on benchmarks:** Overkill. Use 2x256 for Pendulum, 2x256 for HalfCheetah. The Choi2025 3x1024 networks are sized for ~100-dim observations, not 3-17 dim.
 
@@ -304,7 +304,7 @@ for algo in ["ppo", "otpg"]:
 
 ### Example 1: Minimal Pendulum Validation
 ```python
-"""Smallest possible OTPG validation: train on Pendulum-v1."""
+"""Smallest possible MM-RKHS validation: train on Pendulum-v1."""
 from torchrl.envs import GymEnv, TransformedEnv
 from torchrl.envs.transforms import Compose, DoubleToFloat, StepCounter
 
@@ -426,7 +426,7 @@ torchrl.envs.set_gym_backend("gymnasium")
 
 ### Pendulum-v1
 ```python
-config = OTPGConfig(
+config = MMRKHSConfig(
     name="otpg-pendulum",
     total_frames=100_000,
     frames_per_batch=1024,
@@ -449,7 +449,7 @@ net_config = NetworkConfig(
 
 ### HalfCheetah-v4
 ```python
-config = OTPGConfig(
+config = MMRKHSConfig(
     name="otpg-halfcheetah",
     total_frames=500_000,
     frames_per_batch=4096,
@@ -473,22 +473,22 @@ net_config = NetworkConfig(
 ## Validation Strategy
 
 ### Phase 1: Smoke Test (Pendulum-v1)
-1. Train OTPG on Pendulum-v1 for 100K frames
+1. Train MM-RKHS on Pendulum-v1 for 100K frames
 2. **Pass criteria:** reward improves from ~-1600 (random) to ~-400 or better
 3. If fails: debug loss function, check MMD computation, verify gradients flow
 4. Estimated time: 1-2 minutes
 
 ### Phase 2: MuJoCo Integration (InvertedPendulum-v4)
-1. Train OTPG on InvertedPendulum-v4 for 100K frames
+1. Train MM-RKHS on InvertedPendulum-v4 for 100K frames
 2. **Pass criteria:** reward reaches 900+ (near maximum of 1000)
 3. If fails: likely action space scaling issue or GymEnv integration bug
 4. Estimated time: 2-3 minutes
 
 ### Phase 3: Real Benchmark (HalfCheetah-v4)
-1. Train OTPG on HalfCheetah-v4 for 500K frames
+1. Train MM-RKHS on HalfCheetah-v4 for 500K frames
 2. Train PPO on same env for comparison
-3. **Pass criteria:** OTPG reaches at least 50% of PPO's reward
-4. **Stretch goal:** OTPG matches or exceeds PPO's reward
+3. **Pass criteria:** MM-RKHS reaches at least 50% of PPO's reward
+4. **Stretch goal:** MM-RKHS matches or exceeds PPO's reward
 5. Estimated time: 15-30 minutes per algorithm
 
 ### Comparison to Choi2025
@@ -506,7 +506,7 @@ net_config = NetworkConfig(
 
 1. **ObservationNorm for benchmarks?**
    - The TorchRL PPO tutorial uses `ObservationNorm` for InvertedDoublePendulum. However, most MuJoCo environments have well-scaled observations, and PPO/SAC benchmarks in SB3 do not normalize.
-   - Recommendation: Skip observation normalization for benchmark validation. Add it only if OTPG fails to learn and observation scale is suspected.
+   - Recommendation: Skip observation normalization for benchmark validation. Add it only if MM-RKHS fails to learn and observation scale is suspected.
 
 2. **RewardSum transform for episode tracking?**
    - TorchRL's `GymEnv` may or may not populate `episode_reward` in the TensorDict depending on the gymnasium version and wrapper setup.
@@ -543,7 +543,7 @@ net_config = NetworkConfig(
 - Installation: HIGH -- `gymnasium[mujoco]` is standard
 - PPO/SAC baselines: MEDIUM -- scores vary by implementation, hyperparameters, and env version
 - Training time estimates: MEDIUM -- depends on GPU, batch size, network size
-- OTPG expected performance: LOW -- completely novel adaptation, no precedent
+- MM-RKHS expected performance: LOW -- completely novel adaptation, no precedent
 
 **Research date:** 2026-03-19
 **Valid until:** 2026-04-19 (stable; environments and TorchRL API are stable)

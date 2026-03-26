@@ -1,13 +1,13 @@
-"""Training modules for PPO, SAC, DDPG, and OTPG."""
+"""Training modules for PPO, SAC, DDPG, and MM-RKHS (Gupta & Mahajan)."""
 
 from .ppo import PPOTrainer
 from .sac import SACTrainer
 from .ddpg import DDPGTrainer
-from .otpg import OTPGTrainer
+from .mmrkhs import MMRKHSTrainer
 
 __all__ = [
     "PPOTrainer",
     "SACTrainer",
     "DDPGTrainer",
-    "OTPGTrainer",
+    "MMRKHSTrainer",
 ]

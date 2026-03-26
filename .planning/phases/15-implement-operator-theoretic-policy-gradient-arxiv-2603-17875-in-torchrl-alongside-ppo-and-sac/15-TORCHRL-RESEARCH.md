@@ -6,11 +6,11 @@
 
 ## Summary
 
-This research addresses the user's requirement to use TorchRL-native environments and avoid gymnasium for OTPG benchmark validation. The investigation covers five areas: (1) TorchRL's built-in environments, (2) BenchMARL's applicability, (3) official TorchRL tutorials, (4) TorchRL environment wrappers, and (5) a TorchRL-native benchmark validation strategy.
+This research addresses the user's requirement to use TorchRL-native environments and avoid gymnasium for MM-RKHS benchmark validation. The investigation covers five areas: (1) TorchRL's built-in environments, (2) BenchMARL's applicability, (3) official TorchRL tutorials, (4) TorchRL environment wrappers, and (5) a TorchRL-native benchmark validation strategy.
 
-The key finding is that the project already has TorchRL-native environments (Choi2025 `SoftManipulatorEnv`) that work directly with the existing `create_actor()`/`create_critic()`/`SyncDataCollector`/`GAE` infrastructure. TorchRL's only built-in continuous-action environment is `PendulumEnv`, which uses non-standard observation keys (`th`, `thdot` instead of `observation`) and requires custom transforms or a wrapper to work with the project's training infrastructure. For a simple smoke-test environment, a lightweight `SimplePendulum` custom EnvBase implementation is the cleanest approach -- fully TorchRL-native, no external dependencies, passes `check_env_specs()`, and is compatible with all existing project infrastructure. BenchMARL is exclusively multi-agent and not suitable for single-agent OTPG benchmarking.
+The key finding is that the project already has TorchRL-native environments (Choi2025 `SoftManipulatorEnv`) that work directly with the existing `create_actor()`/`create_critic()`/`SyncDataCollector`/`GAE` infrastructure. TorchRL's only built-in continuous-action environment is `PendulumEnv`, which uses non-standard observation keys (`th`, `thdot` instead of `observation`) and requires custom transforms or a wrapper to work with the project's training infrastructure. For a simple smoke-test environment, a lightweight `SimplePendulum` custom EnvBase implementation is the cleanest approach -- fully TorchRL-native, no external dependencies, passes `check_env_specs()`, and is compatible with all existing project infrastructure. BenchMARL is exclusively multi-agent and not suitable for single-agent MM-RKHS benchmarking.
 
-**Primary recommendation:** Validate OTPG exclusively on the Choi2025 4-task suite (already TorchRL-native). For a fast smoke-test during development, use a simple custom `SimplePendulum` EnvBase environment (3-dim obs, 1-dim action, ~50K frames to converge). Do NOT install gymnasium or dm_control.
+**Primary recommendation:** Validate MM-RKHS exclusively on the Choi2025 4-task suite (already TorchRL-native). For a fast smoke-test during development, use a simple custom `SimplePendulum` EnvBase environment (3-dim obs, 1-dim action, ~50K frames to converge). Do NOT install gymnasium or dm_control.
 
 <user_constraints>
 ## User Constraints (from CONTEXT.md)
@@ -49,11 +49,11 @@ The key finding is that the project already has TorchRL-native environments (Cho
 
 | ID | Description | Research Support |
 |----|-------------|-----------------|
-| OTPG-01 | OTPGConfig dataclass with beta, eta, mmd_bandwidth, mmd_num_samples, gae_lambda, value_coef | Config hierarchy pattern from `src/configs/training.py` -- extends RLConfig |
-| OTPG-02 | OTPGTrainer class following PPOTrainer pattern | Full pipeline verified: `create_actor()` + `create_critic()` + `GAE` + `SyncDataCollector` all work with both Choi2025 and custom TorchRL envs |
+| OTPG-01 | MMRKHSConfig dataclass with beta, eta, mmd_bandwidth, mmd_num_samples, gae_lambda, value_coef | Config hierarchy pattern from `src/configs/training.py` -- extends RLConfig |
+| OTPG-02 | MMRKHSTrainer class following PPOTrainer pattern | Full pipeline verified: `create_actor()` + `create_critic()` + `GAE` + `SyncDataCollector` all work with both Choi2025 and custom TorchRL envs |
 | OTPG-03 | MMD penalty computation with RBF kernel | Linear-time estimator pattern documented; action samples via `actor.get_dist()` rsample |
 | OTPG-04 | MM-RKHS loss function with clamped log-ratio, normalized advantage, NaN guards | **CRITICAL CORRECTION**: log prob key is `action_log_prob`, NOT `sample_log_prob` (verified empirically) |
-| OTPG-05 | Choi2025 benchmark integration with train_otpg.py | Choi2025 envs confirmed TorchRL-native; train_ppo.py pattern ready to mirror |
+| OTPG-05 | Choi2025 benchmark integration with train_mmrkhs.py | Choi2025 envs confirmed TorchRL-native; train_ppo.py pattern ready to mirror |
 | OTPG-06 | Checkpoint save/load following PPOTrainer pattern | PPOTrainer checkpoint pattern documented with atomic saves |
 </phase_requirements>
 
@@ -73,7 +73,7 @@ The key finding is that the project already has TorchRL-native environments (Cho
 | gymnasium[mujoco] | Same as above |
 | dm_control | Not installed; DMControlEnv raises import error |
 | mujoco | Not installed |
-| benchmarl | Multi-agent only; not suitable for single-agent OTPG |
+| benchmarl | Multi-agent only; not suitable for single-agent MM-RKHS |
 | gym (OpenAI) | Deprecated predecessor to gymnasium |
 
 **Installation:** None required. The existing environment has everything needed.
@@ -164,7 +164,7 @@ from src.networks.critic import create_critic
 # GAE reads: ["state_value", "reward", "done"]
 # GAE writes: ["advantage", "value_target"]
 
-# For OTPG _update(), access log prob from collected batch:
+# For MM-RKHS _update(), access log prob from collected batch:
 log_prob_old = mb["action_log_prob"]  # NOT "sample_log_prob"
 
 # To compute new log prob during update:
@@ -302,7 +302,7 @@ class SimplePendulum(EnvBase):
 BenchMARL (Facebook Research) is built on TorchRL but is **exclusively multi-agent**:
 - Supports: VMAS, SMACv2, MPE, SISL, MeltingPot, MAgent2
 - Algorithms: MAPPO, IPPO, MADDPG, IDDPG, MASAC, ISAC, QMIX, VDN, IQL
-- NOT suitable for single-agent OTPG benchmarking
+- NOT suitable for single-agent MM-RKHS benchmarking
 - Cannot be used with Choi2025 environments (single-agent)
 
 ## Don't Hand-Roll
@@ -320,8 +320,8 @@ BenchMARL (Facebook Research) is built on TorchRL but is **exclusively multi-age
 ## Common Pitfalls
 
 ### Pitfall 1: Wrong Log Prob Key Name
-**What goes wrong:** OTPG trainer accesses `batch["sample_log_prob"]` for the old policy log probability, causing a KeyError.
-**Why it happens:** The existing 15-RESEARCH.md and 15-01-PLAN.md incorrectly use `sample_log_prob`. TorchRL's `ClipPPOLoss` internally maps `sample_log_prob -> action_log_prob`, hiding this from PPO users. The OTPG trainer accesses batch keys directly.
+**What goes wrong:** MM-RKHS trainer accesses `batch["sample_log_prob"]` for the old policy log probability, causing a KeyError.
+**Why it happens:** The existing 15-RESEARCH.md and 15-01-PLAN.md incorrectly use `sample_log_prob`. TorchRL's `ClipPPOLoss` internally maps `sample_log_prob -> action_log_prob`, hiding this from PPO users. The MM-RKHS trainer accesses batch keys directly.
 **How to avoid:** Use `batch["action_log_prob"]` or `mb["action_log_prob"]`. Verified empirically: `create_actor()` with `return_log_prob=True` outputs `action_log_prob` key.
 **Warning signs:** `KeyError: 'sample_log_prob'` during first training batch.
 
@@ -408,7 +408,7 @@ for batch in collector:
     with torch.no_grad():
         gae(batch)
 
-    # OTPG-specific: access log probs for importance ratio
+    # MM-RKHS-specific: access log probs for importance ratio
     log_prob_old = batch["action_log_prob"]  # CORRECT key name
 
     # For each mini-batch in _update():
@@ -460,7 +460,7 @@ collector = SyncDataCollector(
 
 ## Open Questions
 
-1. **Computing new log_prob during OTPG update**
+1. **Computing new log_prob during MM-RKHS update**
    - What we know: The batch stores `action_log_prob` from the policy that collected the data. For importance ratio, we need log_prob under the *current* (updated) policy.
    - What's unclear: The cleanest way to compute new log_prob during _update() mini-batch processing. Options: (a) re-forward the actor module on mini-batch and read `action_log_prob`, (b) manually build the TanhNormal distribution from `loc`/`scale` and call `log_prob(action)`.
    - Recommendation: Use approach (a) -- `td_fwd = actor(mb.clone()); log_prob_new = td_fwd["action_log_prob"]` -- because `create_actor()` handles all the TanhNormal parameterization correctly. Do NOT manually construct TanhNormal; let the existing infrastructure handle it.
@@ -473,14 +473,14 @@ collector = SyncDataCollector(
 3. **SimplePendulum as development smoke test**
    - What we know: SimplePendulum passes check_env_specs and works with the full pipeline.
    - What's unclear: Whether it's worth including in the test suite or only using during development.
-   - Recommendation: Include SimplePendulum in `tests/test_otpg.py` for fast unit tests (3-dim obs, 1-dim action, ~30 second training). Use Choi2025 for actual benchmark validation (OTPG-05).
+   - Recommendation: Include SimplePendulum in `tests/test_mmrkhs.py` for fast unit tests (3-dim obs, 1-dim action, ~30 second training). Use Choi2025 for actual benchmark validation (OTPG-05).
 
 ## Benchmark Validation Strategy (TorchRL-Native Only)
 
 ### Primary: Choi2025 4-Task Suite
 The user's locked decision is to benchmark on Choi2025 only. This is already TorchRL-native.
 
-| Task | Obs Dim | Act Dim | Act Range | Phase 14 PPO | Phase 14 SAC | OTPG Target |
+| Task | Obs Dim | Act Dim | Act Range | Phase 14 PPO | Phase 14 SAC | MM-RKHS Target |
 |------|---------|---------|-----------|-------------|-------------|-------------|
 | follow_target | 148 (3D) / ~80 (2D) | 10 (3D) / 5 (2D) | [-1, 1] | Inconclusive (short run) | Learning signal confirmed | Any improvement over random |
 | inverse_kinematics | 151 (3D) | 10 (3D) / 5 (2D) | [-1, 1] | Inconclusive | Learning signal confirmed | Any improvement over random |
@@ -501,7 +501,7 @@ The user's locked decision is to benchmark on Choi2025 only. This is already Tor
 | Dependencies | None (pure TorchRL EnvBase) |
 
 ### Validation Protocol
-1. **Unit tests (SimplePendulum):** OTPGTrainer initializes, _update() produces finite losses, MMD computes without NaN, checkpoint save/load round-trips. All in `tests/test_otpg.py`.
+1. **Unit tests (SimplePendulum):** MMRKHSTrainer initializes, _update() produces finite losses, MMD computes without NaN, checkpoint save/load round-trips. All in `tests/test_mmrkhs.py`.
 2. **Smoke test (SimplePendulum):** 10K-frame training run, verify reward improves from random baseline. ~30 seconds.
 3. **Benchmark validation (Choi2025):** 100K-frame training on follow_target, verify learning signal. ~15 minutes.
 4. **Full benchmark (Choi2025):** 100K frames on all 4 tasks, compare with Phase 14 PPO/SAC. 4 runs total.
@@ -513,26 +513,26 @@ The user's locked decision is to benchmark on Choi2025 only. This is already Tor
 |----------|-------|
 | Framework | pytest |
 | Config file | none (pytest defaults) |
-| Quick run command | `python3 -m pytest tests/test_otpg.py -x` |
+| Quick run command | `python3 -m pytest tests/test_mmrkhs.py -x` |
 | Full suite command | `python3 -m pytest tests/ -x` |
 
 ### Phase Requirements -> Test Map
 | Req ID | Behavior | Test Type | Automated Command | File Exists? |
 |--------|----------|-----------|-------------------|-------------|
-| OTPG-01 | OTPGConfig dataclass validates and inherits RLConfig | unit | `python3 -m pytest tests/test_otpg.py::test_config -x` | Wave 0 |
-| OTPG-02 | OTPGTrainer initializes with SimplePendulum env | unit | `python3 -m pytest tests/test_otpg.py::test_trainer_init -x` | Wave 0 |
-| OTPG-03 | MMD penalty computes without NaN, returns finite scalar | unit | `python3 -m pytest tests/test_otpg.py::test_mmd_penalty -x` | Wave 0 |
-| OTPG-04 | _update() produces finite loss values, uses action_log_prob | unit | `python3 -m pytest tests/test_otpg.py::test_update_step -x` | Wave 0 |
-| OTPG-05 | Short training run on SimplePendulum completes without crash | smoke | `python3 -m pytest tests/test_otpg.py::test_short_training -x` | Wave 0 |
-| OTPG-06 | Checkpoint save/load round-trip preserves state | unit | `python3 -m pytest tests/test_otpg.py::test_checkpoint -x` | Wave 0 |
+| OTPG-01 | MMRKHSConfig dataclass validates and inherits RLConfig | unit | `python3 -m pytest tests/test_mmrkhs.py::test_config -x` | Wave 0 |
+| OTPG-02 | MMRKHSTrainer initializes with SimplePendulum env | unit | `python3 -m pytest tests/test_mmrkhs.py::test_trainer_init -x` | Wave 0 |
+| OTPG-03 | MMD penalty computes without NaN, returns finite scalar | unit | `python3 -m pytest tests/test_mmrkhs.py::test_mmd_penalty -x` | Wave 0 |
+| OTPG-04 | _update() produces finite loss values, uses action_log_prob | unit | `python3 -m pytest tests/test_mmrkhs.py::test_update_step -x` | Wave 0 |
+| OTPG-05 | Short training run on SimplePendulum completes without crash | smoke | `python3 -m pytest tests/test_mmrkhs.py::test_short_training -x` | Wave 0 |
+| OTPG-06 | Checkpoint save/load round-trip preserves state | unit | `python3 -m pytest tests/test_mmrkhs.py::test_checkpoint -x` | Wave 0 |
 
 ### Sampling Rate
-- **Per task commit:** `python3 -m pytest tests/test_otpg.py -x`
+- **Per task commit:** `python3 -m pytest tests/test_mmrkhs.py -x`
 - **Per wave merge:** `python3 -m pytest tests/ -x`
 - **Phase gate:** Full suite green before `/gsd:verify-work`
 
 ### Wave 0 Gaps
-- [ ] `tests/test_otpg.py` -- covers OTPG-01 through OTPG-06, uses SimplePendulum for fast tests
+- [ ] `tests/test_mmrkhs.py` -- covers OTPG-01 through OTPG-06, uses SimplePendulum for fast tests
 - [ ] Framework install: pytest already available
 
 ## Sources
@@ -562,7 +562,7 @@ The user's locked decision is to benchmark on Choi2025 only. This is already Tor
 
 **Confidence breakdown:**
 - TorchRL native environment compatibility: HIGH -- empirically verified end-to-end
-- Log prob key correction: HIGH -- empirically verified, critical for OTPG implementation
+- Log prob key correction: HIGH -- empirically verified, critical for MM-RKHS implementation
 - BenchMARL assessment: HIGH -- confirmed multi-agent only from official docs
 - SimplePendulum as smoke test: HIGH -- passes check_env_specs, full pipeline verified
 - Choi2025 benchmark strategy: HIGH -- already working from Phase 14

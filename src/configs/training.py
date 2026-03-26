@@ -113,8 +113,8 @@ class PPOConfig(RLConfig):
 
 
 @dataclass
-class OTPGConfig(RLConfig):
-    """Operator-Theoretic Policy Gradient configuration.
+class MMRKHSConfig(RLConfig):
+    """MM-RKHS configuration (Gupta & Mahajan, 2026).
 
     Based on MM-RKHS algorithm (Gupta & Mahajan, 2026, arXiv:2603.17875).
     Adapts the majorization-minimization framework to continuous action
@@ -182,6 +182,7 @@ class SACConfig(RLConfig):
     # Actor
     actor_lr: float = 3e-4
     actor_update_frequency: int = 2  # Update actor every N critic updates
+    actor_max_grad_norm: Optional[float] = None  # Separate actor grad clip (None = use max_grad_norm)
 
 
 @dataclass

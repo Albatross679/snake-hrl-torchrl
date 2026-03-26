@@ -64,14 +64,14 @@ Requirements for initial release. Each maps to roadmap phases.
 - [x] **CHOI-06**: Video rollouts — 1-2 episode videos per task from best SAC and PPO checkpoints, saved to `media/choi2025/`
 - [x] **CHOI-07**: Results documentation — comprehensive experiment report with learning signal assessment (reward improves over training) for all 8 runs
 
-### OTPG Operator-Theoretic Policy Gradient (Phase 15)
+### MM-RKHS Operator-Theoretic Policy Gradient (Phase 15)
 
-- [x] **OTPG-01**: OTPGConfig dataclass — `OTPGConfig(RLConfig)` with beta=1.0, eta=1.0, mmd_bandwidth=1.0, mmd_num_samples=16, gae_lambda=0.95, value_coef=0.5; no entropy_coef or clip_epsilon
-- [x] **OTPG-02**: OTPGTrainer class — follows PPOTrainer pattern (`__init__`/`train()`/`_update()`), creates actor via `create_actor()`, critic via `create_critic()`, single Adam optimizer, GAE, SyncDataCollector
-- [x] **OTPG-03**: MMD penalty computation — RBF kernel with linear-time unbiased estimator (O(n)), configurable bandwidth and sample count, returns finite non-negative scalar
-- [x] **OTPG-04**: MM-RKHS loss function — `loss = -E[ratio*A] + beta*MMD^2 + (1/eta)*KL + value_coef*critic_loss`; log-ratio clamped [-20,20], advantage normalized, NaN guards
-- [x] **OTPG-05**: Choi2025 benchmark integration — `Choi2025OTPGConfig(OTPGConfig)` + `train_otpg.py` entry point; 100K-frame quick validation on follow_target completes without crash
-- [x] **OTPG-06**: Checkpoint save/load — atomic saves with backup, round-trip restores actor/critic/optimizer state; follows PPOTrainer checkpoint pattern
+- [x] **MMRKHS-01**: MMRKHSConfig dataclass — `MMRKHSConfig(RLConfig)` with beta=1.0, eta=1.0, mmd_bandwidth=1.0, mmd_num_samples=16, gae_lambda=0.95, value_coef=0.5; no entropy_coef or clip_epsilon
+- [x] **MMRKHS-02**: MMRKHSTrainer class — follows PPOTrainer pattern (`__init__`/`train()`/`_update()`), creates actor via `create_actor()`, critic via `create_critic()`, single Adam optimizer, GAE, SyncDataCollector
+- [x] **MMRKHS-03**: MMD penalty computation — RBF kernel with linear-time unbiased estimator (O(n)), configurable bandwidth and sample count, returns finite non-negative scalar
+- [x] **MMRKHS-04**: MM-RKHS loss function — `loss = -E[ratio*A] + beta*MMD^2 + (1/eta)*KL + value_coef*critic_loss`; log-ratio clamped [-20,20], advantage normalized, NaN guards
+- [x] **MMRKHS-05**: Choi2025 benchmark integration — `Choi2025MMRKHSConfig(MMRKHSConfig)` + `train_mmrkhs.py` entry point; 100K-frame quick validation on follow_target completes without crash
+- [x] **MMRKHS-06**: Checkpoint save/load — atomic saves with backup, round-trip restores actor/critic/optimizer state; follows PPOTrainer checkpoint pattern
 
 ## v2 Requirements
 
@@ -131,12 +131,12 @@ Deferred to future release. Tracked but not in current roadmap.
 | CHOI-05 | Phase 14 | Complete |
 | CHOI-06 | Phase 14 | Complete |
 | CHOI-07 | Phase 14 | Complete |
-| OTPG-01 | Phase 15 | Planned |
-| OTPG-02 | Phase 15 | Planned |
-| OTPG-03 | Phase 15 | Planned |
-| OTPG-04 | Phase 15 | Planned |
-| OTPG-05 | Phase 15 | Planned |
-| OTPG-06 | Phase 15 | Planned |
+| MMRKHS-01 | Phase 15 | Planned |
+| MMRKHS-02 | Phase 15 | Planned |
+| MMRKHS-03 | Phase 15 | Planned |
+| MMRKHS-04 | Phase 15 | Planned |
+| MMRKHS-05 | Phase 15 | Planned |
+| MMRKHS-06 | Phase 15 | Planned |
 
 **Coverage:**
 - v1 requirements: 41 total
@@ -145,4 +145,4 @@ Deferred to future release. Tracked but not in current roadmap.
 
 ---
 *Requirements defined: 2026-03-09*
-*Last updated: 2026-03-19 — added Phase 15 OTPG requirements (OTPG-01 through OTPG-06)*
+*Last updated: 2026-03-19 — added Phase 15 MM-RKHS requirements (MMRKHS-01 through MMRKHS-06)*

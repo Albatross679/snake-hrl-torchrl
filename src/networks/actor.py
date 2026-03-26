@@ -121,6 +121,13 @@ class ActorNetwork(nn.Module):
         """
         features = self.mlp(obs)
         mean = self.mean_head(features)
+
+        # Clamp pre-tanh mean to prevent TanhNormal saturation.
+        # Without entropy regularization (alpha=0), the mean drifts unboundedly,
+        # causing tanh to saturate and log_prob → -inf. tanh(5)=0.9999 preserves
+        # full action range while preventing catastrophic saturation.
+        mean = torch.clamp(mean, -5.0, 5.0)
+
         log_std = self.log_std_head(features)
 
         # Clamp log_std and convert to std

@@ -1,0 +1,642 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MM-RKHS Algorithm: Paper vs Implementation</title>
+
+<!-- MathJax 3 for LaTeX rendering -->
+<script>
+MathJax = {
+  tex: {
+    inlineMath: [['$', '$']],
+    displayMath: [['$$', '$$']],
+  },
+  svg: { fontCache: 'global' },
+  startup: { typeset: true }
+};
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js" async></script>
+
+<style>
+  :root {
+    --bg: #f5f5f0;
+    --surface: #ffffff;
+    --border: #d4d4d0;
+    --text: #2d2d2d;
+    --text-muted: #6b7280;
+    --accent: #1a56db;
+    --green: #166534;
+    --red: #b91c1c;
+    --orange: #92400e;
+    --purple: #6d28d9;
+    --cyan: #0e7490;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.7;
+    padding: 2rem;
+    max-width: 1200px;
+    margin: 0 auto;
+  }
+
+  h1 { font-size: 1.8rem; margin-bottom: 0.25rem; color: var(--accent); }
+  h2 {
+    font-size: 1.3rem; margin: 2.5rem 0 1rem; color: var(--purple);
+    border-bottom: 1px solid var(--border); padding-bottom: 0.4rem;
+  }
+  h3 { font-size: 1.05rem; margin: 1.5rem 0 0.5rem; color: var(--cyan); }
+
+  .subtitle { color: var(--text-muted); font-size: 0.95rem; margin-bottom: 2rem; }
+
+  .eq-box {
+    background: #eeeee8; border: 1px solid var(--border); border-radius: 8px;
+    padding: 1.2rem 1.5rem; margin: 1rem 0; text-align: center;
+    overflow-x: auto;
+  }
+  .eq-box .label {
+    color: var(--text-muted); font-size: 0.8rem; display: block;
+    text-align: right; margin-top: 0.5rem;
+  }
+
+  table {
+    width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: 0.9rem;
+  }
+  th, td { padding: 0.7rem 1rem; border: 1px solid var(--border); text-align: left; vertical-align: top; }
+  th { background: #eeeee8; font-weight: 600; }
+  td { background: var(--surface); }
+  tr:hover td { background: #f0f0ea; }
+
+  .tag {
+    display: inline-block; padding: 0.15rem 0.5rem; border-radius: 4px;
+    font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em;
+  }
+  .tag-match { background: #dcfce7; color: var(--green); }
+  .tag-differ { background: #fee2e2; color: var(--red); }
+  .tag-approx { background: #fef3c7; color: var(--orange); }
+
+  .code {
+    font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace; font-size: 0.85rem;
+    background: #eeeee8; padding: 0.15rem 0.4rem; border-radius: 3px; color: var(--cyan);
+  }
+  .code-block {
+    font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace; font-size: 0.82rem;
+    background: #eeeee8; border: 1px solid var(--border); border-radius: 6px;
+    padding: 1rem 1.2rem; margin: 0.8rem 0; overflow-x: auto; line-height: 1.5;
+    white-space: pre; color: var(--text);
+  }
+
+  p { margin: 0.5rem 0; }
+
+  .assumptions-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 1rem 0; }
+  .assumption-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; padding: 1rem 1.2rem;
+  }
+  .assumption-card h4 { font-size: 0.9rem; color: var(--orange); margin-bottom: 0.4rem; }
+  .assumption-card p { font-size: 0.85rem; color: var(--text-muted); }
+
+  .verdict-box {
+    background: #ede9fe; border: 1px solid #c4b5fd; border-radius: 8px;
+    padding: 1.2rem 1.5rem; margin: 1.5rem 0;
+  }
+  .verdict-box h3 { color: var(--purple); margin-top: 0; }
+
+  ul { margin: 0.3rem 0 0.3rem 1.3rem; }
+  li { margin: 0.2rem 0; font-size: 0.9rem; }
+
+  .section-note {
+    background: var(--surface); border-left: 3px solid var(--accent);
+    padding: 0.8rem 1.2rem; margin: 1rem 0; font-size: 0.9rem; border-radius: 0 6px 6px 0;
+  }
+
+  .footer {
+    margin-top: 3rem; padding-top: 1.5rem; border-top: 1px solid var(--border);
+    color: var(--text-muted); font-size: 0.8rem;
+  }
+
+  mjx-container svg { color: var(--text) !important; }
+  mjx-container { color: var(--text) !important; }
+</style>
+</head>
+<body>
+
+<h1>MM-RKHS Algorithm: Paper vs TorchRL Implementation</h1>
+<p class="subtitle">
+  Gupta &amp; Mahajan (2026, arXiv:2603.17875) &sect;6.4&ndash;6.5 compared with
+  <span class="code">src/trainers/mmrkhs.py</span> &mdash; <span class="code">MMRKHSTrainer</span>
+</p>
+
+<!-- ============================================================ -->
+<h2>1. Paper's Algorithm (Eq 6.2 &amp; 6.3)</h2>
+
+<p>The paper derives a majorization-minimization policy update for <strong>finite MDPs</strong> under RKHS. The core objective is:</p>
+
+<div class="eq-box">
+  $$\pi_{k+1}(s) = \underset{p \in \mathcal{P}(\mathcal{A})}{\arg\min} \left[ A_{\pi_k}(s, \cdot)^\top p \;+\; \beta_k \, \mathrm{IPM}^2_{\mathfrak{F}_{\mathcal{A}(s)}}(\pi_k(s),\, p) \;+\; \frac{1}{\eta_k} D_{\mathrm{KL}}(p \,\|\, \pi_k(s)) \right]$$
+  <span class="label">Eq (6.2)</span>
+</div>
+
+<p>Solved in closed form for finite action sets:</p>
+
+<div class="eq-box">
+  $$[\pi_{k+1}(s)]_a = \frac{1}{Z(\pi_k)} [\pi_k(s)]_a \exp\!\Big(-\eta_k \big( A_{\pi_k}(s,a) - \beta_k\, R_a^\top \pi_k(s) \big)\Big)$$
+  <span class="label">Eq (6.3) &mdash; closed-form MM-RKHS update</span>
+</div>
+
+<div class="eq-box">
+  $$Z(\pi_k) = \sum_{a \in \mathcal{A}} [\pi_k(s)]_a \exp\!\Big(-\eta_k \big( A_{\pi_k}(s,a) - \beta_k\, R_a^\top \pi_k(s) \big)\Big)$$
+  <span class="label">Normalizing constant</span>
+</div>
+
+<!-- ============================================================ -->
+<h2>2. Our Implementation's Loss</h2>
+
+<div class="eq-box">
+  $$L(\theta) = -\mathbb{E}\!\left[\rho_t \hat{A}_t\right] + \beta \cdot \widehat{\mathrm{MMD}}^2(\pi_\theta, \pi_{\theta_k}) + \frac{1}{\eta} D_{\mathrm{KL}}(\pi_{\theta_k} \| \pi_\theta) + c_V \cdot L^V$$
+  <span class="label">Combined MM-RKHS loss &mdash; <span class="code">mmrkhs.py</span> lines 652&ndash;659</span>
+</div>
+
+<p>where $\rho_t = \pi_\theta(a_t|s_t) / \pi_{\theta_k}(a_t|s_t)$ is the importance ratio,
+$\hat{A}_t$ is the GAE advantage estimate,
+$\widehat{\mathrm{MMD}}^2$ is the sampled RBF kernel MMD estimator,
+and $L^V = \mathrm{MSE}(V_\phi(s_t), \hat{R}_t)$ is the critic loss.</p>
+
+<div class="code-block"># mmrkhs.py lines 652-659
+total_loss = (
+    -surr_advantage.mean()                    # -E[rho * A]
+    + self.config.beta * mmd                  # + beta * MMD^2
+    + (1.0 / self.config.eta) * kl            # + (1/eta) * KL
+    + self.config.value_coef * critic_loss    # + c_v * MSE(V, R_hat)
+)</div>
+
+<p>Optimized via minibatch SGD with Adam over neural network parameters $\theta$ (actor + critic).</p>
+
+<!-- ============================================================ -->
+<h2>3. Paper's Assumptions &amp; How Our Implementation Departs</h2>
+
+<p>The paper builds on a chain of eight assumptions (plus structural prerequisites) that together guarantee the existence of an optimal policy, convergence of value iteration, the policy difference lemma, the majorization bound, and finally the closed-form MM-RKHS update. Below we list each assumption, what it requires, and precisely why our continuous-control implementation cannot satisfy it.</p>
+
+<table>
+  <thead>
+    <tr>
+      <th style="width:18%">Assumption</th>
+      <th style="width:32%">What the paper requires</th>
+      <th style="width:10%">Status</th>
+      <th style="width:40%">Why our implementation cannot match it</th>
+    </tr>
+  </thead>
+  <tbody>
+    <!-- Assumption 1 -->
+    <tr>
+      <td><strong>Assumption 1</strong><br><em>Well-posedness</em></td>
+      <td>
+        The initial state distribution $\rho \in \mathcal{P}_{\mathsf{w}_\mathcal{S}}(\mathcal{S})$. The cost function $c \in \mathcal{Q}$ is non-negative and inf-compact on $\mathcal{K}$.
+        <br><br>
+        This ensures the Bellman operator is well-defined and the cost has finite sublevel sets, so minimizers exist.
+      </td>
+      <td><span class="tag tag-approx">partial</span></td>
+      <td>
+        Our reward function (negative of cost) is a hand-designed shaped reward that is bounded and continuous, so the non-negativity and inf-compactness conditions are plausibly satisfied. However, we never verify that $c \in \mathcal{Q}$ (the structured space of quadratic-and-affine functions) &mdash; our reward is a nonlinear composition of distances, angles, and exponentials that does not lie in any analytically tractable $\mathcal{Q}$.
+      </td>
+    </tr>
+    <!-- Assumption 2 -->
+    <tr>
+      <td><strong>Assumption 2</strong><br><em>Nonempty $\Pi_\mathrm{stable}$</em></td>
+      <td>
+        The set of stable policies $\Pi_\mathrm{stable} = \Pi_\mathrm{ss} \cup \Pi_\mathrm{decay}$ is nonempty, where $\Pi_\mathrm{ss} = \{\pi : \mathrm{spec}(\gamma \boldsymbol{P}_\pi) < 1\}$ (spectrally stable) and $\Pi_\mathrm{decay}$ are decaying cost policies.
+        <br><br>
+        Required for the value function $v_\pi$ to exist and lie in $\mathcal{F}_\mathcal{S}$ (Theorem 3.8).
+      </td>
+      <td><span class="tag tag-differ">unverifiable</span></td>
+      <td>
+        In continuous MDPs with neural network policies, the transition operator $\boldsymbol{P}_\pi$ is infinite-dimensional. Computing its spectral radius $\mathrm{spec}(\gamma \boldsymbol{P}_\pi)$ is intractable &mdash; it would require the full transition kernel $P(s'|s,a)$, which is unknown (physics simulation is a black box). We cannot verify whether any policy in our parameterized family is spectrally stable.
+      </td>
+    </tr>
+    <!-- Assumption 3 -->
+    <tr>
+      <td><strong>Assumption 3</strong><br><em>Compatibility of operators and linear spaces</em></td>
+      <td>
+        $\boldsymbol{P}\mathcal{V} \subset \mathcal{Q}$ and $\boldsymbol{\pi}\mathcal{Q} \subset \mathcal{V}$ for all $\pi \in \Pi$.
+        <br><br>
+        Ensures that applying the transition operator to value functions stays in the structured space $\mathcal{Q}$, and applying the policy operator to Q-functions stays in $\mathcal{V}$. This makes value iteration well-defined within the structured spaces.
+      </td>
+      <td><span class="tag tag-differ">violated</span></td>
+      <td>
+        Our value function is a neural network $V_\phi : \mathbb{R}^{d_s} \to \mathbb{R}$, which does not belong to any analytically defined $\mathcal{V}$. Applying the (unknown) transition operator $\boldsymbol{P}$ to $V_\phi$ produces an arbitrary function of $(s,a)$ that has no reason to lie in a structured $\mathcal{Q}$. The closure properties that make the paper's operator-theoretic framework work require algebraic structure (e.g., quadratics closed under linear transformations in LQR) that neural networks do not provide.
+      </td>
+    </tr>
+    <!-- Assumption 4 -->
+    <tr>
+      <td><strong>Assumption 4</strong><br><em>Structured selectors</em></td>
+      <td>
+        For every $q \in \mathcal{Q}$ such that $q$ is inf-compact, there exists $\pi \in \Pi$ such that
+        $$\pi(s) \in \underset{p \in \mathcal{P}(\mathcal{K}(s))}{\arg\min} \int q(s,a)\, p(da).$$
+        This guarantees that the greedy policy with respect to any Q-function in $\mathcal{Q}$ exists and lies in the policy class $\Pi$.
+      </td>
+      <td><span class="tag tag-differ">violated</span></td>
+      <td>
+        Our policy class $\Pi$ is the set of TanhNormal distributions parameterizable by a fixed-architecture MLP. This is a tiny subset of all stochastic policies. The greedy policy $\arg\min_p \int q\, dp$ for an arbitrary $q$ is generally <em>not</em> a TanhNormal distribution &mdash; it could be multimodal, have sharp cutoffs, or require an architecture the network cannot represent. The paper's finite MDP satisfies this trivially because $\Pi$ contains all measurable policies (Lemma 6.2).
+      </td>
+    </tr>
+    <!-- Assumption 5 -->
+    <tr>
+      <td><strong>Assumption 5</strong><br><em>Closed under bounded increasing limits</em></td>
+      <td>
+        $\mathcal{V}$ is closed under bounded increasing limits: if $\{v_k\} \subset \mathcal{V}$ with $v_0 \le v_1 \le \cdots$ and $\sup_k \|v_k\|_{\mathcal{F}_\mathcal{S}} < \infty$, then $\lim_k v_k \in \mathcal{V}$.
+        <br><br>
+        Required for value iteration to converge to a limit <em>within</em> $\mathcal{V}$ (Theorem 4.1).
+      </td>
+      <td><span class="tag tag-differ">not applicable</span></td>
+      <td>
+        We do not perform value iteration over a structured space $\mathcal{V}$. Our critic $V_\phi$ is trained by regressing onto GAE targets via MSE loss &mdash; a completely different procedure. The limit of a sequence of neural networks under SGD has no guaranteed relationship to $\mathcal{V}$. This assumption is specific to the paper's operator-theoretic value iteration proof and has no analog in our gradient-based framework.
+      </td>
+    </tr>
+    <!-- Assumption 6 -->
+    <tr>
+      <td><strong>Assumption 6</strong><br><em>Continuity of transition kernel</em></td>
+      <td>
+        $P$ is continuous with respect to $\mathrm{IPM}_{\mathfrak{F}_\mathcal{V}}$: for every sequence $(s_n, a_n) \to (s,a)$ in $\mathcal{K}$,
+        $$\lim_{n \to \infty} \mathrm{IPM}_{\mathfrak{F}_\mathcal{V}}(P(\cdot|s,a),\, P(\cdot|s_n, a_n)) = 0.$$
+        Ensures $\boldsymbol{P}v$ is a continuous function when $v \in \mathcal{V}$, needed for the Bellman operator to preserve structure.
+      </td>
+      <td><span class="tag tag-differ">unverifiable</span></td>
+      <td>
+        Our transition kernel is a DisMech physics simulator &mdash; a black-box numerical PDE solver. We have no analytical expression for $P(s'|s,a)$ and cannot verify continuity in any IPM. Physics simulators can exhibit discontinuities (contact events, numerical solver failures, bifurcations), and the IPM continuity condition requires the specific generator set $\mathfrak{F}_\mathcal{V}$, which is undefined for neural network value functions.
+      </td>
+    </tr>
+    <!-- Assumption 7 -->
+    <tr>
+      <td><strong>Assumption 7</strong><br><em>Bounded transition operator</em></td>
+      <td>
+        $\exists\, \kappa_{\boldsymbol{P}} > 0$ such that $\varrho_{\mathfrak{F}_\mathcal{Q}}(\boldsymbol{P}v) \le \kappa_{\boldsymbol{P}} \|v\|_{\mathcal{F}_\mathcal{S}}$ for all $v \in \mathcal{V}$.
+        <br><br>
+        Bounds how much the transition operator $\boldsymbol{P}$ can amplify the Minskowski functional of functions in $\mathcal{V}$. This constant $\kappa_{\boldsymbol{P}}$ directly enters the majorization bound (Lemma 5.8) and determines the $\beta$ coefficient in Eq 6.1.
+      </td>
+      <td><span class="tag tag-differ">unverifiable</span></td>
+      <td>
+        Computing $\kappa_{\boldsymbol{P}}$ requires knowing the transition operator $\boldsymbol{P}$ analytically and bounding its effect on the structured space $\mathcal{V}$. With a black-box physics simulator, neither $\boldsymbol{P}$ nor $\mathcal{V}$ is available. The paper computes $\kappa_{\boldsymbol{P}} = 2(\|A\|_2^2 + \|B\|_2^2)\|Q\|_2$ for LQR using known system matrices &mdash; we have no equivalent. Our $\beta = 1.0$ is a hand-tuned constant with no theoretical justification from the majorization bound.
+      </td>
+    </tr>
+    <!-- Assumption 8 -->
+    <tr>
+      <td><strong>Assumption 8</strong><br><em>Interchange of integral and minimization</em></td>
+      <td>
+        $\mathcal{Q}$ and $\Pi$ enjoy the interchange property (Def 6.1): for any inf-compact $q \in \mathcal{Q}$ and $\xi \in \mathcal{P}_{\mathsf{w}_\mathcal{S}}(\mathcal{S})$,
+        $$\underset{\pi \in \Pi}{\arg\min} \int q(s, \pi(s))\, \xi(ds) \;\Longleftrightarrow\; \pi^*(s) \in \underset{a \in \mathcal{K}(s)}{\arg\min}\, q(s,a) \;\; \text{for } \xi\text{-a.e. } s.$$
+        Allows pushing the global policy optimization inside the integral to solve per-state.
+      </td>
+      <td><span class="tag tag-differ">violated</span></td>
+      <td>
+        This property requires that the global optimum over policies decomposes into independent per-state optima. With a neural network policy $\pi_\theta$, optimizing $\theta$ affects the policy at <em>all</em> states simultaneously &mdash; the parameters are shared. There is no way to set $\pi_\theta(\cdot|s_1)$ and $\pi_\theta(\cdot|s_2)$ independently because they share the same weights. The interchange property holds trivially for tabular policies (Lemma 6.2) but fails fundamentally for parameterized function approximators.
+      </td>
+    </tr>
+    <!-- Finite MDP prerequisite -->
+    <tr>
+      <td><strong>Finite MDP</strong><br><em>&sect;6.4 prerequisite</em></td>
+      <td>
+        $|\mathcal{S}| = n$, $|\mathcal{A}| = m$ both finite. $\mathsf{w}_\mathcal{S} \equiv 1$, $\mathsf{w}_\mathcal{K} \equiv 1$.
+        Policies are vectors $\pi(s) \in \mathcal{P}(\mathcal{A})$ (the simplex in $m$ dimensions).
+        RKHS kernel defined by PD matrices $Q \in \mathbb{R}^{n \times n}$, $R \in \mathbb{R}^{m \times m}$.
+        <br><br>
+        Required for the closed-form solution Eq (6.3): the normalizer $Z$ is a finite sum, the update is a vector operation, and $\mathrm{IPM}^2$ is a quadratic form $p^\top R p$.
+      </td>
+      <td><span class="tag tag-differ">violated</span></td>
+      <td>
+        Our MDP has continuous $\mathcal{S} = \mathbb{R}^{d_s}$ and continuous $\mathcal{A} = [-1,1]^{d_a}$. The normalizer $Z$ becomes an intractable integral. The RKHS kernel matrix $R \in \mathbb{R}^{m \times m}$ cannot exist when $m = |\mathcal{A}| = \infty$ (uncountable action space). The quadratic form $p^\top R p$ has no finite-dimensional analog. Policies cannot be stored as probability vectors &mdash; they must be parameterized as distributions (TanhNormal).
+      </td>
+    </tr>
+    <!-- Known model -->
+    <tr>
+      <td><strong>Known model</strong><br><em>&sect;6.5 prerequisite</em></td>
+      <td>
+        The deterministic algorithm requires exact transition kernel $P(s'|s,a)$ and cost $c(s,a)$ to compute exact advantages $A_{\pi_k}(s,a)$. The simulation-based variant (Remark 6.3) approximates $\langle \pi' q_k, \sigma^*_{\pi_k} \rho \rangle$ via trajectory sampling with geometric episode lengths.
+      </td>
+      <td><span class="tag tag-differ">violated</span></td>
+      <td>
+        Our environment is a black-box DisMech physics simulator. We have no access to $P(s'|s,a)$ and cannot compute exact $A_{\pi_k}(s,a)$. We estimate advantages via GAE($\lambda\!=\!0.95$) using a learned critic $V_\phi$, introducing both bias (critic approximation error, $\mathbb{E}[\hat{A}] \ne A$) and variance (finite trajectory samples, stochastic minibatching).
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="section-note">
+  <strong>Summary:</strong> Of the 8 formal assumptions plus 2 structural prerequisites, our implementation can partially satisfy only Assumption 1 (well-posed cost). Assumptions 2, 6, and 7 are <em>unverifiable</em> due to the black-box physics simulator. Assumptions 3, 4, 5, and 8 are <em>violated</em> by the use of neural network function approximation. The finite MDP and known model prerequisites are <em>violated</em> by the continuous state-action space. These violations are not implementation shortcuts &mdash; they are fundamental incompatibilities between the paper's operator-theoretic framework and the deep RL setting.
+</div>
+
+<!-- ============================================================ -->
+<h2>4. Component-by-Component Comparison</h2>
+
+<table>
+  <thead>
+    <tr>
+      <th style="width:18%">Component</th>
+      <th style="width:41%">Paper (&sect;6.4, Eq 6.2&ndash;6.3)</th>
+      <th style="width:41%">Our Implementation (<span class="code">MMRKHSTrainer</span>)</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>MDP setting</strong><br><span class="tag tag-differ">differs</span></td>
+      <td>Finite tabular MDP: $|\mathcal{S}| = n,\; |\mathcal{A}| = m$.<br>&sect;6.5 experiments: 1000 states, 100 actions (GARNET).</td>
+      <td>Continuous state/action MDP.<br>Soft manipulator: $s \in \mathbb{R}^{d_s}$, $a \in [-1,1]^{d_a}$.</td>
+    </tr>
+    <tr>
+      <td><strong>Policy representation</strong><br><span class="tag tag-differ">differs</span></td>
+      <td>Probability vector $\pi(s) \in \mathcal{P}(\mathcal{A})$, the simplex in $m$ dimensions.<br>Each $(s,a)$ pair has an explicit probability entry.</td>
+      <td>Neural network $\pi_\theta(a|s) = \mathrm{TanhNormal}(\mu_\theta(s), \sigma_\theta(s))$.<br>Actor MLP: $\mathbb{R}^{d_s} \to (\mu, \log\sigma) \in \mathbb{R}^{2d_a}$.</td>
+    </tr>
+    <tr>
+      <td><strong>Policy update</strong><br><span class="tag tag-differ">differs</span></td>
+      <td><strong>Closed-form</strong> multiplicative update (Eq 6.3):<br>$\pi_{k+1}(s)_a \propto \pi_k(s)_a \cdot \exp\!\big(\!-\eta(A - \beta R_a^\top\pi_k)\big)$.<br>One-shot: compute $Z$, divide.</td>
+      <td><strong>Gradient descent</strong> on combined loss via Adam optimizer.<br>Multiple epochs ($K=10$) over minibatches ($M=1024$).<br>Iterative: $\theta \leftarrow \theta - \alpha \nabla_\theta L$.</td>
+    </tr>
+    <tr>
+      <td><strong>Advantage function</strong><br><span class="tag tag-differ">differs</span></td>
+      <td><strong>Exact</strong> $A_{\pi_k}(s,a) = Q(s,a) - V(s)$.<br>Computed from known model (transition kernel $P$, cost $c$) or via value iteration.</td>
+      <td><strong>Estimated</strong> via $\mathrm{GAE}(\lambda\!=\!0.95)$ with a learned critic $V_\phi$.<br>Two error sources: critic approximation + GAE bias-variance.</td>
+    </tr>
+    <tr>
+      <td><strong>IPM / MMD kernel</strong><br><span class="tag tag-approx">approximation</span></td>
+      <td>RKHS defined by PD matrix $R \in \mathbb{R}^{m \times m}$. &sect;6.5 uses $R = I$.<br>$$\mathrm{IPM}^2(p_1, p_2) = p_1^\top R\, p_1 + p_2^\top R\, p_2 - 2\, p_1^\top R\, p_2$$<br><strong>Exact</strong> quadratic in $p$.</td>
+      <td>RBF kernel: $k(\mathbf{a},\mathbf{b}) = \exp\!\big(\!-\|\mathbf{a}-\mathbf{b}\|^2 / 2\sigma^2\big)$.<br>$\mathrm{MMD}^2$ estimated via linear-time U-statistic from $P/2$ sample pairs.<br><strong>Stochastic</strong>: 16 samples per state (configurable).</td>
+    </tr>
+    <tr>
+      <td><strong>$R_a^\top \pi_k(s)$ coupling</strong><br><span class="tag tag-differ">differs</span></td>
+      <td>Appears <strong>inside the exponent</strong> alongside $A(s,a)$ in Eq 6.3.<br>$R_a^\top \pi_k(s) = \sum_{a'} R_{a,a'}\, \pi_k(a'|s)$.<br>Fuses trust region with advantage into a single analytical step.</td>
+      <td><strong>Absent</strong>. MMD is computed as a separate batch-level scalar penalty and added to the loss.<br>The coupling between MMD and the per-action advantage operates only indirectly through gradient backpropagation.</td>
+    </tr>
+    <tr>
+      <td><strong>KL divergence</strong><br><span class="tag tag-approx">approximation</span></td>
+      <td><strong>Exact:</strong><br>$$D_\mathrm{KL}(p \,\|\, \pi_k(s)) = \sum_a p(a) \log \frac{p(a)}{\pi_k(a|s)}$$<br>Finite sum over $m$ actions.</td>
+      <td><strong>Approximate</strong> via importance ratio:<br>$$D_\mathrm{KL} \approx \mathbb{E}\!\left[(\rho - 1) - \log \rho\right]$$<br>First-order Taylor; exact only when $\pi_\mathrm{new} \approx \pi_\mathrm{old}$.</td>
+    </tr>
+    <tr>
+      <td><strong>Normalizing constant $Z$</strong><br><span class="tag tag-differ">differs</span></td>
+      <td><strong>Computable:</strong><br>$Z = \sum_{a=1}^{m} \pi_k(a|s) \cdot \exp\!\big(\!-\eta(\cdot)\big)$.<br>Sum over $m$ terms. $O(m)$ per state.</td>
+      <td><strong>Not needed.</strong> The parametric policy (TanhNormal) is always normalized by construction.<br>Gradient descent adjusts $\theta$ directly; no explicit normalization step.</td>
+    </tr>
+    <tr>
+      <td><strong>Optimization scope</strong><br><span class="tag tag-differ">differs</span></td>
+      <td><strong>Per-state:</strong> Eq 6.2 is solved independently for each $s \in \mathcal{S}$.<br>Each state gets its own optimal $\pi_{k+1}(s)$ on the simplex.</td>
+      <td><strong>Global:</strong> single neural network $\theta$ optimized across all states simultaneously via minibatch SGD.<br>Improvement at one state may degrade another (function approximation tradeoff).</td>
+    </tr>
+    <tr>
+      <td><strong>Convexity</strong><br><span class="tag tag-differ">differs</span></td>
+      <td>Objective is <strong>strictly convex</strong> in $p$ on $\mathcal{P}(\mathcal{A})$:<br>linear $A^\top p$ + quadratic $\mathrm{IPM}^2$ + convex $D_\mathrm{KL}$.<br>Unique global minimum guaranteed.</td>
+      <td>Loss landscape is <strong>non-convex</strong> in $\theta$.<br>No convexity guarantee; depends on initialization, learning rate, batch size. Adam may find local minima.</td>
+    </tr>
+    <tr>
+      <td><strong>Convergence</strong><br><span class="tag tag-differ">differs</span></td>
+      <td><strong>Proven</strong> for finite MDPs (Prop 7.3.5 of [1]).<br>Converges to optimal policy under stated assumptions.</td>
+      <td><strong>No formal guarantee.</strong><br>Empirical convergence observed (reward $9 \to 21$ on follow_target, 100K frames). Standard deep RL caveats apply.</td>
+    </tr>
+    <tr>
+      <td><strong>Critic / value function</strong><br><span class="tag tag-differ">differs</span></td>
+      <td><strong>None.</strong> $V(s)$ computed exactly from the model or via value iteration. No function approximation error.</td>
+      <td>Learned critic $V_\phi$ (MLP: $\mathbb{R}^{d_s} \to \mathbb{R}$).<br>Trained jointly: $L^V = \mathrm{MSE}(V_\phi(s), \hat{R}_t)$.<br><span class="code">value_coef = 0.5</span> (not in paper).</td>
+    </tr>
+    <tr>
+      <td><strong>Entropy bonus</strong><br><span class="tag tag-match">matches</span></td>
+      <td><strong>None.</strong> The KL regularizer $\frac{1}{\eta_k} D_\mathrm{KL}$ handles exploration implicitly via mirror descent.</td>
+      <td><strong>None</strong> in the loss. Entropy tracked as diagnostic only. KL regularizer serves the same implicit exploration role.</td>
+    </tr>
+    <tr>
+      <td><strong>Clipping</strong><br><span class="tag tag-approx">approximation</span></td>
+      <td>&sect;6.5 clips the exponent argument $-\eta_k(A_{\pi_k}(s,a) - \beta_k R_a^\top \pi_k(s))$ to $[-2, 2]$.<br>"to improve numerical stability, just like in PPO."</td>
+      <td>Log-ratio clamped to $[-20, 20]$:<br><span class="code">log_ratio.clamp(-20, 20)</span><br>Similar stability purpose; different mechanism.</td>
+    </tr>
+  </tbody>
+</table>
+
+<!-- ============================================================ -->
+<h2>5. Hyperparameter Comparison</h2>
+
+<table>
+  <thead>
+    <tr>
+      <th>Parameter</th>
+      <th>Paper &sect;6.5 value</th>
+      <th>Our <span class="code">MMRKHSConfig</span></th>
+      <th>Notes</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>$\beta_k$</td>
+      <td>$\displaystyle\frac{\sup_{a \in \mathcal{A}}(-A_{\pi_k}(s,a))}{\sqrt{k+1}}$</td>
+      <td><span class="code">beta = 1.0</span> (constant)</td>
+      <td>Paper uses adaptive $\beta$ that decreases with $\sqrt{k}$. Ours is fixed.</td>
+    </tr>
+    <tr>
+      <td>$\eta_k$</td>
+      <td>$\eta_0(k+1)$, $\eta_0 = 0.15$ (increasing)</td>
+      <td><span class="code">eta = 1.0</span> (constant)</td>
+      <td>Paper increases $\eta$ each iteration (stronger KL over time). Ours is fixed.</td>
+    </tr>
+    <tr>
+      <td>$R$ (kernel matrix)</td>
+      <td>$R = I$ (identity)</td>
+      <td>RBF kernel, <span class="code">bandwidth = 1.0</span></td>
+      <td>$R = I$ makes $\mathrm{IPM}^2 = \|p_1 - p_2\|_2^2$. RBF is a different kernel entirely.</td>
+    </tr>
+    <tr>
+      <td>$\gamma$ (discount)</td>
+      <td>$0.95$</td>
+      <td><span class="code">gamma = 0.99</span></td>
+      <td>Higher discount for longer-horizon continuous control tasks.</td>
+    </tr>
+    <tr>
+      <td>Exponent clipping</td>
+      <td>$[-2,\; 2]$</td>
+      <td>Log-ratio clamp $[-20,\; 20]$</td>
+      <td>Paper clips full exponent; we clamp log importance ratio (wider).</td>
+    </tr>
+    <tr>
+      <td>MMD samples</td>
+      <td>N/A (exact IPM via $R$)</td>
+      <td><span class="code">mmd_num_samples = 16</span></td>
+      <td>Paper computes IPM exactly. We estimate stochastically.</td>
+    </tr>
+    <tr>
+      <td>Epochs per iteration</td>
+      <td>$1$ (single closed-form update)</td>
+      <td><span class="code">num_epochs = 10</span></td>
+      <td>Paper applies one exact update. We do 10 gradient passes.</td>
+    </tr>
+    <tr>
+      <td>Learning rate $\alpha$</td>
+      <td>N/A (no gradient descent)</td>
+      <td><span class="code">learning_rate = 3e-4</span></td>
+      <td>Paper has no learning rate; update is exact.</td>
+    </tr>
+    <tr>
+      <td>GAE $\lambda$</td>
+      <td>N/A (exact advantages)</td>
+      <td><span class="code">gae_lambda = 0.95</span></td>
+      <td>Paper uses exact advantages.</td>
+    </tr>
+    <tr>
+      <td>Mini-batch size</td>
+      <td>N/A (full state space)</td>
+      <td><span class="code">mini_batch_size = 1024</span></td>
+      <td>Paper updates all states at once.</td>
+    </tr>
+    <tr>
+      <td>Critic loss weight $c_V$</td>
+      <td>N/A (no critic)</td>
+      <td><span class="code">value_coef = 0.5</span></td>
+      <td>Paper has no critic.</td>
+    </tr>
+    <tr>
+      <td>Advantage normalization</td>
+      <td>Not mentioned</td>
+      <td><span class="code">normalize_advantage = True</span></td>
+      <td>Standard deep RL practice.</td>
+    </tr>
+    <tr>
+      <td>Gradient clipping</td>
+      <td>N/A (no gradients)</td>
+      <td><span class="code">max_grad_norm = 0.5</span></td>
+      <td>Standard deep RL stability measure.</td>
+    </tr>
+  </tbody>
+</table>
+
+<!-- ============================================================ -->
+<h2>6. Why Exact Replication Is Infeasible</h2>
+
+<table>
+  <thead>
+    <tr>
+      <th style="width:25%">Barrier</th>
+      <th>Explanation</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Intractable normalizer $Z$</strong></td>
+      <td>
+        The finite sum $Z = \sum_a \pi_k(a|s) \exp(\cdot)$ becomes
+        $$Z = \int \pi_\theta(a|s)\, \exp\!\Big(\!-\eta\big(A(s,a) - \beta\, \mu_k(a|s)\big)\Big)\, da$$
+        in continuous spaces. This integral has no closed form for TanhNormal $\times$ exp(nonlinear).
+        Numerical quadrature scales as $O(B^{d_a})$ &mdash; with $d_a = 10$, even $B=10$ gives $10^{10}$ evaluations per state.
+      </td>
+    </tr>
+    <tr>
+      <td><strong>Policy family not closed</strong></td>
+      <td>
+        The update $\pi_{k+1}(a) \propto \pi_k(a) \cdot \exp(f(a))$ for arbitrary $f(a)$ generally produces a distribution that is <em>not</em> TanhNormal. The parametric family is not closed under the multiplicative update. Projection back (via moment matching or KL minimization) introduces additional approximation error.
+      </td>
+    </tr>
+    <tr>
+      <td><strong>$R_a^\top \pi_k(s)$ requires integration</strong></td>
+      <td>
+        The continuous analog is the kernel mean embedding:
+        $$\mu_k(a|s) = \int k(a, a')\, \pi_\theta(a'|s)\, da'$$
+        For RBF kernel $\times$ TanhNormal, no closed form exists. Must estimate via Monte Carlo:
+        $\hat{\mu}_k(a|s) = \frac{1}{P}\sum_j k(a, a_j)$, $a_j \sim \pi_\mathrm{old}(\cdot|s)$.
+      </td>
+    </tr>
+    <tr>
+      <td><strong>No exact advantage</strong></td>
+      <td>
+        Continuous environments do not provide a model ($P$, $c$). We can only estimate $A(s,a)$ from sampled trajectories using a learned critic and GAE. This introduces both bias (critic error, $\mathbb{E}[\hat{A}] \ne A$) and variance (finite samples).
+      </td>
+    </tr>
+    <tr>
+      <td><strong>Per-state optimization impossible</strong></td>
+      <td>
+        With continuous $\mathcal{S}$, we cannot solve Eq 6.2 independently for each $s$. There are uncountably many states; we must generalize via function approximation ($\theta$), trading per-state optimality for generalization.
+      </td>
+    </tr>
+    <tr>
+      <td><strong>Convexity lost</strong></td>
+      <td>
+        The paper's objective is strictly convex in $p$ on $\mathcal{P}(\mathcal{A})$. When parameterized as $\theta \mapsto \mathrm{TanhNormal}(\mu_\theta, \sigma_\theta)$, composition with the neural network makes the loss non-convex in $\theta$. The unique global minimum guarantee no longer holds.
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+<!-- ============================================================ -->
+<h2>7. What Our Implementation Preserves</h2>
+
+<div class="section-note">
+  Despite the differences above, our <span class="code">MMRKHSTrainer</span> preserves the <strong>theoretical structure</strong>
+  of the paper's objective (Eq 6.2). The three-term decomposition &mdash; surrogate advantage,
+  MMD trust region penalty, and mirror descent KL regularizer &mdash; is faithfully maintained.
+</div>
+
+<table>
+  <thead>
+    <tr>
+      <th style="width:35%">Preserved Property</th>
+      <th>How</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Three-term objective structure</td>
+      <td>$L = -\mathbb{E}[\rho\hat{A}] + \beta\cdot\mathrm{MMD}^2 + \frac{1}{\eta}\cdot D_\mathrm{KL} + c_V \cdot L^V$ mirrors Eq 6.2 (plus critic term).</td>
+    </tr>
+    <tr>
+      <td>MMD-based trust region (not KL-only)</td>
+      <td>Uses RBF kernel $\mathrm{MMD}^2$ as the IPM penalty &mdash; the defining feature distinguishing MM-RKHS from TRPO/PPO.</td>
+    </tr>
+    <tr>
+      <td>Mirror descent KL regularizer</td>
+      <td>The $\frac{1}{\eta} D_\mathrm{KL}$ term provides entropic regularization from the mirror descent derivation (&sect;6.4, line 718).</td>
+    </tr>
+    <tr>
+      <td>No PPO clipping</td>
+      <td>Trust region enforced entirely by MMD + KL penalties, matching the paper's note: "we do not need the clipping function" (line 715).</td>
+    </tr>
+    <tr>
+      <td>No entropy bonus</td>
+      <td>Exploration handled implicitly by KL regularizer. No separate entropy term, matching the paper.</td>
+    </tr>
+    <tr>
+      <td>On-policy data collection</td>
+      <td>Uses SyncDataCollector with rollout trajectories, matching the simulation-based approach in Remark 6.3 and &sect;6.5.</td>
+    </tr>
+  </tbody>
+</table>
+
+<!-- ============================================================ -->
+<h2>8. Verdict</h2>
+
+<div class="verdict-box">
+  <h3>Classification: Faithful Adaptation, Not Exact Replication</h3>
+  <p>
+    Our <span class="code">MMRKHSTrainer</span> implements the <strong>same optimization objective</strong>
+    as Gupta &amp; Mahajan's Eq (6.2), adapted for continuous control with neural networks.
+    The six barriers in Section 6 make exact replication of the closed-form update (Eq 6.3)
+    mathematically impossible in our problem setting. The gradient-based approach we use
+    is the natural and standard way to operationalize the theoretical framework for deep RL.
+  </p>
+  <p style="margin-top: 0.8rem;">
+    This is directly analogous to how PPO relates to the original TRPO theory:
+    the theory proves convergence for exact policy updates; the practical algorithm uses
+    clipped surrogate objectives with SGD. Our MM-RKHS implementation stands in the same
+    relationship to Gupta &amp; Mahajan's Eq 6.3 as PPO does to Schulman et al.'s TRPO theorem.
+  </p>
+</div>
+
+<div class="footer">
+  <p>
+    <strong>Source paper:</strong> A. Gupta &amp; A. Mahajan, &ldquo;General MDPs with Unbounded Cost,&rdquo;
+    arXiv:2603.17875, 2026.<br>
+    <strong>Implementation:</strong> <span class="code">src/trainers/mmrkhs.py</span>,
+    <span class="code">src/configs/training.py::MMRKHSConfig</span><br>
+    <strong>Generated:</strong> 2026-03-26
+  </p>
+</div>
+
+</body>
+</html>

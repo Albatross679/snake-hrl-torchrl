@@ -31,8 +31,14 @@ class TargetGenerator:
         self.orientation = np.array([1.0, 0.0, 0.0])  # tangent direction
         self._velocity = np.zeros(3)
 
-    def sample(self, task: TaskType) -> None:
-        """Sample a new target appropriate for the given task."""
+    def sample(self, task: TaskType, speed_override: float | None = None) -> None:
+        """Sample a new target appropriate for the given task.
+
+        Args:
+            task: Which task variant to sample for.
+            speed_override: If provided, use this speed instead of config default
+                (used by curriculum learning).
+        """
         r = self.rng.uniform(self.config.min_radius, self.config.max_radius)
         theta = self.rng.uniform(0, 2 * np.pi)
         phi = self.rng.uniform(0, np.pi)
@@ -52,9 +58,10 @@ class TargetGenerator:
 
         if task == TaskType.FOLLOW_TARGET:
             # Random initial velocity direction
+            speed = speed_override if speed_override is not None else self.config.target_speed
             vel_dir = self.rng.standard_normal(3)
             vel_dir /= np.linalg.norm(vel_dir) + 1e-8
-            self._velocity = vel_dir * self.config.target_speed
+            self._velocity = vel_dir * speed
 
     def step(self, dt: float) -> None:
         """Move target for follow_target task.

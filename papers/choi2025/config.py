@@ -4,7 +4,7 @@ Hierarchy:
     DismechConfig         → Choi2025PhysicsConfig (3D clamped manipulator)
     SACConfig             → Choi2025Config (top-level project config)
     PPOConfig             → Choi2025PPOConfig (PPO variant)
-    OTPGConfig            → Choi2025OTPGConfig (OTPG variant)
+    MMRKHSConfig          → Choi2025MMRKHSConfig (MM-RKHS variant)
 
 Composable pieces:
     DeltaCurvatureControlConfig  -- control point interpolation
@@ -21,7 +21,7 @@ from typing import List, Optional, Tuple
 from src.configs.base import Console, Output, TensorBoard, WandB
 from src.configs.network import ActorConfig, CriticConfig, NetworkConfig
 from src.configs.physics import DismechConfig, FrictionConfig, FrictionModel, GeometryConfig
-from src.configs.training import OTPGConfig, PPOConfig, SACConfig
+from src.configs.training import MMRKHSConfig, PPOConfig, SACConfig
 
 
 # ---------------------------------------------------------------------------
@@ -115,6 +115,14 @@ class DeltaCurvatureControlConfig:
 
 
 @dataclass
+class CurriculumConfig:
+    """Curriculum learning: ramp target speed from initial to full over warmup episodes."""
+
+    enabled: bool = False
+    warmup_episodes: int = 200  # Per-worker episodes before reaching full speed
+    initial_speed_frac: float = 0.2  # Start at 20% of full speed (not 0, to avoid reward scale shock)
+
+@dataclass
 class TargetConfig:
     """Target sampling configuration."""
 
@@ -127,6 +135,9 @@ class TargetConfig:
 
     # For inverse_kinematics: include orientation
     match_orientation: bool = False
+
+    # Curriculum learning
+    curriculum: CurriculumConfig = field(default_factory=CurriculumConfig)
 
 
 @dataclass
@@ -170,6 +181,23 @@ class Choi2025EnvConfig:
     # Number of physics substeps per RL action.
     # Paper uses 2 substeps at dt=0.05 = 0.1s per action = 10 Hz control.
     control_period: int = 2
+
+    # Heading reward weight for follow_target: bonus for pointing tip toward target.
+    # Total reward = (1 - w) * exp(-5*dist) + w * (1+cos_sim)/2, both in [0, 1].
+    heading_weight: float = 0.0
+
+    # PBRS (Potential-Based Reward Shaping) gamma for follow_target.
+    # Φ(s) = -dist(tip, target); F(s,s') = prev_dist - γ·dist.
+    # 0.0 = disabled. Typical: 0.99. Guaranteed policy-invariant (Ng et al. 1999).
+    pbrs_gamma: float = 0.0
+
+    # PBRS-only mode: use ONLY the PBRS shaping signal, no base distance reward.
+    # Requires pbrs_gamma > 0. Tests whether the shaping signal alone is sufficient.
+    pbrs_only: bool = False
+
+    # Improvement bonus weight: w * (prev_dist - dist).
+    # Paper's original reward uses 10.0. 0.0 = disabled.
+    improvement_weight: float = 0.0
 
     # Device — "auto" → GPU when available, else CPU
     device: str = "auto"
@@ -230,6 +258,31 @@ class Choi2025PaperNetworkConfig(NetworkConfig):
     )
 
 
+@dataclass
+class Choi2025PPONetworkConfig(NetworkConfig):
+    """Network config for PPO: 4×512 ReLU MLP (scaled up for on-policy learning)."""
+
+    actor: ActorConfig = field(
+        default_factory=lambda: ActorConfig(
+            hidden_dims=[512, 512, 512, 512],
+            activation="relu",
+            ortho_init=True,
+            init_gain=0.01,
+            min_std=0.2,  # Raised from 0.1 to prevent entropy collapse
+            max_std=1.0,
+            init_std=0.5,
+        )
+    )
+    critic: CriticConfig = field(
+        default_factory=lambda: CriticConfig(
+            hidden_dims=[512, 512, 512, 512],
+            activation="relu",
+            ortho_init=True,
+            init_gain=1.0,
+        )
+    )
+
+
 # ---------------------------------------------------------------------------
 # Top-level config (SAC hyperparameters from paper)
 # ---------------------------------------------------------------------------
@@ -267,8 +320,12 @@ class Choi2025Config(SACConfig):
     # which produces -inf log_probs much earlier during training.
     use_amp: bool = False
 
-    # Paper doesn't use gradient clipping (not in Table A.1)
-    max_grad_norm: float = None
+    # Paper doesn't use gradient clipping (not in Table A.1), but without entropy
+    # regularization the Q-landscape sharpens and actor gradients explode
+    # (0.15 → 14.6B over 20M frames). Actor-only clipping stabilizes training
+    # without changing the algorithm's semantics.
+    max_grad_norm: float = None  # Critic: no clipping (stays stable at ~1.0)
+    actor_max_grad_norm: float = 1.0  # Actor: clip to prevent explosion
 
     # Standard SAC: update actor every critic update (paper doesn't specify delayed actor)
     actor_update_frequency: int = 1
@@ -301,22 +358,22 @@ class Choi2025PPOConfig(PPOConfig):
     name: str = "choi2025_ppo"
     experiment_name: str = "choi2025_ppo"
 
-    # PPO hyperparameters (aligned with SAC training budget)
-    total_frames: int = 5_000_000
-    learning_rate: float = 3e-4
+    # PPO hyperparameters
+    total_frames: int = 50_000_000
+    learning_rate: float = 1e-4
     clip_epsilon: float = 0.2
     num_epochs: int = 10
     mini_batch_size: int = 1024
     frames_per_batch: int = 8192
     gae_lambda: float = 0.95
-    entropy_coef: float = 0.01
+    entropy_coef: float = 0.1  # Increased from 0.01→0.05→0.1 to prevent entropy collapse
     value_coef: float = 0.5
     normalize_advantage: bool = True
     patience_batches: int = 0  # Disabled — wall time controls stopping
 
     # Compose env + network + logging
     env: Choi2025EnvConfig = field(default_factory=Choi2025EnvConfig)
-    network: Choi2025PaperNetworkConfig = field(default_factory=Choi2025PaperNetworkConfig)
+    network: Choi2025PPONetworkConfig = field(default_factory=Choi2025PPONetworkConfig)
     wandb: WandB = field(default_factory=lambda: WandB(project="choi2025-replication"))
     output: Output = field(default_factory=Output)
     console: Console = field(default_factory=Console)
@@ -327,20 +384,20 @@ class Choi2025PPOConfig(PPOConfig):
     def __post_init__(self):
         """Set name and experiment_name from task and algo."""
         task = self.env.task.value if isinstance(self.env.task, TaskType) else self.env.task
-        self.name = f"fixed_{task}_ppo_lr3e4_{self.num_envs}envs"
+        self.name = f"fixed_{task}_ppo_lr1e4_{self.num_envs}envs"
         self.experiment_name = self.name
 
 
 @dataclass
-class Choi2025OTPGConfig(OTPGConfig):
-    """Top-level config for soft manipulator OTPG training.
+class Choi2025MMRKHSConfig(MMRKHSConfig):
+    """Top-level config for soft manipulator MM-RKHS training (Gupta & Mahajan).
 
-    Operator-Theoretic Policy Gradient with MM-RKHS loss.
+    MM-RKHS algorithm from Gupta & Mahajan (arXiv:2603.17875).
     Uses same network architecture and env config as PPO for fair comparison.
     """
 
-    name: str = "choi2025_otpg"
-    experiment_name: str = "choi2025_otpg"
+    name: str = "choi2025_mmrkhs"
+    experiment_name: str = "choi2025_mmrkhs"
 
     # Training budget (same as PPO for comparison)
     total_frames: int = 5_000_000
@@ -352,7 +409,7 @@ class Choi2025OTPGConfig(OTPGConfig):
     normalize_advantage: bool = True
     patience_batches: int = 0  # Disabled -- wall time controls stopping
 
-    # OTPG-specific (MM-RKHS)
+    # MM-RKHS specific (Gupta & Mahajan)
     beta: float = 1.0
     eta: float = 1.0
     mmd_bandwidth: float = 1.0
@@ -372,5 +429,5 @@ class Choi2025OTPGConfig(OTPGConfig):
     def __post_init__(self):
         """Set name and experiment_name from task."""
         task = self.env.task.value if isinstance(self.env.task, TaskType) else self.env.task
-        self.name = f"fixed_{task}_otpg_lr3e4_{self.num_envs}envs"
+        self.name = f"fixed_{task}_mmrkhs_lr3e4_{self.num_envs}envs"
         self.experiment_name = self.name

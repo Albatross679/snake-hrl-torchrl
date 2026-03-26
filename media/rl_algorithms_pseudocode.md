@@ -11,7 +11,7 @@
 4. [PPO-Clip — Proximal Policy Optimization](#algorithm-4-ppo-clip--practical-vectorized-implementation)
 5. [DDPG — Vectorized](#algorithm-5-ddpg--practical-vectorized-implementation)
 6. [SAC — Vectorized](#algorithm-6-sac--practical-vectorized-implementation)
-7. [OTPG — Operator-Theoretic Policy Gradient](#algorithm-7-otpg--operator-theoretic-policy-gradient-mm-rkhs)
+7. [MM-RKHS — Gupta & Mahajan](#algorithm-7-mmrkhs--gupta--mahajan)
 
 **Part III — LLM Policy Optimization**
 8. [GRPO — Group Relative Policy Optimization](#algorithm-8-grpo--practical-vectorized-implementation)
@@ -417,7 +417,7 @@
 
 ---
 
-## Algorithm 7: OTPG — Operator-Theoretic Policy Gradient (MM-RKHS)
+## Algorithm 7: MM-RKHS — Gupta & Mahajan (MM-RKHS)
 
 **Ensure:** Optimized policy $\pi_\theta$
 
@@ -647,7 +647,7 @@ The result: every token contributes a nonzero gradient at every epoch. The detac
 - Advantage via *learned critic* $V_\phi$ (GAE). On-policy with *rollout buffer*.
 - When $\rho_t > 1{+}\epsilon$ and $\hat{A}_t > 0$: $\nabla_\theta = \mathbf{0}$ *(gradient masked out).*
 
-**OTPG** *(Gupta & Mahajan, 2026):*
+**MM-RKHS** *(Gupta & Mahajan, 2026):*
 - $L = -\mathbb{E}[\rho \hat{A}] + \beta \cdot \widehat{\text{MMD}}^2 + \tfrac{1}{\eta} D_{\text{KL}}$ — majorization-minimization (descent)
 - Advantage via *learned critic* $V_\phi$ (GAE). On-policy with *rollout buffer*.
 - No clipping — trust region via *MMD penalty* (RKHS) + *KL regularizer* (mirror descent).

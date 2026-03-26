@@ -10,7 +10,7 @@ requires:
   - phase: 14-replicate-choi2025
     provides: Choi2025 SAC/PPO experiment data
   - phase: 15-implement-otpg
-    provides: OTPG 100K validation results
+    provides: MM-RKHS 100K validation results
 provides:
   - Complete rewritten report.tex with 6-chapter structure
   - Physics derivations in Appendix A
@@ -58,7 +58,7 @@ completed: 2026-03-20
 ## Accomplishments
 - Restructured from organic 10-section report to clean 6-chapter layout matching report/structure.md
 - Converted verbose prose to structured format: 30+ tables, bullet lists, algorithms, and placeholders
-- Added Ch.5 (RL on DisMech / Choi2025) with SAC/PPO/OTPG data from experiment files
+- Added Ch.5 (RL on DisMech / Choi2025) with SAC/PPO/MM-RKHS data from experiment files
 - Moved all detailed physics derivations (staggered grid, method of lines, external forces, DisMech formulation) to Appendix A
 - Consolidated 28 issues from 4 separate subsection tables into a single longtable in Appendix B
 - Reduced line count from 2969 to ~1730 while preserving all content

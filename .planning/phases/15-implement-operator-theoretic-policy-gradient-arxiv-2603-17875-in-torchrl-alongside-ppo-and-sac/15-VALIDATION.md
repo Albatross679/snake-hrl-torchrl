@@ -19,7 +19,7 @@ created: 2026-03-19
 |----------|-------|
 | **Framework** | pytest |
 | **Config file** | none (pytest defaults) |
-| **Quick run command** | `python -m pytest tests/test_otpg.py -x` |
+| **Quick run command** | `python -m pytest tests/test_mmrkhs.py -x` |
 | **Full suite command** | `python -m pytest tests/ -x` |
 | **Estimated runtime** | ~30 seconds |
 
@@ -27,7 +27,7 @@ created: 2026-03-19
 
 ## Sampling Rate
 
-- **After every task commit:** Run `python -m pytest tests/test_otpg.py -x`
+- **After every task commit:** Run `python -m pytest tests/test_mmrkhs.py -x`
 - **After every plan wave:** Run `python -m pytest tests/ -x`
 - **Before `/gsd:verify-work`:** Full suite must be green
 - **Max feedback latency:** 30 seconds
@@ -38,12 +38,12 @@ created: 2026-03-19
 
 | Task ID | Plan | Wave | Requirement | Test Type | Automated Command | File Exists | Status |
 |---------|------|------|-------------|-----------|-------------------|-------------|--------|
-| 15-01-01 | 01 | 1 | OTPG-01 | unit | `python -m pytest tests/test_otpg.py::test_config -x` | ❌ W0 | ⬜ pending |
-| 15-01-02 | 01 | 1 | OTPG-02 | unit | `python -m pytest tests/test_otpg.py::test_trainer_init -x` | ❌ W0 | ⬜ pending |
-| 15-01-03 | 01 | 1 | OTPG-03 | unit | `python -m pytest tests/test_otpg.py::test_mmd_penalty -x` | ❌ W0 | ⬜ pending |
-| 15-01-04 | 01 | 1 | OTPG-04 | unit | `python -m pytest tests/test_otpg.py::test_update_step -x` | ❌ W0 | ⬜ pending |
-| 15-02-01 | 02 | 2 | OTPG-05 | smoke | `python -m pytest tests/test_otpg.py::test_short_training -x` | ❌ W0 | ⬜ pending |
-| 15-01-05 | 01 | 1 | OTPG-06 | unit | `python -m pytest tests/test_otpg.py::test_checkpoint -x` | ❌ W0 | ⬜ pending |
+| 15-01-01 | 01 | 1 | OTPG-01 | unit | `python -m pytest tests/test_mmrkhs.py::test_config -x` | ❌ W0 | ⬜ pending |
+| 15-01-02 | 01 | 1 | OTPG-02 | unit | `python -m pytest tests/test_mmrkhs.py::test_trainer_init -x` | ❌ W0 | ⬜ pending |
+| 15-01-03 | 01 | 1 | OTPG-03 | unit | `python -m pytest tests/test_mmrkhs.py::test_mmd_penalty -x` | ❌ W0 | ⬜ pending |
+| 15-01-04 | 01 | 1 | OTPG-04 | unit | `python -m pytest tests/test_mmrkhs.py::test_update_step -x` | ❌ W0 | ⬜ pending |
+| 15-02-01 | 02 | 2 | OTPG-05 | smoke | `python -m pytest tests/test_mmrkhs.py::test_short_training -x` | ❌ W0 | ⬜ pending |
+| 15-01-05 | 01 | 1 | OTPG-06 | unit | `python -m pytest tests/test_mmrkhs.py::test_checkpoint -x` | ❌ W0 | ⬜ pending |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 
@@ -51,7 +51,7 @@ created: 2026-03-19
 
 ## Wave 0 Requirements
 
-- [ ] `tests/test_otpg.py` — stubs for OTPG-01 through OTPG-06
+- [ ] `tests/test_mmrkhs.py` — stubs for OTPG-01 through OTPG-06
 - [ ] Framework install: pytest already available
 
 ---
@@ -60,7 +60,7 @@ created: 2026-03-19
 
 | Behavior | Requirement | Why Manual | Test Instructions |
 |----------|-------------|------------|-------------------|
-| 100K frame learning signal | OTPG-eval | GPU required, long runtime | Run `python papers/choi2025/train_otpg.py --task follow_target`, check W&B for reward increase |
+| 100K frame learning signal | OTPG-eval | GPU required, long runtime | Run `python papers/choi2025/train_mmrkhs.py --task follow_target`, check W&B for reward increase |
 
 ---
 

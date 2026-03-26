@@ -134,12 +134,12 @@ Plan: 2 of 2 (all complete)
 - [Phase 14]: Used quick validation checkpoints for video rollouts since full 1M-frame training ETA ~9 days
 - [Phase 14]: PPO learning signal assessed as INCONCLUSIVE (not failure) -- runs too short for batch-based learning
 - [Phase 14]: SAC confirmed learning signal for all 4 tasks (21-69% reward improvement)
-- [Phase 15]: No entropy bonus in OTPG loss -- KL regularizer handles exploration per CONTEXT.md
+- [Phase 15]: No entropy bonus in MM-RKHS loss -- KL regularizer handles exploration per CONTEXT.md
 - [Phase 15]: Old distribution reconstructed from stored loc/scale via TanhNormal (not from saved policy weights)
 - [Phase 15]: Linear-time RBF MMD^2 estimator (O(n) not O(n^2)) using paired samples from TanhNormal distributions
-- [Phase 15]: Choi2025OTPGConfig mirrors PPO config structure for fair comparison (same network, env, parallelism)
+- [Phase 15]: Choi2025MMRKHSConfig mirrors PPO config structure for fair comparison (same network, env, parallelism)
 - [Phase 15]: SKIP_GPU_LOCK env var for concurrent multi-GPU training
-- [Phase 15]: 100K OTPG validation confirmed learning signal: reward 9->17 on follow_target
+- [Phase 15]: 100K MM-RKHS validation confirmed learning signal: reward 9->17 on follow_target
 - [Phase quick-260320-jsu]: Report restructured to 6 chapters: Intro, Related Work, Surrogate Model, RL-Elastica, RL-DisMech, PINN; physics derivations moved to appendix; issue tracker consolidated to longtable
 
 ### Pending Todos

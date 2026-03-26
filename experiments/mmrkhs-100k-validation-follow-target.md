@@ -1,19 +1,19 @@
 ---
-name: OTPG 100K Validation - follow_target
-description: Quick 100K-frame OTPG training validation on follow_target task to verify learning signal
+name: MM-RKHS 100K Validation - follow_target
+description: Quick 100K-frame MM-RKHS training validation on follow_target task to verify learning signal
 type: experiment
 status: complete
 created: 2026-03-19
 updated: 2026-03-19
-tags: [otpg, validation, follow_target, choi2025, mm-rkhs]
+tags: [mmrkhs, validation, follow_target, choi2025, mm-rkhs]
 aliases: []
 ---
 
-# OTPG 100K Validation - follow_target
+# MM-RKHS 100K Validation - follow_target
 
 ## Setup
 
-- **Algorithm:** OTPG (Operator-Theoretic Policy Gradient with MM-RKHS loss)
+- **Algorithm:** MM-RKHS (Operator-Theoretic Policy Gradient with MM-RKHS loss)
 - **Task:** follow_target (soft manipulator tracks moving target)
 - **Frames:** 100K (106496 actual due to batch rounding)
 - **Environments:** 32 parallel (ParallelEnv, CPU workers)
@@ -59,10 +59,10 @@ aliases: []
 1. Learning signal confirmed: reward improved from ~9 to ~17-21 over 100K frames
 2. MMD penalty stays small (0.0008-0.0015), indicating policy doesn't drift far from old policy
 3. KL divergence decreases over training (8.0 -> 5.8), suggesting policy converges
-4. Policy loss near zero throughout -- expected since OTPG uses surrogate MMD loss not direct policy gradient
+4. Policy loss near zero throughout -- expected since MM-RKHS uses surrogate MMD loss not direct policy gradient
 5. Critic loss increases slightly (1.9 -> 3.4) as value targets become more varied with improving policy
 6. No NaN or training instability
 
 ## Conclusion
 
-OTPG produces a viable learning signal on follow_target. The 100K validation confirms the trainer is wired correctly for benchmark comparison with PPO and SAC.
+MM-RKHS produces a viable learning signal on follow_target. The 100K validation confirms the trainer is wired correctly for benchmark comparison with PPO and SAC.

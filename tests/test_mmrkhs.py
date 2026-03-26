@@ -1,6 +1,6 @@
-"""Unit tests for OTPG (Operator-Theoretic Policy Gradient) trainer.
+"""Unit tests for MM-RKHS (Gupta & Mahajan) trainer.
 
-Tests OTPGConfig, OTPGTrainer, and MMD computation using a
+Tests MMRKHSConfig, MMRKHSTrainer, and MMD computation using a
 SimplePendulum TorchRL-native environment (no gymnasium dependency).
 """
 
@@ -19,10 +19,10 @@ except ImportError:
     from torchrl.data import Unbounded as UnboundedContinuousTensorSpec
     from torchrl.data import Composite as CompositeSpec
 
-from src.configs.training import OTPGConfig, RLConfig
+from src.configs.training import MMRKHSConfig, RLConfig
 from src.configs.network import NetworkConfig, ActorConfig, CriticConfig
 from src.configs.base import WandB
-from src.trainers.otpg import OTPGTrainer
+from src.trainers.mmrkhs import MMRKHSTrainer
 
 
 # ---------------------------------------------------------------------------
@@ -144,8 +144,8 @@ def _make_test_env():
 
 
 def _make_small_config():
-    """Create a minimal OTPGConfig for fast tests."""
-    return OTPGConfig(
+    """Create a minimal MMRKHSConfig for fast tests."""
+    return MMRKHSConfig(
         total_frames=512,
         frames_per_batch=128,
         num_epochs=2,
@@ -198,16 +198,16 @@ class TestSimplePendulum:
 
 
 # ---------------------------------------------------------------------------
-# Tests: OTPGConfig
+# Tests: MMRKHSConfig
 # ---------------------------------------------------------------------------
 
 
-class TestOTPGConfig:
-    """Test OTPGConfig dataclass defaults and inheritance."""
+class TestMMRKHSConfig:
+    """Test MMRKHSConfig dataclass defaults and inheritance."""
 
     def test_config(self):
-        """OTPGConfig has expected default values."""
-        c = OTPGConfig()
+        """MMRKHSConfig has expected default values."""
+        c = MMRKHSConfig()
         assert c.beta == 1.0
         assert c.eta == 1.0
         assert c.mmd_kernel == "rbf"
@@ -221,8 +221,8 @@ class TestOTPGConfig:
         assert c.patience_batches == 200
 
     def test_config_inherits_rl(self):
-        """OTPGConfig inherits RLConfig fields."""
-        c = OTPGConfig()
+        """MMRKHSConfig inherits RLConfig fields."""
+        c = MMRKHSConfig()
         assert isinstance(c, RLConfig)
         assert c.gamma == 0.99
         assert c.learning_rate == 3e-4
@@ -231,27 +231,27 @@ class TestOTPGConfig:
         assert c.frames_per_batch == 4096
 
     def test_no_clip_or_entropy(self):
-        """OTPGConfig does NOT have clip_epsilon or entropy_coef."""
-        c = OTPGConfig()
+        """MMRKHSConfig does NOT have clip_epsilon or entropy_coef."""
+        c = MMRKHSConfig()
         assert not hasattr(c, "clip_epsilon")
         assert not hasattr(c, "entropy_coef")
 
 
 # ---------------------------------------------------------------------------
-# Tests: OTPGTrainer
+# Tests: MMRKHSTrainer
 # ---------------------------------------------------------------------------
 
 
-class TestOTPGTrainer:
-    """Test OTPGTrainer initialization, MMD, update, training, and checkpoints."""
+class TestMMRKHSTrainer:
+    """Test MMRKHSTrainer initialization, MMD, update, training, and checkpoints."""
 
     @pytest.fixture
     def trainer(self, tmp_path):
-        """Create an OTPGTrainer with SimplePendulum and small config."""
+        """Create an MMRKHSTrainer with SimplePendulum and small config."""
         env = _make_test_env()
         config = _make_small_config()
         network_config = _make_small_network()
-        t = OTPGTrainer(
+        t = MMRKHSTrainer(
             env=env,
             config=config,
             network_config=network_config,

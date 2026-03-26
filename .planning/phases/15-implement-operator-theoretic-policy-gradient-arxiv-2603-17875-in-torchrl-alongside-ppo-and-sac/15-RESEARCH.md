@@ -35,10 +35,10 @@ No additional libraries are needed. The MM-RKHS algorithm is implemented from sc
 ```
 src/
 ├── configs/
-│   └── training.py        # Add OTPGConfig dataclass (extends RLConfig)
+│   └── training.py        # Add MMRKHSConfig dataclass (extends RLConfig)
 ├── trainers/
-│   ├── __init__.py         # Export OTPGTrainer
-│   ├── otpg.py             # New: OTPGTrainer class
+│   ├── __init__.py         # Export MMRKHSTrainer
+│   ├── mmrkhs.py             # New: MMRKHSTrainer class
 │   └── logging_utils.py    # Reuse existing
 ├── networks/
 │   ├── actor.py            # Reuse create_actor()
@@ -51,7 +51,7 @@ src/
 **Example:**
 ```python
 # Follow PPOTrainer pattern exactly:
-class OTPGTrainer:
+class MMRKHSTrainer:
     def __init__(self, env, config, network_config, device, run_dir):
         # 1. Create actor (ProbabilisticActor via create_actor())
         # 2. Create critic (ValueOperator via create_critic())
@@ -74,11 +74,11 @@ class OTPGTrainer:
 
 ### Pattern 2: Config Dataclass Hierarchy
 **What:** Configs inherit from RLConfig, adding algorithm-specific fields.
-**When to use:** The OTPGConfig should extend RLConfig, adding MM-RKHS-specific hyperparameters.
+**When to use:** The MMRKHSConfig should extend RLConfig, adding MM-RKHS-specific hyperparameters.
 **Example:**
 ```python
 @dataclass
-class OTPGConfig(RLConfig):
+class MMRKHSConfig(RLConfig):
     """OTPG (Operator-Theoretic Policy Gradient) configuration.
 
     Based on MM-RKHS algorithm from Gupta & Mahajan (2026).
@@ -203,11 +203,11 @@ def compute_otpg_loss(self, batch):
 
 ## Code Examples
 
-### Example 1: OTPGConfig Dataclass
+### Example 1: MMRKHSConfig Dataclass
 ```python
 # Source: project convention from src/configs/training.py
 @dataclass
-class OTPGConfig(RLConfig):
+class MMRKHSConfig(RLConfig):
     """Operator-Theoretic Policy Gradient configuration.
 
     Based on MM-RKHS algorithm (Gupta & Mahajan, 2026, arXiv:2603.17875).
@@ -289,7 +289,7 @@ def _compute_mmd_penalty(self, obs: torch.Tensor, old_dist, new_dist,
 ### Example 3: Core Loss Function
 ```python
 def _update(self, batch: TensorDict) -> Dict[str, float]:
-    """Perform OTPG update on batch.
+    """Perform MM-RKHS update on batch.
 
     Loss = -E[ratio * A] + beta * MMD^2 + (1/eta) * KL + value_coef * critic_loss
     """
@@ -366,7 +366,7 @@ def _update(self, batch: TensorDict) -> Dict[str, float]:
 - MM-RKHS avoids the KL-divergence second derivative computation needed by TRPO
 
 **Deprecated/outdated:**
-- Nothing in the existing codebase needs to be deprecated. OTPG is an *addition* alongside PPO and SAC.
+- Nothing in the existing codebase needs to be deprecated. MM-RKHS is an *addition* alongside PPO and SAC.
 
 ## Open Questions
 
@@ -392,26 +392,26 @@ def _update(self, batch: TensorDict) -> Dict[str, float]:
 |----------|-------|
 | Framework | pytest |
 | Config file | none (pytest defaults) |
-| Quick run command | `python -m pytest tests/test_otpg.py -x` |
+| Quick run command | `python -m pytest tests/test_mmrkhs.py -x` |
 | Full suite command | `python -m pytest tests/ -x` |
 
 ### Phase Requirements -> Test Map
 | Req ID | Behavior | Test Type | Automated Command | File Exists? |
 |--------|----------|-----------|-------------------|-------------|
-| OTPG-01 | OTPGConfig dataclass validates and inherits RLConfig | unit | `python -m pytest tests/test_otpg.py::test_config -x` | Wave 0 |
-| OTPG-02 | OTPGTrainer initializes with env/config | unit | `python -m pytest tests/test_otpg.py::test_trainer_init -x` | Wave 0 |
-| OTPG-03 | MMD penalty computes without NaN | unit | `python -m pytest tests/test_otpg.py::test_mmd_penalty -x` | Wave 0 |
-| OTPG-04 | _update() produces finite loss values | unit | `python -m pytest tests/test_otpg.py::test_update_step -x` | Wave 0 |
-| OTPG-05 | Short training run completes without crash | smoke | `python -m pytest tests/test_otpg.py::test_short_training -x` | Wave 0 |
-| OTPG-06 | Trainer exports/imports checkpoint | unit | `python -m pytest tests/test_otpg.py::test_checkpoint -x` | Wave 0 |
+| OTPG-01 | MMRKHSConfig dataclass validates and inherits RLConfig | unit | `python -m pytest tests/test_mmrkhs.py::test_config -x` | Wave 0 |
+| OTPG-02 | MMRKHSTrainer initializes with env/config | unit | `python -m pytest tests/test_mmrkhs.py::test_trainer_init -x` | Wave 0 |
+| OTPG-03 | MMD penalty computes without NaN | unit | `python -m pytest tests/test_mmrkhs.py::test_mmd_penalty -x` | Wave 0 |
+| OTPG-04 | _update() produces finite loss values | unit | `python -m pytest tests/test_mmrkhs.py::test_update_step -x` | Wave 0 |
+| OTPG-05 | Short training run completes without crash | smoke | `python -m pytest tests/test_mmrkhs.py::test_short_training -x` | Wave 0 |
+| OTPG-06 | Trainer exports/imports checkpoint | unit | `python -m pytest tests/test_mmrkhs.py::test_checkpoint -x` | Wave 0 |
 
 ### Sampling Rate
-- **Per task commit:** `python -m pytest tests/test_otpg.py -x`
+- **Per task commit:** `python -m pytest tests/test_mmrkhs.py -x`
 - **Per wave merge:** `python -m pytest tests/ -x`
 - **Phase gate:** Full suite green before `/gsd:verify-work`
 
 ### Wave 0 Gaps
-- [ ] `tests/test_otpg.py` -- covers OTPG-01 through OTPG-06
+- [ ] `tests/test_mmrkhs.py` -- covers OTPG-01 through OTPG-06
 - [ ] Framework install: pytest already available
 
 ## Sources

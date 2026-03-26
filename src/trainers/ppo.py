@@ -32,6 +32,14 @@ from torch.optim.lr_scheduler import LambdaLR
 import numpy as np
 
 from .logging_utils import collect_system_metrics
+from .diagnostics import (
+    compute_explained_variance,
+    compute_action_stats,
+    compute_advantage_stats,
+    compute_ratio_stats,
+    compute_log_prob_stats,
+    check_alerts,
+)
 
 from torchrl.envs import EnvBase
 from torchrl.objectives import ClipPPOLoss
@@ -353,7 +361,7 @@ class PPOTrainer:
                         metrics["mean_final_dist_to_goal"] = finals.mean().item()
 
                 # Reward diagnostics (batch means)
-                for key in ("v_g", "dist_to_goal", "theta_g", "reward_dist", "reward_align"):
+                for key in ("v_g", "dist_to_goal", "theta_g", "reward_dist", "reward_align", "reward_pbrs"):
                     if key in next_td.keys():
                         metrics[f"mean_{key}"] = next_td[key].mean().item()
 
@@ -453,6 +461,44 @@ class PPOTrainer:
             "clip_fraction": 0.0,
         }
 
+        # --- Diagnostics: compute stats from batch before update ---
+        with torch.no_grad():
+            advantages = batch["advantage"]
+            metrics.update(compute_advantage_stats(advantages))
+
+            # Explained variance: how well does value network predict returns?
+            if "value_target" in batch.keys() and "state_value" in batch.keys():
+                metrics["explained_variance"] = compute_explained_variance(
+                    batch["state_value"], batch["value_target"],
+                )
+            elif "value_target" in batch.keys():
+                # Re-compute value predictions for explained variance
+                v_pred = self.critic(batch)
+                if "state_value" in v_pred.keys():
+                    metrics["explained_variance"] = compute_explained_variance(
+                        v_pred["state_value"], batch["value_target"],
+                    )
+
+            # Action distribution stats
+            if "action" in batch.keys():
+                metrics.update({
+                    f"diagnostics/{k}": v
+                    for k, v in compute_action_stats(batch["action"]).items()
+                })
+
+            # Log probability stats (entropy proxy)
+            if "action_log_prob" in batch.keys():
+                metrics.update({
+                    f"diagnostics/{k}": v
+                    for k, v in compute_log_prob_stats(batch["action_log_prob"]).items()
+                })
+
+            # Reward stats (step-level, not episode-level)
+            if "next" in batch.keys() and "reward" in batch["next"].keys():
+                rewards = batch["next"]["reward"]
+                metrics["diagnostics/reward_mean"] = rewards.mean().item()
+                metrics["diagnostics/reward_std"] = rewards.std().item()
+
         # Multiple epochs over the batch
         kl_break = False
         actual_updates = 0
@@ -543,8 +589,13 @@ class PPOTrainer:
             if self.config.target_kl and avg_kl > self.config.target_kl:
                 break
 
-        # Average metrics over actual updates (not theoretical max)
-        for key in metrics:
+        # Average accumulated loss metrics over actual updates (not theoretical max).
+        # Diagnostic metrics (computed once before the update loop) are NOT averaged.
+        _accumulated_keys = {
+            "loss_actor", "loss_critic", "loss_entropy",
+            "kl_divergence", "grad_norm", "clip_fraction",
+        }
+        for key in _accumulated_keys:
             metrics[key] /= max(1, actual_updates)
 
         return metrics
@@ -553,9 +604,9 @@ class PPOTrainer:
         """Log training metrics to console and W&B."""
         # Console output
         log_str = f"Step {self.total_frames}: "
-        log_str += f"actor_loss={metrics['loss_actor']:.4f}, "
-        log_str += f"critic_loss={metrics['loss_critic']:.4f}, "
-        log_str += f"entropy={metrics['loss_entropy']:.4f}, "
+        log_str += f"actor_loss={metrics.get('loss_actor', metrics.get('loss_objective', 0)):.4f}, "
+        log_str += f"critic_loss={metrics.get('loss_critic', 0):.4f}, "
+        log_str += f"entropy={metrics.get('loss_entropy', 0):.4f}, "
         log_str += f"kl={metrics['kl_divergence']:.4f}"
 
         if "mean_episode_reward" in metrics:
@@ -567,9 +618,9 @@ class PPOTrainer:
 
         # Build W&B log dict
         wandb_log = {
-            "train/loss_actor": metrics["loss_actor"],
-            "train/loss_critic": metrics["loss_critic"],
-            "train/loss_entropy": metrics["loss_entropy"],
+            "train/actor_loss": metrics["loss_actor"],
+            "train/critic_loss": metrics["loss_critic"],
+            "train/entropy_loss": metrics["loss_entropy"],
             "train/kl_divergence": metrics["kl_divergence"],
             "train/clip_fraction": metrics.get("clip_fraction", 0.0),
             "gradients/grad_norm": metrics.get("grad_norm", 0.0),
@@ -603,6 +654,7 @@ class PPOTrainer:
             ("mean_theta_g", "reward/theta_g"),
             ("mean_reward_dist", "reward/component_dist"),
             ("mean_reward_align", "reward/component_align"),
+            ("mean_reward_pbrs", "reward/component_pbrs"),
         ):
             if key in metrics:
                 wandb_log[wandb_key] = metrics[key]
@@ -643,8 +695,18 @@ class PPOTrainer:
         )
         wandb_log.update(sys_metrics)
 
+        # Diagnostics: explained variance, action stats, advantage stats, log prob stats
+        if "explained_variance" in metrics:
+            wandb_log["diagnostics/explained_variance"] = metrics["explained_variance"]
+        for key in metrics:
+            if key.startswith("diagnostics/"):
+                wandb_log[key] = metrics[key]
+
         # Log via shared utility
         wandb_utils.log_metrics(self.wandb_run, wandb_log, step=self.total_frames)
+
+        # Check for failure signatures and fire W&B alerts
+        check_alerts(self.wandb_run, {**metrics, **wandb_log}, self.total_frames, algorithm="ppo")
 
     def save_checkpoint(self, name: str) -> None:
         """Save training checkpoint atomically.
