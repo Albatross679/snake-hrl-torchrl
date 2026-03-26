@@ -62,7 +62,7 @@ Train a neural surrogate model accurate enough to replace Elastica simulation du
 
 ## Current State
 
-Phase 15 complete — MM-RKHS (Gupta & Mahajan) from arXiv:2603.17875 implemented alongside PPO and SAC. MMRKHSTrainer with MMD-RKHS trust region loss, Choi2025 benchmark integration, and 100K-frame validation showing learning signal (reward 9→21 on follow_target). Three RL algorithms now available for comparison.
+Phase 17 complete — PINN debugging workflow and diagnostic pipeline. Probe PDE validation suite (4 generic probes with analytical solutions), PINNDiagnostics middleware (loss ratios, gradient norms, residual stats, ReLoBRaLo health, NTK eigenvalues), and pinn-debug Claude Code skill with 4-phase decision tree for systematic failure diagnosis. Diagnostics integrated non-invasively into train_pinn.py with auto-run probe pre-flight.
 
 ---
-*Last updated: 2026-03-19 after Phase 15 completion*
+*Last updated: 2026-03-26 after Phase 17 completion*
