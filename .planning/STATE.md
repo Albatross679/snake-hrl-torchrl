@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: Phase complete — ready for verification
-stopped_at: Completed 17-01-PLAN.md
-last_updated: "2026-03-26T13:28:17.496Z"
+stopped_at: Completed 17-02-PLAN.md
+last_updated: "2026-03-26T13:39:41.880Z"
 progress:
-  total_phases: 20
-  completed_phases: 7
-  total_plans: 30
-  completed_plans: 24
+  total_phases: 21
+  completed_phases: 8
+  total_plans: 33
+  completed_plans: 27
 ---
 
 # Project State
@@ -75,6 +75,7 @@ Plan: 2 of 2 (all complete)
 | Phase 15 P01 | 6 min | 2 tasks | 5 files |
 | Phase 15 P02 | 18min | 2 tasks | 3 files |
 | Phase 17 P01 | 7 min | 2 tasks | 3 files |
+| Phase 17 P02 | 7 min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -145,6 +146,10 @@ Plan: 2 of 2 (all complete)
 - [Phase 17]: Generic probe PDEs test fundamental PINN capabilities without Cosserat coupling
 - [Phase 17]: analyze_pde_system reports nondim_quality as good/acceptable/poor based on magnitude spread (100x/1000x thresholds)
 - [Phase 17]: Default CosseratRHS reports poor nondim quality, confirming diagnostic detects real magnitude imbalance
+- [Phase 17]: Log-only diagnostics per D-07: no wandb.alert(), no auto-stopping
+- [Phase 17]: NTK via per-sample Jacobian with parameter subsampling (n_params_sample=500)
+- [Phase 17]: Per-loss gradient norms computed every 10 epochs on first batch to minimize overhead
+- [Phase 17]: Probe pre-flight runs by default before training, skippable with --skip-probes
 
 ### Pending Todos
 
@@ -198,5 +203,5 @@ None currently.
 
 ## Session Continuity
 
-Last session: 2026-03-26T13:28:17.490Z
-Stopped at: Completed 17-01-PLAN.md
+Last session: 2026-03-26T13:39:41.873Z
+Stopped at: Completed 17-02-PLAN.md
