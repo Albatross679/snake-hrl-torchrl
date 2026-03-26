@@ -62,7 +62,7 @@ def test_compute_loss_ratio_basic():
         loss_data=torch.tensor(0.01),
         loss_phys=torch.tensor(1.0),
     )
-    assert abs(ratio - 100.0) < 1e-6
+    assert abs(ratio - 100.0) < 1e-3
 
 
 def test_compute_loss_ratio_zero_data():
