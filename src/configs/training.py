@@ -134,6 +134,25 @@ class MMRKHSConfig(RLConfig):
     mmd_bandwidth: float = 1.0
     mmd_num_samples: int = 16
 
+    # --- Notebook mechanics (opt-in) ---
+    # Adaptive eta: eta_effective = eta * (batch_idx + 1)^eta_exponent
+    eta_schedule: bool = False
+    eta_exponent: float = 2.0  # notebook uses (k+1)^2
+
+    # Adaptive beta: beta_effective = max(|advantages|) / sqrt(batch_idx + 1)
+    beta_schedule: bool = False
+
+    # Inner MM fixed-point iterations per mini-batch step
+    inner_mm_iterations: int = 1  # 1 = no inner loop (current behavior), notebook uses 2-3
+
+    # Exponent clipping range for log-ratio (notebook clips to [-1.5, 1.5])
+    exponent_clip: float = 20.0  # current default; set to 2.0 for notebook-like behavior
+
+    # Direct kernel correction: add R @ (old_loc - new_loc) term to loss
+    # Analogous to notebook's R @ (pi_old - pi) correction in the exponent
+    kernel_correction: bool = False
+    kernel_correction_weight: float = 1.0  # scaling factor for the correction term
+
     # GAE (shared with PPO)
     gae_lambda: float = 0.95
     normalize_advantage: bool = True
