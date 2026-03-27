@@ -146,6 +146,7 @@ class MMRKHSTrainer:
         )
 
         # Training state
+        self._global_batch_idx = 0  # Total batches across training (for adaptive schedules)
         self.total_frames = 0
         self.total_episodes = 0
         self.best_reward = float("-inf")
@@ -301,6 +302,7 @@ class MMRKHSTrainer:
 
                 # MM-RKHS update
                 metrics = self._update(batch)
+                self._global_batch_idx += 1
                 backward_dt = time.monotonic() - t0
 
                 metrics["batch_idx"] = batch_idx
@@ -537,6 +539,7 @@ class MMRKHSTrainer:
             "kl_divergence": 0.0,
             "grad_norm": 0.0,
             "policy_entropy": 0.0,
+            "kernel_correction": 0.0,
         }
 
         # --- Diagnostics: compute stats from batch before update ---
@@ -576,6 +579,13 @@ class MMRKHSTrainer:
                 metrics["diagnostics/reward_mean"] = rewards.mean().item()
                 metrics["diagnostics/reward_std"] = rewards.std().item()
 
+        # --- Adaptive eta (notebook mechanic 1) ---
+        if self.config.eta_schedule:
+            k = self._global_batch_idx
+            eta_effective = self.config.eta * (k + 1) ** self.config.eta_exponent
+        else:
+            eta_effective = self.config.eta
+
         # Multiple epochs over the batch
         actual_updates = 0
 
@@ -594,19 +604,9 @@ class MMRKHSTrainer:
                 # --- Get old log_prob from batch (collected by previous policy) ---
                 log_prob_old = mb["action_log_prob"].detach()
 
-                # --- Re-forward actor to get new log_prob and distribution params ---
-                td_fwd = self.actor(mb.clone())
-                log_prob_new = td_fwd["action_log_prob"]
-                new_loc = td_fwd["loc"]
-                new_scale = td_fwd["scale"]
-
                 # Old distribution params (stored in batch from collection time)
                 old_loc = mb["loc"].detach()
                 old_scale = mb["scale"].detach()
-
-                # --- Compute importance ratio with clamping for stability ---
-                log_ratio = (log_prob_new - log_prob_old).clamp(-20.0, 20.0)
-                ratio = log_ratio.exp()
 
                 # --- Normalize advantages ---
                 advantage = mb["advantage"]
@@ -615,91 +615,126 @@ class MMRKHSTrainer:
                     adv_std = advantage.std() + 1e-8
                     advantage = (advantage - adv_mean) / adv_std
 
-                # --- Surrogate advantage (no clipping) ---
-                surr_advantage = ratio * advantage
+                # --- Adaptive beta (notebook mechanic 2) ---
+                if self.config.beta_schedule:
+                    k = self._global_batch_idx
+                    beta_effective = advantage.abs().max().item() / max(math.sqrt(k + 1), 1.0)
+                else:
+                    beta_effective = self.config.beta
 
-                # --- Compute MMD penalty ---
-                mmd = self._compute_mmd_penalty(
-                    obs=mb["observation"],
-                    old_loc=old_loc,
-                    old_scale=old_scale,
-                    new_loc=new_loc,
-                    new_scale=new_scale,
-                )
+                # --- Inner MM iterations (notebook mechanic 4) ---
+                for mm_iter in range(self.config.inner_mm_iterations):
+                    # --- Re-forward actor to get new log_prob and distribution params ---
+                    td_fwd = self.actor(mb.clone())
+                    log_prob_new = td_fwd["action_log_prob"]
+                    new_loc = td_fwd["loc"]
+                    new_scale = td_fwd["scale"]
 
-                # --- Compute KL divergence (approximate via log ratio) ---
-                # KL(pi_old || pi_new) approx = E[(ratio - 1) - log(ratio)]
-                with torch.no_grad():
+                    # --- Compute importance ratio with configurable clamping (notebook mechanic 3) ---
+                    log_ratio = (log_prob_new - log_prob_old).clamp(
+                        -self.config.exponent_clip, self.config.exponent_clip
+                    )
+                    ratio = log_ratio.exp()
+
+                    # --- Surrogate advantage (no clipping) ---
+                    surr_advantage = ratio * advantage
+
+                    # --- Compute MMD penalty ---
+                    mmd = self._compute_mmd_penalty(
+                        obs=mb["observation"],
+                        old_loc=old_loc,
+                        old_scale=old_scale,
+                        new_loc=new_loc,
+                        new_scale=new_scale,
+                    )
+
+                    # --- Compute KL divergence (approximate via log ratio) ---
+                    # KL(pi_old || pi_new) approx = E[(ratio - 1) - log(ratio)]
                     kl = (ratio - 1.0 - log_ratio).mean()
 
-                # --- Compute critic loss ---
-                value_pred = self.critic(mb)["state_value"]
-                critic_loss = F.mse_loss(value_pred, mb["value_target"])
+                    # --- Compute critic loss ---
+                    value_pred = self.critic(mb)["state_value"]
+                    critic_loss = F.mse_loss(value_pred, mb["value_target"])
 
-                # --- Compute policy entropy (for diagnostics, not in loss) ---
-                with torch.no_grad():
-                    # Entropy from current distribution params
-                    action_low = self.action_spec.space.low.to(new_loc.device)
-                    action_high = self.action_spec.space.high.to(new_loc.device)
-                    current_dist = TanhNormal(
-                        new_loc, new_scale,
-                        low=action_low, high=action_high,
-                    )
-                    # Use approximate entropy from Gaussian base (TanhNormal entropy
-                    # is intractable, but the base Normal entropy is a good proxy)
-                    entropy = 0.5 * torch.log(2 * math.pi * math.e * new_scale.pow(2)).mean()
+                    # --- Compute policy entropy (for diagnostics, not in loss) ---
+                    with torch.no_grad():
+                        # Use approximate entropy from Gaussian base (TanhNormal entropy
+                        # is intractable, but the base Normal entropy is a good proxy)
+                        entropy = 0.5 * torch.log(2 * math.pi * math.e * new_scale.pow(2)).mean()
 
-                # --- Combined loss ---
-                # L = -surr_advantage + beta * MMD^2 + (1/eta) * KL + value_coef * critic_loss
-                total_loss = (
-                    -surr_advantage.mean()
-                    + self.config.beta * mmd
-                    + (1.0 / self.config.eta) * kl
-                    + self.config.value_coef * critic_loss
-                )
+                    # --- Direct kernel correction (notebook mechanic 5) ---
+                    if self.config.kernel_correction:
+                        # Analogous to notebook's R @ (pi_old - pi) term
+                        # In mean-parameter space: correction = ||old_loc - new_loc||^2
+                        # Weighted by advantages (like R_a_T_pi in notebook)
+                        loc_diff = old_loc - new_loc  # [batch, action_dim]
+                        kernel_corr = (loc_diff.pow(2).sum(dim=-1) * advantage.abs()).mean()
+                        kernel_corr = self.config.kernel_correction_weight * kernel_corr
+                    else:
+                        kernel_corr = torch.tensor(0.0, device=batch.device)
 
-                # --- Backward pass ---
-                self.optimizer.zero_grad()
-
-                # NaN guard: skip backward if loss is not finite
-                if not torch.isfinite(total_loss):
-                    print(f"  [WARNING] NaN/inf loss detected at step {self.total_frames}, skipping update")
-                    continue
-
-                total_loss.backward()
-
-                # Gradient clipping
-                if self.config.max_grad_norm > 0:
-                    grad_norm = nn.utils.clip_grad_norm_(
-                        self.loss_params,
-                        self.config.max_grad_norm,
-                    )
-                else:
-                    grad_norm = nn.utils.clip_grad_norm_(
-                        self.loss_params,
-                        float('inf'),
+                    # --- Combined loss ---
+                    # L = -surr_advantage + beta * MMD^2 + (1/eta) * KL + value_coef * critic_loss + kernel_corr
+                    total_loss = (
+                        -surr_advantage.mean()
+                        + beta_effective * mmd
+                        + (1.0 / eta_effective) * kl
+                        + self.config.value_coef * critic_loss
+                        + kernel_corr
                     )
 
-                # NaN guard: skip step if gradients are not finite
-                if not torch.isfinite(grad_norm):
-                    print(f"  [WARNING] NaN/inf gradients (norm={grad_norm:.4f}) at step {self.total_frames}, skipping update")
+                    # --- Backward pass ---
                     self.optimizer.zero_grad()
-                    continue
 
-                self.optimizer.step()
-                actual_updates += 1
+                    # NaN guard: skip backward if loss is not finite
+                    if not torch.isfinite(total_loss):
+                        print(f"  [WARNING] NaN/inf loss detected at step {self.total_frames}, skipping update")
+                        continue
 
-                # Accumulate metrics
-                metrics["loss_policy"] += (-surr_advantage.mean()).item()
-                metrics["loss_critic"] += critic_loss.item()
-                metrics["mmd_penalty"] += mmd.item()
-                metrics["kl_divergence"] += kl.item()
-                metrics["grad_norm"] += float(grad_norm)
-                metrics["policy_entropy"] += entropy.item()
+                    total_loss.backward()
 
-        # Average metrics over actual updates
-        for key in metrics:
+                    # Gradient clipping
+                    if self.config.max_grad_norm > 0:
+                        grad_norm = nn.utils.clip_grad_norm_(
+                            self.loss_params,
+                            self.config.max_grad_norm,
+                        )
+                    else:
+                        grad_norm = nn.utils.clip_grad_norm_(
+                            self.loss_params,
+                            float('inf'),
+                        )
+
+                    # NaN guard: skip step if gradients are not finite
+                    if not torch.isfinite(grad_norm):
+                        print(f"  [WARNING] NaN/inf gradients (norm={grad_norm:.4f}) at step {self.total_frames}, skipping update")
+                        self.optimizer.zero_grad()
+                        continue
+
+                    self.optimizer.step()
+                    actual_updates += 1
+
+                    # Accumulate metrics
+                    metrics["loss_policy"] += (-surr_advantage.mean()).item()
+                    metrics["loss_critic"] += critic_loss.item()
+                    metrics["mmd_penalty"] += mmd.item()
+                    metrics["kl_divergence"] += kl.item()
+                    metrics["grad_norm"] += float(grad_norm)
+                    metrics["policy_entropy"] += entropy.item()
+                    metrics["kernel_correction"] += kernel_corr.item()
+
+        # Average only the accumulated metrics (not pre-computed diagnostics)
+        accumulated_keys = {
+            "loss_policy", "loss_critic", "mmd_penalty",
+            "kl_divergence", "grad_norm", "policy_entropy",
+            "kernel_correction",
+        }
+        for key in accumulated_keys:
             metrics[key] /= max(1, actual_updates)
+
+        # Store non-accumulated schedule values (last value)
+        metrics["eta_effective"] = eta_effective
+        metrics["beta_effective"] = beta_effective
 
         return metrics
 
@@ -764,6 +799,14 @@ class MMRKHSTrainer:
 
         if "total_episodes" in metrics:
             wandb_log["episode/count"] = metrics["total_episodes"]
+
+        # Notebook mechanics metrics
+        if "eta_effective" in metrics:
+            wandb_log["train/eta_effective"] = metrics["eta_effective"]
+        if "beta_effective" in metrics:
+            wandb_log["train/beta_effective"] = metrics["beta_effective"]
+        if "kernel_correction" in metrics:
+            wandb_log["train/kernel_correction"] = metrics["kernel_correction"]
 
         # Tracking: best reward + patience counter
         wandb_log["tracking/best_reward"] = self.best_reward
