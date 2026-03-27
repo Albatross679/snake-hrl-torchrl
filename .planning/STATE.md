@@ -3,8 +3,9 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: Milestone complete
-stopped_at: Completed 17-02-PLAN.md
-last_updated: "2026-03-26T13:45:52.960Z"
+stopped_at: "Completed quick task 260327-j5b: Adopt notebook MM-RKHS mechanics"
+last_updated: "2026-03-27T13:54:11.433Z"
+last_activity: "2026-03-27 - Completed quick task 260327-j5b: Adopt notebook MM-RKHS mechanics"
 progress:
   total_phases: 21
   completed_phases: 8
@@ -150,6 +151,7 @@ Plan: Not started
 - [Phase 17]: NTK via per-sample Jacobian with parameter subsampling (n_params_sample=500)
 - [Phase 17]: Per-loss gradient norms computed every 10 epochs on first batch to minimize overhead
 - [Phase 17]: Probe pre-flight runs by default before training, skippable with --skip-probes
+- [Phase quick-260327-j5b]: 5 notebook mechanics opt-in via config flags; defaults preserve backward compat; kernel correction is additive (not in _compute_mmd_penalty)
 
 ### Pending Todos
 
@@ -200,8 +202,11 @@ None currently.
 | 260319-snc | Align choi2025 SAC and PPO configs to match paper | 2026-03-19 | b1bd7d1 | [260319-snc-align-choi2025-sac-and-ppo-configs-to-ma](./quick/260319-snc-align-choi2025-sac-and-ppo-configs-to-ma/) |
 | 260319-stp | Align PPO config to paper's 256x3 network | 2026-03-19 | b86b5c8 | [260319-stp-align-choi2025-sac-and-ppo-configs-to-ma](./quick/260319-stp-align-choi2025-sac-and-ppo-configs-to-ma/) |
 | 260320-jsu | Rewrite LaTeX report based on new structure with concise, structured style | 2026-03-20 | b1fa428 | [260320-jsu-rewrite-latex-report-based-on-new-struct](./quick/260320-jsu-rewrite-latex-report-based-on-new-struct/) |
+| 260327-ifi | Create self-contained choi2025 sub-repo with train.py, config.py, env.py, record.py for follow_target | 2026-03-27 | 00b59df | [260327-ifi-create-self-contained-choi2025-sub-repo-](./quick/260327-ifi-create-self-contained-choi2025-sub-repo-/) |
+| 260327-j5b | Adopt notebook MM-RKHS mechanics (adaptive eta/beta, inner MM loop, exponent clip, kernel correction) | 2026-03-27 | 02d2291 | [260327-j5b-adopt-notebook-mm-rkhs-mechanics-adaptiv](./quick/260327-j5b-adopt-notebook-mm-rkhs-mechanics-adaptiv/) |
 
 ## Session Continuity
 
-Last session: 2026-03-26T13:39:41.873Z
-Stopped at: Completed 17-02-PLAN.md
+Last activity: 2026-03-27 - Completed quick task 260327-j5b: Adopt notebook MM-RKHS mechanics
+Last session: 2026-03-27T13:53:52.121Z
+Stopped at: Completed quick task 260327-j5b: Adopt notebook MM-RKHS mechanics
