@@ -86,3 +86,4 @@ wandb/
 
 # Training logs
 training_output.log
+.claude/worktrees/

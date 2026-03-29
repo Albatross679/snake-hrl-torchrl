@@ -416,6 +416,15 @@ class Choi2025MMRKHSConfig(MMRKHSConfig):
     mmd_num_samples: int = 16
     value_coef: float = 0.5
 
+    # Notebook mechanics (enabled by default)
+    eta_schedule: bool = True
+    eta_exponent: float = 2.0
+    beta_schedule: bool = True
+    inner_mm_iterations: int = 3
+    exponent_clip: float = 2.0
+    kernel_correction: bool = True
+    kernel_correction_weight: float = 1.0
+
     # Compose env + network + logging (identical to PPO config)
     env: Choi2025EnvConfig = field(default_factory=Choi2025EnvConfig)
     network: Choi2025PaperNetworkConfig = field(default_factory=Choi2025PaperNetworkConfig)

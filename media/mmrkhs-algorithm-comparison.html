@@ -178,17 +178,21 @@ total_loss = (
 <p>Optimized via minibatch SGD with Adam over neural network parameters $\theta$ (actor + critic).</p>
 
 <!-- ============================================================ -->
-<h2>3. Paper's Assumptions &amp; How Our Implementation Departs</h2>
+<h2>3. Paper's Requirements vs Our Implementation: Assumptions &amp; Mechanisms</h2>
 
-<p>The paper builds on a chain of eight assumptions (plus structural prerequisites) that together guarantee the existence of an optimal policy, convergence of value iteration, the policy difference lemma, the majorization bound, and finally the closed-form MM-RKHS update. Below we list each assumption, what it requires, and precisely why our continuous-control implementation cannot satisfy it.</p>
+<p>The paper's closed-form MM-RKHS update (Eq 6.3) rests on a chain of eight formal assumptions, two structural prerequisites, and six algorithmic mechanisms that are only tractable in finite MDPs. This section unifies all of these into a single reference, organized by the root cause that prevents replication. Each row states what the paper demands, what it enables in the algorithm, and why our continuous-control deep RL setting cannot satisfy it.</p>
+
+<h3>3.1 Formal Assumptions (Assumptions 1&ndash;8)</h3>
+
+<p>These assumptions are stated explicitly in the paper and are required for the theoretical results (existence of optimal policy, value iteration convergence, policy difference lemma, majorization bound) that lead to Eq 6.2&ndash;6.3.</p>
 
 <table>
   <thead>
     <tr>
-      <th style="width:18%">Assumption</th>
-      <th style="width:32%">What the paper requires</th>
-      <th style="width:10%">Status</th>
-      <th style="width:40%">Why our implementation cannot match it</th>
+      <th style="width:15%">Assumption</th>
+      <th style="width:35%">What the paper requires &amp; what it enables</th>
+      <th style="width:8%">Status</th>
+      <th style="width:42%">Why we cannot satisfy it</th>
     </tr>
   </thead>
   <tbody>
@@ -325,8 +329,202 @@ total_loss = (
   </tbody>
 </table>
 
+<h3>3.2 Structural Prerequisites (&sect;6.4&ndash;6.5)</h3>
+
+<p>Beyond the formal assumptions, &sect;6.4 requires a finite MDP and &sect;6.5 requires a known model. These are not numbered assumptions but are implicit prerequisites for the closed-form algorithm.</p>
+
+<table>
+  <thead>
+    <tr>
+      <th style="width:15%">Prerequisite</th>
+      <th style="width:35%">What the paper requires &amp; what it enables</th>
+      <th style="width:8%">Status</th>
+      <th style="width:42%">Why we cannot satisfy it</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Finite MDP</strong><br><em>&sect;6.4</em></td>
+      <td>
+        $|\mathcal{S}| = n$, $|\mathcal{A}| = m$ both finite. Policies are vectors $\pi(s) \in \mathcal{P}(\mathcal{A})$.
+        RKHS kernel defined by PD matrices $Q \in \mathbb{R}^{n \times n}$, $R \in \mathbb{R}^{m \times m}$.
+        <br><br>
+        <strong>Enables:</strong> The normalizer $Z$ is a finite sum over $m$ terms ($O(m)$ per state). The IPM is a quadratic form $p^\top R\, p$. The update (Eq 6.3) is a vector operation. Per-state optimization decomposes into $n$ independent problems.
+      </td>
+      <td><span class="tag tag-differ">violated</span></td>
+      <td>
+        Our MDP has continuous $\mathcal{S} = \mathbb{R}^{d_s}$ and $\mathcal{A} = [-1,1]^{d_a}$. The normalizer $Z$ becomes an intractable integral over $\mathbb{R}^{d_a}$. The kernel matrix $R \in \mathbb{R}^{m \times m}$ cannot exist when $m = |\mathcal{A}|$ is uncountable. Policies must be parameterized as distributions (TanhNormal), not stored as probability vectors.
+      </td>
+    </tr>
+    <tr>
+      <td><strong>Known model</strong><br><em>&sect;6.5</em></td>
+      <td>
+        Exact transition kernel $P(s'|s,a)$ and cost $c(s,a)$ are available. The simulation-based variant (Remark 6.3) samples trajectories but still computes exact advantages.
+        <br><br>
+        <strong>Enables:</strong> Exact $A_{\pi_k}(s,a) = q_{\pi_k}(s,a) - v_{\pi_k}(s)$ via model-based computation or value iteration. The majorization bound (Lemma 5.8) and monotonic improvement guarantee depend on exact advantages.
+      </td>
+      <td><span class="tag tag-differ">violated</span></td>
+      <td>
+        Our DisMech physics simulator is a black box. We have no access to $P(s'|s,a)$ and cannot compute exact advantages. We estimate via GAE($\lambda\!=\!0.95$) with a learned critic $V_\phi$, introducing both bias ($\mathbb{E}[\hat{A}] \ne A$) and variance (finite samples).
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>3.3 Algorithmic Mechanisms (Eq 6.2&ndash;6.3)</h3>
+
+<p>The formal assumptions and prerequisites together make six specific algorithmic mechanisms tractable. Each is required for the closed-form MM-RKHS update. Below, each row states what the paper demands, and why our setting cannot replicate it.</p>
+
+<table>
+  <thead>
+    <tr>
+      <th style="width:15%">Mechanism</th>
+      <th style="width:35%">What the paper demands</th>
+      <th style="width:50%">What we cannot replicate &amp; why</th>
+    </tr>
+  </thead>
+  <tbody>
+    <!-- 1. Normalizer Z -->
+    <tr>
+      <td><strong>Normalizing constant $Z$</strong></td>
+      <td>
+        <strong>Requirement:</strong> Compute the partition function
+        $$Z(\pi_k) = \sum_{a \in \mathcal{A}} [\pi_k(s)]_a \exp\!\Big(\!-\eta_k\big(A_{\pi_k}(s,a) - \beta_k R_a^\top \pi_k(s)\big)\Big)$$
+        <strong>Why needed:</strong> Normalizes the closed-form update (Eq 6.3) so that $\pi_{k+1}(s)$ is a valid probability distribution on the simplex $\mathcal{P}(\mathcal{A})$.
+        <br><br>
+        <strong>Paper's setting:</strong> A finite sum over $m = |\mathcal{A}|$ terms. $O(m)$ per state.
+      </td>
+      <td>
+        <strong>Barrier:</strong> Intractable integral.<br><br>
+        In continuous action spaces, the sum becomes:
+        $$Z = \int_{\mathcal{A}} \pi_\theta(a|s)\, \exp\!\Big(\!-\eta\big(A(s,a) - \beta\,\mu_k(a|s)\big)\Big)\, da$$
+        <strong>Why no closed form:</strong> The integrand is $\mathrm{TanhNormal}(a;\mu_\theta,\sigma_\theta) \times \exp(\text{nonlinear function of } a)$. The TanhNormal density involves $\tanh^{-1}$ and Jacobian corrections; multiplied by an exponential of the advantage (itself a neural network output), the product has no analytical antiderivative.
+        <br><br>
+        <strong>Why quadrature fails:</strong> Numerical integration on a grid with $B$ bins per dimension costs $O(B^{d_a})$. With $d_a = 10$ action dimensions and $B = 10$, that is $10^{10}$ evaluations <em>per state per iteration</em>. A single minibatch of 1024 states would require ${\sim}10^{13}$ function evaluations.
+        <br><br>
+        <strong>Our workaround:</strong> No normalizer needed. The TanhNormal parametric family is self-normalizing. We optimize $\theta$ via gradient descent instead of computing $Z$ explicitly.
+      </td>
+    </tr>
+    <!-- 2. Closed-form multiplicative update -->
+    <tr>
+      <td><strong>Closed-form multiplicative update</strong></td>
+      <td>
+        <strong>Requirement:</strong> Apply Eq (6.3) directly:
+        $$[\pi_{k+1}(s)]_a = \frac{1}{Z(\pi_k)} [\pi_k(s)]_a \exp\!\Big(\!-\eta_k\big(A_{\pi_k}(s,a) - \beta_k R_a^\top \pi_k(s)\big)\Big)$$
+        <strong>Why needed:</strong> This is the exact solution to the optimization problem in Eq (6.2). It achieves the global minimum of the strictly convex objective in a single step &mdash; no iterative optimization required.
+        <br><br>
+        <strong>Paper's setting:</strong> Write the new probability for each of the $m$ actions. One pass. Exact.
+      </td>
+      <td>
+        <strong>Barrier:</strong> Parametric family not closed under multiplicative updates.<br><br>
+        The update $\pi_{k+1}(a) \propto \pi_k(a) \cdot \exp(f(a))$ for arbitrary $f(a)$ generally produces a distribution that is <em>not</em> TanhNormal. Specifically:
+        <ul>
+          <li><strong>Shape mismatch:</strong> TanhNormal is unimodal and symmetric about $\mu$. Multiplying by $\exp(f(a))$ where $f$ has multiple peaks or asymmetric curvature creates multimodal or skewed distributions outside the TanhNormal family.</li>
+          <li><strong>No projection:</strong> To stay in the TanhNormal family, one would need to project back (e.g., minimize $D_\mathrm{KL}(\pi_\mathrm{exact} \| \pi_\mathrm{TanhNormal})$), which itself requires the intractable $Z$ and introduces additional approximation error.</li>
+          <li><strong>Parameter coupling:</strong> Even if we could project, the neural network maps $s \mapsto (\mu_\theta(s), \sigma_\theta(s))$, so changing the policy at one state via $\theta$ changes it at all states simultaneously.</li>
+        </ul>
+        <strong>Our workaround:</strong> Gradient descent on the combined loss $L(\theta)$ over minibatch epochs. Iterative, approximate, but compatible with any differentiable parametric family.
+      </td>
+    </tr>
+    <!-- 3. R_a^T pi_k coupling -->
+    <tr>
+      <td><strong>Kernel coupling $R_a^\top \pi_k(s)$</strong></td>
+      <td>
+        <strong>Requirement:</strong> Compute the inner product
+        $$R_a^\top \pi_k(s) = \sum_{a'=1}^{m} R_{a,a'}\, \pi_k(a'|s)$$
+        and embed it inside the exponent of Eq (6.3) alongside the advantage $A(s,a)$.
+        <br><br>
+        <strong>Why needed:</strong> This term is the kernel mean embedding that couples the IPM trust region penalty to each individual action. It modifies the effective advantage per action, making the trust region action-aware rather than a batch-level scalar.
+        <br><br>
+        <strong>Paper's setting:</strong> A matrix-vector product. $R \in \mathbb{R}^{m \times m}$ is a known PD matrix. $O(m)$ per action per state.
+      </td>
+      <td>
+        <strong>Barrier:</strong> Requires integration over continuous policy.<br><br>
+        The continuous analog is the kernel mean embedding:
+        $$\mu_k(a|s) = \int k(a, a')\, \pi_\theta(a'|s)\, da'$$
+        <strong>Why no closed form:</strong> For our RBF kernel $k(a,a') = \exp(-\|a-a'\|^2/2\sigma^2)$ and TanhNormal policy, this integral has no analytical solution. The RBF kernel is Gaussian in action space, but the TanhNormal density is not Gaussian (it has the $\tanh$ squashing and Jacobian). The convolution of these two functions does not simplify.
+        <br><br>
+        <strong>Monte Carlo alternative:</strong> We could estimate $\hat{\mu}_k(a|s) = \frac{1}{P}\sum_{j=1}^P k(a, a_j)$ with $a_j \sim \pi_\mathrm{old}(\cdot|s)$, but this gives a noisy per-action estimate, not the exact quantity. With $P=16$ samples, the variance is high.
+        <br><br>
+        <strong>Our workaround:</strong> The $R_a^\top\pi_k(s)$ coupling is absent entirely. MMD is computed as a separate batch-level scalar penalty $\widehat{\mathrm{MMD}}^2$ and added to the loss. The per-action trust region structure is lost.
+      </td>
+    </tr>
+    <!-- 4. Exact advantage -->
+    <tr>
+      <td><strong>Exact advantage $A_{\pi_k}(s,a)$</strong></td>
+      <td>
+        <strong>Requirement:</strong> Compute the true advantage function
+        $$A_{\pi_k}(s,a) = q_{\pi_k}(s,a) - v_{\pi_k}(s)$$
+        where $q_{\pi_k}(s,a) = c(s,a) + \gamma \sum_{s'} P(s'|s,a)\, v_{\pi_k}(s')$.
+        <br><br>
+        <strong>Why needed:</strong> The closed-form update (Eq 6.3) is derived under the assumption that $A_{\pi_k}$ is exact. Errors in the advantage estimate break the majorization bound that guarantees monotonic improvement.
+        <br><br>
+        <strong>Paper's setting:</strong> Deterministic version uses exact model. Simulation version (&sect;6.5) samples trajectories but still applies the exact closed-form update.
+      </td>
+      <td>
+        <strong>Barrier:</strong> Black-box environment, no model access.<br><br>
+        Our DisMech physics simulator provides no access to $P(s'|s,a)$, $c(s,a)$, or $v_{\pi_k}(s)$.
+        <br><br>
+        <strong>Error sources in our estimate:</strong>
+        <ul>
+          <li><strong>Critic approximation:</strong> $V_\phi(s) \approx v_{\pi_k}(s)$ with unknown error $\epsilon(s) = V_\phi(s) - v_{\pi_k}(s)$.</li>
+          <li><strong>GAE bias-variance:</strong> $\hat{A}_t^\mathrm{GAE} = \sum_{\ell=0}^{\infty} (\gamma\lambda)^\ell \delta_{t+\ell}$ introduces bias proportional to $(1-\lambda)$ and variance proportional to trajectory length.</li>
+          <li><strong>Finite samples:</strong> Advantages estimated from $N \cdot T$ transitions per iteration (e.g., 8192), not the full state space.</li>
+        </ul>
+        <strong>Our workaround:</strong> GAE($\lambda\!=\!0.95$) with learned critic $V_\phi$, normalized per-minibatch.
+      </td>
+    </tr>
+    <!-- 5. Per-state optimization -->
+    <tr>
+      <td><strong>Per-state independent optimization</strong></td>
+      <td>
+        <strong>Requirement:</strong> Solve Eq (6.2) independently for each state $s \in \mathcal{S}$:
+        $$\pi_{k+1}(s) = \underset{p \in \mathcal{P}(\mathcal{A})}{\arg\min}\; [\text{objective}(s, p)]$$
+        Each state gets its own optimal $\pi_{k+1}(s)$ with no coupling to other states.
+        <br><br>
+        <strong>Why needed:</strong> Assumption 8 (interchange of integral and minimization) allows decomposing the global problem into independent per-state subproblems, each a small convex program on the $m$-dimensional simplex.
+        <br><br>
+        <strong>Paper's setting:</strong> $n = |\mathcal{S}|$ independent optimizations. $O(n \cdot m)$ total.
+      </td>
+      <td>
+        <strong>Barrier:</strong> Shared parameters across all states.<br><br>
+        Our policy $\pi_\theta$ is a single neural network with parameters $\theta$ shared across all states.
+        <ul>
+          <li><strong>No independence:</strong> There is no way to set $\pi_\theta(\cdot|s_1)$ and $\pi_\theta(\cdot|s_2)$ to different targets independently. The function $s \mapsto (\mu_\theta(s), \sigma_\theta(s))$ is globally determined by $\theta$.</li>
+          <li><strong>Conflicting gradients:</strong> A gradient step that improves the loss at states in one minibatch may worsen it at states in the next (the fundamental interference problem of function approximation in RL).</li>
+          <li><strong>Continuous state space:</strong> Even without parameter sharing, there are uncountably many states &mdash; per-state optimization is impossible in principle.</li>
+        </ul>
+        <strong>Our workaround:</strong> Global optimization of $\theta$ via minibatch SGD. The neural network generalizes across states but cannot achieve per-state optimality.
+      </td>
+    </tr>
+    <!-- 6. Strict convexity -->
+    <tr>
+      <td><strong>Strict convexity and global optimum</strong></td>
+      <td>
+        <strong>Requirement:</strong> The objective in Eq (6.2) is strictly convex in $p$ on the simplex $\mathcal{P}(\mathcal{A})$:
+        <ul>
+          <li>$A_{\pi_k}(s,\cdot)^\top p$ &mdash; linear in $p$ (convex).</li>
+          <li>$\mathrm{IPM}^2(\pi_k(s), p) = p^\top R\, p + \text{const}$ &mdash; quadratic with PD $R$ (strictly convex).</li>
+          <li>$D_\mathrm{KL}(p \| \pi_k(s))$ &mdash; strictly convex in $p$.</li>
+        </ul>
+        <strong>Why needed:</strong> Unique global minimum guaranteed. The closed-form (Eq 6.3) is that unique minimum. No local minima, no initialization dependence.
+      </td>
+      <td>
+        <strong>Barrier:</strong> Neural network parameterization destroys convexity.<br><br>
+        When the optimization variable changes from $p \in \mathcal{P}(\mathcal{A})$ to $\theta \in \mathbb{R}^d$:
+        <ul>
+          <li><strong>Non-convex composition:</strong> Even if $L(p)$ is convex in $p$, the map $\theta \mapsto \pi_\theta$ involves nonlinear activations (ReLU, tanh), making $L(\pi_\theta)$ non-convex in $\theta$.</li>
+          <li><strong>Loss landscape:</strong> Saddle points, local minima, and flat regions. Adam may converge to any of these.</li>
+          <li><strong>No monotonic improvement:</strong> The majorization bound guarantees $v_{\pi_{k+1}} \le v_{\pi_k}$. With SGD, this guarantee is lost &mdash; the policy can degrade between iterations.</li>
+        </ul>
+        <strong>Our workaround:</strong> Adam with gradient clipping (<span class="code">max_grad_norm=0.5</span>), $K=10$ epochs, and LR scheduling. Heuristic stabilizers, not theoretical guarantees.
+      </td>
+    </tr>
+  </tbody>
+</table>
+
 <div class="section-note">
-  <strong>Summary:</strong> Of the 8 formal assumptions plus 2 structural prerequisites, our implementation can partially satisfy only Assumption 1 (well-posed cost). Assumptions 2, 6, and 7 are <em>unverifiable</em> due to the black-box physics simulator. Assumptions 3, 4, 5, and 8 are <em>violated</em> by the use of neural network function approximation. The finite MDP and known model prerequisites are <em>violated</em> by the continuous state-action space. These violations are not implementation shortcuts &mdash; they are fundamental incompatibilities between the paper's operator-theoretic framework and the deep RL setting.
+  <strong>Summary:</strong> Of the 8 formal assumptions, Assumption 1 is partially satisfied (bounded reward). Assumptions 2, 6, 7 are <em>unverifiable</em> (black-box simulator). Assumptions 3, 4, 5, 8 are <em>violated</em> (neural network function approximation). Both structural prerequisites are <em>violated</em> (continuous spaces, unknown model). All 6 algorithmic mechanisms are <em>unreplicable</em> (intractable integrals, non-closed parametric family, shared parameters, non-convex optimization). These are fundamental incompatibilities between the operator-theoretic framework and deep RL, not implementation shortcuts.
 </div>
 
 <!-- ============================================================ -->
@@ -509,63 +707,7 @@ total_loss = (
 </table>
 
 <!-- ============================================================ -->
-<h2>6. Why Exact Replication Is Infeasible</h2>
-
-<table>
-  <thead>
-    <tr>
-      <th style="width:25%">Barrier</th>
-      <th>Explanation</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <td><strong>Intractable normalizer $Z$</strong></td>
-      <td>
-        The finite sum $Z = \sum_a \pi_k(a|s) \exp(\cdot)$ becomes
-        $$Z = \int \pi_\theta(a|s)\, \exp\!\Big(\!-\eta\big(A(s,a) - \beta\, \mu_k(a|s)\big)\Big)\, da$$
-        in continuous spaces. This integral has no closed form for TanhNormal $\times$ exp(nonlinear).
-        Numerical quadrature scales as $O(B^{d_a})$ &mdash; with $d_a = 10$, even $B=10$ gives $10^{10}$ evaluations per state.
-      </td>
-    </tr>
-    <tr>
-      <td><strong>Policy family not closed</strong></td>
-      <td>
-        The update $\pi_{k+1}(a) \propto \pi_k(a) \cdot \exp(f(a))$ for arbitrary $f(a)$ generally produces a distribution that is <em>not</em> TanhNormal. The parametric family is not closed under the multiplicative update. Projection back (via moment matching or KL minimization) introduces additional approximation error.
-      </td>
-    </tr>
-    <tr>
-      <td><strong>$R_a^\top \pi_k(s)$ requires integration</strong></td>
-      <td>
-        The continuous analog is the kernel mean embedding:
-        $$\mu_k(a|s) = \int k(a, a')\, \pi_\theta(a'|s)\, da'$$
-        For RBF kernel $\times$ TanhNormal, no closed form exists. Must estimate via Monte Carlo:
-        $\hat{\mu}_k(a|s) = \frac{1}{P}\sum_j k(a, a_j)$, $a_j \sim \pi_\mathrm{old}(\cdot|s)$.
-      </td>
-    </tr>
-    <tr>
-      <td><strong>No exact advantage</strong></td>
-      <td>
-        Continuous environments do not provide a model ($P$, $c$). We can only estimate $A(s,a)$ from sampled trajectories using a learned critic and GAE. This introduces both bias (critic error, $\mathbb{E}[\hat{A}] \ne A$) and variance (finite samples).
-      </td>
-    </tr>
-    <tr>
-      <td><strong>Per-state optimization impossible</strong></td>
-      <td>
-        With continuous $\mathcal{S}$, we cannot solve Eq 6.2 independently for each $s$. There are uncountably many states; we must generalize via function approximation ($\theta$), trading per-state optimality for generalization.
-      </td>
-    </tr>
-    <tr>
-      <td><strong>Convexity lost</strong></td>
-      <td>
-        The paper's objective is strictly convex in $p$ on $\mathcal{P}(\mathcal{A})$. When parameterized as $\theta \mapsto \mathrm{TanhNormal}(\mu_\theta, \sigma_\theta)$, composition with the neural network makes the loss non-convex in $\theta$. The unique global minimum guarantee no longer holds.
-      </td>
-    </tr>
-  </tbody>
-</table>
-
-<!-- ============================================================ -->
-<h2>7. What Our Implementation Preserves</h2>
+<h2>6. What Our Implementation Preserves</h2>
 
 <div class="section-note">
   Despite the differences above, our <span class="code">MMRKHSTrainer</span> preserves the <strong>theoretical structure</strong>
@@ -609,7 +751,7 @@ total_loss = (
 </table>
 
 <!-- ============================================================ -->
-<h2>8. Verdict</h2>
+<h2>7. Verdict</h2>
 
 <div class="verdict-box">
   <h3>Classification: Faithful Adaptation, Not Exact Replication</h3>

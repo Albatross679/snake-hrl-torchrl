@@ -10,26 +10,27 @@ find . -type f -size +100M -exec ls -lh {} \; 2>/dev/null | awk '{print $5, $9}'
 du -sh model/ output/ data/ .cache/ ~/.cache/huggingface/ 2>/dev/null
 ```
 
-## File Categorization Table
+## File Categorization — Detailed Examples
 
-| Category | Typical Contents | Transfer Via |
-|----------|-----------------|-------------|
-| Code & configs | `*.py`, `*.sh`, `*.toml`, `*.yaml` | Git |
-| Documentation | `*.md`, `*.tex`, `report/` | Git |
-| Project deps | `pyproject.toml` | Git |
-| Small data | `data/*.sql`, `data/*.csv` (<50 MB) | Git (or Git LFS) |
-| CI/CD | `.github/workflows/` | Git |
-| Dockerfile | `Dockerfile`, `.dockerignore` | Git |
-| Claude config | `CLAUDE.md`, `.claude/skills/` | Git |
-| Scripts | `script/setup.sh`, `script/b2-pull.sh` | Git |
-| Large data | datasets >100 MB, `.db` files | Cloud storage |
-| Model weights | `*.pt`, `*.bin`, `*.safetensors` | Cloud storage |
-| Checkpoints | `output/*/checkpoints/` | Cloud storage |
-| HF cache | `~/.cache/huggingface/` | Cloud storage or re-download |
-| Experiment logs | W&B runs | Already in cloud |
-| Secrets | `.env` | SCP (never Git) |
-| Personal config | `.claude/memory/`, `.claude/settings.local.json` | rsync (optional) |
-| Build artifacts | `__pycache__/`, `.mypy_cache/`, `.wandb/` | Never (regenerated) |
+See SKILL.md for the 4-bucket summary. Below are common file types and where they fall:
+
+| File pattern | Bucket | Notes |
+|-------------|--------|-------|
+| `*.py`, `*.sh`, `*.toml`, `*.yaml` | Git | Code & configs |
+| `*.md`, `*.tex`, `report/` | Git | Documentation |
+| `data/*.sql`, `data/*.csv` (<50 MB) | Git | Or Git LFS |
+| `.github/workflows/` | Git | CI/CD |
+| `Dockerfile`, `.dockerignore` | Git | |
+| `CLAUDE.md`, `.claude/skills/` | Git | |
+| `script/setup.sh`, `script/b2-pull.sh` | Git | |
+| datasets >100 MB, `.db` files | Cloud storage | |
+| `*.pt`, `*.bin`, `*.safetensors` | Cloud storage | Model weights |
+| `output/*/checkpoints/` | Cloud storage | |
+| `~/.cache/huggingface/` | Cloud storage | Or re-download |
+| W&B runs | Already in cloud | |
+| `.env` | Manual (SCP) | Never Git |
+| `.claude/memory/`, `.claude/settings.local.json` | Manual (rsync) | Optional |
+| `__pycache__/`, `.mypy_cache/`, `.wandb/` | Skip | Regenerated |
 
 ## .gitignore Template for ML Projects
 

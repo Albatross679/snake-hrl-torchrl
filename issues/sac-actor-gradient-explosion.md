@@ -54,25 +54,37 @@ Two config mismatches were also discovered and fixed during this investigation:
 
 Both changes are in [config.py](papers/choi2025/config.py).
 
-## Fix Applied (2026-03-26)
+## Fixes Applied (2026-03-26)
 
-**Actor-only gradient clipping** (`actor_max_grad_norm=1.0`):
+### Fix 1: Actor-only gradient clipping (`actor_max_grad_norm=1.0`)
 
 1. Added `actor_max_grad_norm` field to `SACConfig` — separate from `max_grad_norm` (critic clipping)
 2. SAC trainer uses `actor_max_grad_norm` for actor, `max_grad_norm` for critic
 3. `Choi2025Config` sets `actor_max_grad_norm=1.0`, `max_grad_norm=None` (critic stays unclipped since its gradients are stable at ~1.0)
 
-This directly bounds actor update magnitude without changing the algorithm's semantics. The paper doesn't use entropy regularization, and we preserve that design choice. The logged `actor_grad_norm` metric still shows the pre-clip value for monitoring.
+This directly bounds actor update magnitude without changing the algorithm's semantics.
+
+### Fix 2: Pre-tanh mean clamping (`[-5, 5]`)
+
+Gradient clipping alone was insufficient. Without entropy regularization, the actor's pre-tanh mean drifts unboundedly, causing TanhNormal saturation:
+- `tanh(large_mean)` → ±1 for all samples → `action_std = 0` (policy collapse)
+- `log(1 - tanh(x)^2)` → `-inf` → `log_prob = -6.7e23`
+
+Added `mean = torch.clamp(mean, -5.0, 5.0)` in `ActorNetwork.forward()`. This is universally safe: `tanh(5) = 0.9999` preserves full action range while preventing catastrophic saturation.
 
 ### Files changed
 - `src/configs/training.py` — added `actor_max_grad_norm` field to `SACConfig`
 - `src/trainers/sac.py` — use `actor_max_grad_norm` for actor gradient clipping
+- `src/networks/actor.py` — clamp pre-tanh mean to `[-5, 5]`
 - `papers/choi2025/config.py` — set `actor_max_grad_norm=1.0` in `Choi2025Config`
 
 ### Validation
 - All 44 diagnostic tests pass
 - Unit test confirms `clip_grad_norm_` bounds actor gradients (34438 → 1.0)
-- Probe env validation: 4/5 pass (probe 2 marginal, probe 5 which subsumes it passes)
+- Unit test confirms mean clamping prevents tanh saturation (mean=100 → clamped to 5, log_probs finite)
+- Probe env 4 (alpha=0, 1901 updates): `action_std > 0` and `log_prob finite` throughout training
+- Before fix: action_std collapsed to 0.0, log_prob reached -6.7e23
+- After fix: action_std maintained at 0.056-0.43, log_prob stable at -0.63 to 1.16
 
 ## Previously Considered Mitigations
 

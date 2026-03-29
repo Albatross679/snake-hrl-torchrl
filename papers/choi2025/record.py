@@ -39,7 +39,7 @@ import numpy as np
 import torch
 from matplotlib.animation import FuncAnimation
 
-from choi2025.config import Choi2025Config, Choi2025NetworkConfig, TaskType
+from choi2025.config import Choi2025Config, Choi2025NetworkConfig, Choi2025PPONetworkConfig, TaskType
 from choi2025.env import SoftManipulatorEnv
 from src.configs.base import resolve_device
 from src.networks.actor import create_actor
@@ -133,13 +133,26 @@ def load_actor(checkpoint_path: str, env: SoftManipulatorEnv, device: str, algo:
     else:
         raise ValueError(f"Unsupported checkpoint format: {type(checkpoint)}")
 
-    network_config = Choi2025NetworkConfig()
+    # Use saved config from checkpoint if available, else pick by algo
+    if isinstance(checkpoint, dict) and "config" in checkpoint:
+        saved_cfg = checkpoint["config"]
+        network_cfg = saved_cfg.network if hasattr(saved_cfg, "network") else None
+    else:
+        network_cfg = None
+
+    if network_cfg is not None:
+        actor_cfg = network_cfg.actor
+    elif algo == "ppo":
+        actor_cfg = Choi2025PPONetworkConfig().actor
+    else:
+        actor_cfg = Choi2025NetworkConfig().actor
+
     obs_dim = env.observation_spec["observation"].shape[-1]
 
     actor = create_actor(
         obs_dim=obs_dim,
         action_spec=env.action_spec,
-        config=network_config.actor,
+        config=actor_cfg,
         device=device,
     )
     actor.load_state_dict(actor_state_dict)

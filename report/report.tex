@@ -1041,7 +1041,7 @@ We log per-component rewards and use $r_{\text{dist}} = \exp(-5d)$ as the \emph{
 \subsection{Experimental Setup}
 \label{sec:rl-dismech:setup}
 
-All four runs use identical PPO hyperparameters, differing only in the reward function.
+All five runs use identical PPO hyperparameters, differing only in the reward function.
 \Cref{tab:choi2025-run-configs} shows the configuration of each run.
 
 \begin{table}[H]
@@ -1050,28 +1050,29 @@ All four runs use identical PPO hyperparameters, differing only in the reward fu
   \renewcommand{\arraystretch}{1.3}
   \caption{Run configurations for the reward-shaping ablation study.}
   \label{tab:choi2025-run-configs}
-  \begin{tabular}{@{}lcccc@{}}
+  \begin{tabular}{@{}lccccc@{}}
     \toprule
-    & \textbf{Baseline} & \textbf{Heading} & \textbf{PBRS+Base} & \textbf{PBRS-Only} \\
+    & \textbf{Original} & \textbf{Baseline} & \textbf{Heading} & \textbf{PBRS+Base} & \textbf{PBRS-Only} \\
     \midrule
-    Algorithm & PPO & PPO & PPO & PPO \\
-    Network & 4$\times$512 ReLU & 4$\times$512 ReLU & 4$\times$512 ReLU & 4$\times$512 ReLU \\
-    Learning rate & $10^{-4}$ & $10^{-4}$ & $10^{-4}$ & $10^{-4}$ \\
-    Clip $\epsilon$ & 0.2 & 0.2 & 0.2 & 0.2 \\
-    Epochs per batch & 10 & 10 & 10 & 10 \\
-    Mini-batch size & 1024 & 1024 & 1024 & 1024 \\
-    Frames per batch & 8192 & 8192 & 8192 & 8192 \\
-    Entropy coeff & 0.1 & 0.1 & 0.1 & 0.1 \\
-    Parallel envs & 100 & 100 & 100 & 100 \\
-    Total frames & 5M & 5M & 5M & 5M \\
-    Seed & 42 & 42 & 42 & 42 \\
-    Curriculum & Yes & Yes & Yes & Yes \\
+    Algorithm & PPO & PPO & PPO & PPO & PPO \\
+    Network & 4$\times$512 ReLU & 4$\times$512 ReLU & 4$\times$512 ReLU & 4$\times$512 ReLU & 4$\times$512 ReLU \\
+    Learning rate & $10^{-4}$ & $10^{-4}$ & $10^{-4}$ & $10^{-4}$ & $10^{-4}$ \\
+    Clip $\epsilon$ & 0.2 & 0.2 & 0.2 & 0.2 & 0.2 \\
+    Epochs per batch & 10 & 10 & 10 & 10 & 10 \\
+    Mini-batch size & 1024 & 1024 & 1024 & 1024 & 1024 \\
+    Frames per batch & 8192 & 8192 & 8192 & 8192 & 8192 \\
+    Entropy coeff & 0.1 & 0.1 & 0.1 & 0.1 & 0.1 \\
+    Parallel envs & 100 & 100 & 100 & 100 & 100 \\
+    Total frames & 5M & 5M & 5M & 5M & 5M \\
+    Seed & 42 & 42 & 42 & 42 & 42 \\
+    Curriculum & Yes & Yes & Yes & Yes & Yes \\
     \midrule
-    \multicolumn{5}{@{}l}{\textit{Reward-specific parameters}} \\
+    \multicolumn{6}{@{}l}{\textit{Reward-specific parameters}} \\
     \midrule
-    Base reward $r_{\text{dist}}$ & Yes & Yes & Yes & No \\
-    Heading weight $w$ & 0.0 & 0.3 & 0.0 & 0.0 \\
-    PBRS $\gamma$ & 0.0 & 0.0 & 0.99 & 0.99 \\
+    Base reward $r_{\text{dist}}$ & Yes & Yes & Yes & Yes & No \\
+    Improvement $w_{\text{imp}}$ & 10.0 & 0.0 & 0.0 & 0.0 & 0.0 \\
+    Heading weight $w$ & 0.0 & 0.0 & 0.3 & 0.0 & 0.0 \\
+    PBRS $\gamma$ & 0.0 & 0.0 & 0.0 & 0.99 & 0.99 \\
     \bottomrule
   \end{tabular}
 \end{table}
@@ -1093,9 +1094,10 @@ The signal-to-noise ratio (SNR) is computed as $|\bar{r}| / \sigma_r$ over all t
     \toprule
     \textbf{Run} & $\boldsymbol{r_{\textbf{dist}}}$ \textbf{(fair)} & \textbf{vs.\ Baseline} & \textbf{SNR} & \textbf{Episode Reward} & \textbf{Best Episode} \\
     \midrule
+    Original ($w_{\text{imp}}$=10) & \textbf{0.143} & $+$52.1\% & 1.72 & 28.2 & 90.2 \\
+    PBRS+Base       & 0.109 & $+$16.9\% & 1.00 & 27.4 & 77.9 \\
     Baseline        & 0.094 & ---      & 1.20 & 18.7 & 61.3 \\
     Heading ($w$=0.3) & 0.072 & $-$23.3\% & 1.82 & 39.1 & 63.0 \\
-    PBRS+Base       & 0.109 & $+$16.9\% & 1.00 & 27.4 & 77.9 \\
     PBRS-Only       & 0.067 & $-$28.7\% & 0.10 & 1.8  & 2.9  \\
     \bottomrule
   \end{tabular}
@@ -1105,28 +1107,30 @@ The signal-to-noise ratio (SNR) is computed as $|\bar{r}| / \sigma_r$ over all t
 Key observations:
 
 \begin{itemize}
-  \item \textbf{PBRS+Base is the best performer} at $+$16.9\% over baseline on the fair metric, with the highest best-episode reward (77.9).
+  \item \textbf{The original two-term reward is the best performer} at $+$52.1\% over baseline on the fair metric, with the highest best-episode reward (90.2).
+  Despite our earlier SNR analysis suggesting the $10{\times}$ improvement bonus would destabilize PPO, curriculum learning appears to mitigate this: during the warmup phase the slow-moving target produces small, consistent distance improvements, keeping the bonus well-scaled until the policy matures.
+  \item \textbf{PBRS+Base is the second best} at $+$16.9\% over baseline.
   The shaping signal $F = d(s) - 0.99\,d(s')$ provides a per-step gradient toward the target, accelerating learning without distorting the optimal policy.
   \item \textbf{Heading reward hurts by 23.3\%.}
   Although the heading run achieves inflated episode rewards (39.1 vs.\ 18.7), this reflects the heading component contributing ${\sim}$72\% of the total reward.
   On the fair metric, heading reduces distance-tracking performance---a case of reward hacking where the agent optimizes alignment at the expense of proximity.
   \item \textbf{PBRS-only is insufficient} ($-$28.7\%).
   Removing the base reward leaves only the shaping signal, which has critically low SNR (0.10, vs.\ the 0.5 threshold for reliable learning).
-  The value function achieves high explained variance (0.88) because near-zero returns are easy to predict, but this does not help the policy distinguish good states from bad.
-  \item \textbf{SNR predicts performance.}
-  The ranking by fair metric (PBRS+Base $>$ Baseline $>$ Heading $>$ PBRS-Only) aligns with SNR when accounting for reward hacking: heading has higher SNR (1.82) but the signal points in the wrong direction.
+  \item \textbf{Curriculum rescues high-variance rewards.}
+  The original reward's SNR without curriculum was 0.08 (\Cref{sec:rl-dismech:reward}); with curriculum it reaches 1.72.
+  The slow ramp prevents the large improvement bonus from overwhelming the value function during early training.
 \end{itemize}
 
 \paragraph{Reward curves.}
 \Cref{fig:ppo-reward-shaping} shows the fair metric and distance to target over training.
-PBRS+Base (green) separates from the other runs after ${\sim}$2M frames, with the improvement still accelerating at 5M frames.
+The original reward (purple) separates from all other runs after ${\sim}$1.5M frames, reaching the highest fair metric.
+PBRS+Base (green) is the second-best, separating after ${\sim}$2M frames.
 The baseline (blue) and heading (orange) both improve slowly; PBRS-Only (red, dashed) remains flat near the bottom.
-Note: the baseline curve has no distance-to-target data because per-component logging was added after that run.
 
 \begin{figure}[H]
   \centering
   \includegraphics[width=\linewidth]{ppo_reward_shaping_curves.pdf}
-  \caption{PPO reward-shaping ablation on follow\_target (5M frames, 100 envs, seed 42). (a)~Fair metric $r_{\text{dist}} = \exp(-5d)$ per step, EMA-smoothed ($\alpha = 2/41$). (b)~Mean tip-to-target distance. PBRS+Base (green) outperforms all variants; heading (orange) and PBRS-Only (red) underperform baseline.}
+  \caption{PPO reward-shaping ablation on follow\_target (5M frames, 100 envs, seed 42). (a)~Fair metric $r_{\text{dist}} = \exp(-5d)$ per step, EMA-smoothed ($\alpha = 2/41$). (b)~Mean tip-to-target distance. The original two-term reward (purple) outperforms all variants; PBRS+Base (green) is second; heading (orange) and PBRS-Only (red) underperform baseline.}
   \label{fig:ppo-reward-shaping}
 \end{figure}
 
@@ -1153,13 +1157,16 @@ Possible mitigations include mild entropy regularization ($\alpha > 0$), actor-s
 \label{sec:rl-dismech:discussion}
 
 The ablation study demonstrates that reward design has a larger effect on learning than hyperparameter tuning in this task.
-PBRS provides a principled mechanism for accelerating learning without changing the optimal policy, but requires the base reward to define \emph{which} states are desirable---the shaping signal only provides directional information (closer vs.\ farther).
+The original paper reward---dismissed in our initial analysis for its low SNR---proves most effective when paired with curriculum learning, which controls reward variance during early training.
+This highlights a key interaction: reward function and curriculum are not independent design choices.
+
+PBRS provides a principled mechanism for accelerating learning without changing the optimal policy, but the non-theoretic improvement bonus ($+$52.1\%) outperforms the policy-invariant PBRS ($+$16.9\%).
+The improvement bonus is not policy-invariant, yet its direct ``closer is better'' signal aligns well with the task objective.
 
 The heading reward, despite intuitive appeal, exemplifies a common RL pitfall: auxiliary objectives can dominate the total reward and redirect optimization away from the true task metric.
 Per-component logging is essential for diagnosing such issues, since the aggregate episode reward (39.1 for heading vs.\ 18.7 for baseline) misleadingly suggests heading is superior.
 
-The PBRS+Base improvement ($+$16.9\%) is still accelerating at 5M frames, suggesting longer training or higher frame budgets may yield further gains.
-A natural next step is combining PBRS with entropy scheduling or adaptive $\gamma$ to further improve sample efficiency.
+A natural next step is combining the improvement bonus with PBRS, or testing without curriculum to isolate the curriculum--reward interaction.
 
 % ===========================================================================
 % CHAPTER 6: PHYSICS-INFORMED NEURAL NETWORK
