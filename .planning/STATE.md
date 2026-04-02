@@ -204,9 +204,10 @@ None currently.
 | 260320-jsu | Rewrite LaTeX report based on new structure with concise, structured style | 2026-03-20 | b1fa428 | [260320-jsu-rewrite-latex-report-based-on-new-struct](./quick/260320-jsu-rewrite-latex-report-based-on-new-struct/) |
 | 260327-ifi | Create self-contained choi2025 sub-repo with train.py, config.py, env.py, record.py for follow_target | 2026-03-27 | 00b59df | [260327-ifi-create-self-contained-choi2025-sub-repo-](./quick/260327-ifi-create-self-contained-choi2025-sub-repo-/) |
 | 260327-j5b | Adopt notebook MM-RKHS mechanics (adaptive eta/beta, inner MM loop, exponent clip, kernel correction) | 2026-03-27 | 02d2291 | [260327-j5b-adopt-notebook-mm-rkhs-mechanics-adaptiv](./quick/260327-j5b-adopt-notebook-mm-rkhs-mechanics-adaptiv/) |
+| 260402-985 | PPO follow-target diagnostics: probe experiments and training variants | 2026-04-02 | 746672b | [260402-985-ppo-follow-diagnostics](./quick/260402-985-ppo-follow-diagnostics/) |
 
 ## Session Continuity
 
-Last activity: 2026-03-27 - Completed quick task 260327-j5b: Adopt notebook MM-RKHS mechanics
-Last session: 2026-03-27T13:53:52.121Z
-Stopped at: Completed quick task 260327-j5b: Adopt notebook MM-RKHS mechanics
+Last activity: 2026-04-02 - Completed quick task 260402-985: PPO follow-target diagnostics
+Last session: 2026-04-02T18:20:00.000Z
+Stopped at: Completed quick task 260402-985: PPO follow-target diagnostics
