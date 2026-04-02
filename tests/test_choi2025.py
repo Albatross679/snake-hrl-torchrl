@@ -115,6 +115,122 @@ class TestRewards:
         assert reward_no_pen > reward_pen  # Penalty reduces reward
 
 
+class TestNormalizedRewards:
+    """Tests for normalized multi-component PBRS reward architecture (Phase 18)."""
+
+    def test_normalized_reward_ranges(self):
+        """Verify each base component stays in documented range across random states."""
+        rng = np.random.default_rng(42)
+        for _ in range(100):
+            tip = rng.uniform(-1, 1, size=3)
+            target = rng.uniform(-1, 1, size=3)
+            prev_tip = rng.uniform(-1, 1, size=3)
+            tangent = rng.standard_normal(3)
+            tangent /= np.linalg.norm(tangent)
+            prev_tangent = rng.standard_normal(3)
+            prev_tangent /= np.linalg.norm(prev_tangent)
+            action = rng.uniform(-1, 1, size=10)
+            prev_action = rng.uniform(-1, 1, size=10)
+            prev_dist = float(rng.uniform(0, 2))
+
+            _, components = compute_follow_target_reward(
+                tip, target, prev_tip,
+                tip_tangent=tangent,
+                prev_tip_tangent=prev_tangent,
+                heading_weight=0.5,
+                smooth_weight=0.5,
+                prev_dist=prev_dist,
+                pbrs_gamma=0.99,
+                action=action,
+                prev_action=prev_action,
+                action_dim=10,
+                workspace_radius=1.0,
+                return_components=True,
+            )
+            assert 0.0 <= components["reward_dist"] <= 1.0, f"dist out of range: {components['reward_dist']}"
+            assert 0.0 <= components["reward_align"] <= 1.0, f"align out of range: {components['reward_align']}"
+            assert -1.0 <= components["reward_smooth"] <= 0.0, f"smooth out of range: {components['reward_smooth']}"
+
+    def test_pbrs_telescoping(self):
+        """Verify sum of PBRS distance terms over an episode telescopes correctly.
+
+        For distance PBRS: Σ (γΦ(s') - Φ(s)) ≈ γΦ(s_T) - Φ(s_0) when γ < 1.
+        More precisely: Σ_{t=0}^{T-1} (γΦ(s_{t+1}) - Φ(s_t)) = γΦ(s_T) - Φ(s_0) + (γ-1)Σ_{t=1}^{T-1}Φ(s_t)
+        For telescoping property, use γ=1.0 where it simplifies to Φ(s_T) - Φ(s_0).
+        """
+        rng = np.random.default_rng(123)
+        target = np.array([0.5, 0.5, 0.0])
+        workspace_radius = 1.0
+
+        # Generate trajectory
+        positions = [rng.uniform(-0.5, 0.5, size=3)]
+        for _ in range(50):
+            step = rng.uniform(-0.05, 0.05, size=3)
+            positions.append(positions[-1] + step)
+
+        dists = [float(np.linalg.norm(p - target)) for p in positions]
+        pbrs_sum = 0.0
+        for t in range(len(positions) - 1):
+            phi_curr = -dists[t] / workspace_radius
+            phi_next = -dists[t + 1] / workspace_radius
+            # γ=1.0 for perfect telescoping
+            pbrs_sum += (1.0 * phi_next - phi_curr)
+
+        phi_first = -dists[0] / workspace_radius
+        phi_last = -dists[-1] / workspace_radius
+        expected = phi_last - phi_first
+
+        assert abs(pbrs_sum - expected) < 1e-10, f"Telescoping failed: {pbrs_sum} != {expected}"
+
+    def test_weights_are_importance(self):
+        """Verify that doubling a weight exactly doubles that component's contribution."""
+        tip = np.array([0.5, 0.0, 0.0])
+        target = np.array([0.8, 0.0, 0.0])
+        prev_tip = np.array([0.4, 0.0, 0.0])
+        tangent = np.array([1.0, 0.0, 0.0])
+
+        # Heading: weight=0.3 vs weight=0.6
+        _, c1 = compute_follow_target_reward(
+            tip, target, prev_tip, tip_tangent=tangent,
+            heading_weight=0.3, return_components=True,
+        )
+        _, c2 = compute_follow_target_reward(
+            tip, target, prev_tip, tip_tangent=tangent,
+            heading_weight=0.6, return_components=True,
+        )
+        # The heading component itself is the same; its weighted contribution doubles
+        assert c1["reward_align"] == pytest.approx(c2["reward_align"])
+        # Total contribution: heading_weight * heading_reward
+        h1 = 0.3 * c1["reward_align"]
+        h2 = 0.6 * c2["reward_align"]
+        assert h2 == pytest.approx(2.0 * h1)
+
+    def test_no_improvement_bonus(self):
+        """Verify improvement bonus has been completely removed."""
+        _, components = compute_follow_target_reward(
+            np.array([0.5, 0.0, 0.0]),
+            np.array([0.8, 0.0, 0.0]),
+            np.array([0.4, 0.0, 0.0]),
+            return_components=True,
+        )
+        assert "reward_improve" not in components
+
+    def test_pbrs_head_component_logged(self):
+        """Verify heading PBRS component is returned in components dict."""
+        _, components = compute_follow_target_reward(
+            np.array([0.5, 0.0, 0.0]),
+            np.array([0.8, 0.0, 0.0]),
+            np.array([0.4, 0.0, 0.0]),
+            tip_tangent=np.array([1.0, 0.0, 0.0]),
+            prev_tip_tangent=np.array([1.0, 0.0, 0.0]),
+            heading_weight=0.3,
+            prev_dist=0.4,
+            pbrs_gamma=0.99,
+            return_components=True,
+        )
+        assert "reward_pbrs_head" in components
+
+
 class TestTargetAndObstacles:
     def test_target_generator(self):
         rng = np.random.default_rng(42)

@@ -182,6 +182,10 @@ class Choi2025EnvConfig:
     # Paper uses 2 substeps at dt=0.05 = 0.1s per action = 10 Hz control.
     control_period: int = 2
 
+    # Base distance reward weight for follow_target: exp(-5*dist) in [0, 1].
+    # 0.0 = disabled (use PBRS only). 1.0 = full weight (default).
+    dist_weight: float = 1.0
+
     # Heading reward weight for follow_target: bonus for pointing tip toward target.
     # Total reward = (1 - w) * exp(-5*dist) + w * (1+cos_sim)/2, both in [0, 1].
     heading_weight: float = 0.0
@@ -191,13 +195,12 @@ class Choi2025EnvConfig:
     # 0.0 = disabled. Typical: 0.99. Guaranteed policy-invariant (Ng et al. 1999).
     pbrs_gamma: float = 0.0
 
-    # PBRS-only mode: use ONLY the PBRS shaping signal, no base distance reward.
-    # Requires pbrs_gamma > 0. Tests whether the shaping signal alone is sufficient.
-    pbrs_only: bool = False
+    # Action smoothness penalty weight (normalized: -||Δa||²/(2·action_dim) in [-1, 0]).
+    # Pure importance coefficient. 0.0 = disabled. Typical: 0.01-0.05.
+    smooth_weight: float = 0.0
 
-    # Improvement bonus weight: w * (prev_dist - dist).
-    # Paper's original reward uses 10.0. 0.0 = disabled.
-    improvement_weight: float = 0.0
+    # Workspace radius for PBRS distance normalization (matches rod length).
+    workspace_radius: float = 1.0
 
     # Device — "auto" → GPU when available, else CPU
     device: str = "auto"

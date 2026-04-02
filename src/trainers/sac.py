@@ -490,7 +490,7 @@ class SACTrainer:
                 next_td = TensorDict({"observation": next_obs}, batch_size=obs.shape[0])
                 next_td = self.actor(next_td)
                 next_action = next_td["action"]
-                next_log_prob = next_td["action_log_prob"]
+                next_log_prob = next_td["sample_log_prob"]
 
                 # Target Q-values
                 q1_target, q2_target = self.critic_target(next_obs, next_action)
@@ -524,7 +524,7 @@ class SACTrainer:
                 td = TensorDict({"observation": obs}, batch_size=obs.shape[0])
                 td = self.actor(td)
                 new_action = td["action"]
-                log_prob = td["action_log_prob"]
+                log_prob = td["sample_log_prob"]
 
                 # Q-values for new actions
                 q1_new, q2_new = self.critic(obs, new_action)

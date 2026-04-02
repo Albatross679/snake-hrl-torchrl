@@ -361,7 +361,7 @@ class PPOTrainer:
                         metrics["mean_final_dist_to_goal"] = finals.mean().item()
 
                 # Reward diagnostics (batch means)
-                for key in ("v_g", "dist_to_goal", "theta_g", "reward_dist", "reward_align", "reward_pbrs"):
+                for key in ("v_g", "dist_to_goal", "theta_g", "reward_dist", "reward_align", "reward_pbrs", "reward_improve", "reward_smooth"):
                     if key in next_td.keys():
                         metrics[f"mean_{key}"] = next_td[key].mean().item()
 
@@ -655,6 +655,8 @@ class PPOTrainer:
             ("mean_reward_dist", "reward/component_dist"),
             ("mean_reward_align", "reward/component_align"),
             ("mean_reward_pbrs", "reward/component_pbrs"),
+            ("mean_reward_improve", "reward/component_improve"),
+            ("mean_reward_smooth", "reward/component_smooth"),
         ):
             if key in metrics:
                 wandb_log[wandb_key] = metrics[key]

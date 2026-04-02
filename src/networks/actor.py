@@ -9,6 +9,7 @@ from torchrl.modules import (
     TanhNormal,
     NormalParamExtractor,
 )
+from tensordict.nn import InteractionType
 try:
     from torchrl.data import BoundedTensorSpec, CompositeSpec
 except ImportError:
@@ -269,7 +270,7 @@ def create_actor(
             "high": action_spec.space.high,
         },
         return_log_prob=True,
-        default_interaction_type="random",
+        default_interaction_type=InteractionType.RANDOM,
     )
 
     return actor

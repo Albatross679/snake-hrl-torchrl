@@ -71,6 +71,12 @@ def parse_args() -> argparse.Namespace:
         help="Per-worker episodes before reaching full target speed (default: 200)",
     )
     parser.add_argument(
+        "--dist-weight",
+        type=float,
+        default=1.0,
+        help="Base distance reward weight (0.0=disabled, 1.0=default). Set to 0 for PBRS-only.",
+    )
+    parser.add_argument(
         "--heading-weight",
         type=float,
         default=0.0,
@@ -83,15 +89,10 @@ def parse_args() -> argparse.Namespace:
         help="PBRS discount factor (0.0=disabled, 0.99=typical). Adds policy-invariant shaping F=prev_dist-gamma*dist.",
     )
     parser.add_argument(
-        "--pbrs-only",
-        action="store_true",
-        help="Use ONLY the PBRS shaping signal (no base distance reward). Requires --pbrs-gamma > 0.",
-    )
-    parser.add_argument(
-        "--improvement-weight",
+        "--smooth-weight",
         type=float,
         default=0.0,
-        help="Improvement bonus multiplier: w*(prev_dist - dist). Paper uses 10.0. 0.0=disabled.",
+        help="Action smoothness penalty weight (normalized to [-1,0]). Typical: 0.01-0.05. 0.0=disabled.",
     )
     return parser.parse_args()
 
@@ -105,6 +106,9 @@ def main():
     # Build config (construct env first so __post_init__ sees the task)
     env_config = Choi2025EnvConfig(task=TaskType(args.task), device=device)
 
+    # Set base distance reward weight
+    env_config.dist_weight = args.dist_weight
+
     # Enable heading reward if requested
     if args.heading_weight > 0:
         env_config.heading_weight = args.heading_weight
@@ -112,10 +116,8 @@ def main():
     # Enable PBRS if requested
     if args.pbrs_gamma > 0:
         env_config.pbrs_gamma = args.pbrs_gamma
-    if args.pbrs_only:
-        env_config.pbrs_only = True
-    if args.improvement_weight > 0:
-        env_config.improvement_weight = args.improvement_weight
+    if args.smooth_weight > 0:
+        env_config.smooth_weight = args.smooth_weight
 
     # Enable curriculum learning if requested
     if args.curriculum:

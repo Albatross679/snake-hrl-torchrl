@@ -174,7 +174,9 @@ class SoftManipulatorEnv(EnvBase):
         # Episode state
         self._step_count = 0
         self._prev_tip_pos = np.zeros(3)
+        self._prev_tip_tangent: np.ndarray | None = None  # For heading PBRS
         self._prev_dist: float | None = None  # For PBRS
+        self._prev_action: np.ndarray | None = None  # For action smoothness
         self._reward_components: dict = {}
 
         # Curriculum tracking
@@ -224,7 +226,10 @@ class SoftManipulatorEnv(EnvBase):
             reward_pbrs=Unbounded(
                 shape=(1,), dtype=torch.float32, device=self._device
             ),
-            reward_improve=Unbounded(
+            reward_pbrs_head=Unbounded(
+                shape=(1,), dtype=torch.float32, device=self._device
+            ),
+            reward_smooth=Unbounded(
                 shape=(1,), dtype=torch.float32, device=self._device
             ),
             shape=(),
@@ -465,6 +470,8 @@ class SoftManipulatorEnv(EnvBase):
         self._step_count = 0
         self._episode_count += 1
         self._prev_tip_pos = self._get_tip_pos()
+        self._prev_tip_tangent = self._get_tip_tangent()
+        self._prev_action = None
 
         # Initialize PBRS prev_dist from initial state
         tip_pos = self._get_tip_pos()
@@ -484,7 +491,8 @@ class SoftManipulatorEnv(EnvBase):
                 "reward_dist": _zero.clone(),
                 "reward_align": _zero.clone(),
                 "reward_pbrs": _zero.clone(),
-                "reward_improve": _zero.clone(),
+                "reward_pbrs_head": _zero.clone(),
+                "reward_smooth": _zero.clone(),
             },
             batch_size=self.batch_size,
             device=self._device,
@@ -493,8 +501,9 @@ class SoftManipulatorEnv(EnvBase):
     def _step(self, tensordict: TensorDictBase) -> TensorDictBase:
         action = tensordict["action"].cpu().numpy().astype(np.float64)
 
-        # Record pre-step tip position
+        # Record pre-step state
         self._prev_tip_pos = self._get_tip_pos()
+        self._prev_tip_tangent = self._get_tip_tangent()
 
         # Apply delta curvature control (once per RL step)
         curvature_state = self.controller.apply_delta(action, two_d_sim=self._two_d_sim)
@@ -516,8 +525,11 @@ class SoftManipulatorEnv(EnvBase):
         if self.config.task == TaskType.FOLLOW_TARGET:
             self._target.step(self.config.physics.dt * num_substeps)
 
-        # Compute reward
-        reward = self._compute_reward()
+        # Compute reward (pass action for smoothness penalty)
+        reward = self._compute_reward(action=action)
+
+        # Track previous action for smoothness penalty
+        self._prev_action = action.copy()
 
         self._step_count += 1
         truncated = self._step_count >= self.config.max_episode_steps
@@ -542,22 +554,27 @@ class SoftManipulatorEnv(EnvBase):
             device=self._device,
         )
 
-    def _compute_reward(self) -> float:
+    def _compute_reward(self, action: np.ndarray | None = None) -> float:
         """Dispatch to task-specific reward function."""
         tip_pos = self._get_tip_pos()
         target_pos = self._target.position
         task = self.config.task
 
         if task == TaskType.FOLLOW_TARGET:
-            tip_tangent = self._get_tip_tangent() if self.config.heading_weight > 0 else None
+            tip_tangent = self._get_tip_tangent()
             reward, self._reward_components = compute_follow_target_reward(
                 tip_pos, target_pos, self._prev_tip_pos,
-                tip_tangent=tip_tangent,
+                tip_tangent=tip_tangent if self.config.heading_weight > 0 else None,
+                prev_tip_tangent=self._prev_tip_tangent if self.config.heading_weight > 0 else None,
+                dist_weight=self.config.dist_weight,
                 heading_weight=self.config.heading_weight,
+                smooth_weight=self.config.smooth_weight,
                 prev_dist=self._prev_dist,
                 pbrs_gamma=self.config.pbrs_gamma,
-                pbrs_only=self.config.pbrs_only,
-                improvement_weight=self.config.improvement_weight,
+                action=action,
+                prev_action=self._prev_action,
+                action_dim=self._action_dim,
+                workspace_radius=self.config.workspace_radius,
                 return_components=True,
             )
             # Update prev_dist for next PBRS computation
