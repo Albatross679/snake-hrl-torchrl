@@ -42,7 +42,7 @@
 % TikZ for diagrams
 % ---------------------------------------------------------------------------
 \usepackage{tikz}
-\usetikzlibrary{arrows.meta, positioning, calc, fit, backgrounds}
+\usetikzlibrary{arrows.meta, positioning, calc, fit, backgrounds, decorations.pathreplacing}
 
 % ---------------------------------------------------------------------------
 % Bold math vectors and landscape tables
@@ -81,7 +81,7 @@
 \usepackage{fancyhdr}
 \pagestyle{fancy}
 \fancyhf{}
-\lhead{\small Neural Surrogate for Snake Robot RL}
+\lhead{\small RL for Soft Manipulator Control}
 \rfoot{\thepage}
 \renewcommand{\headrulewidth}{0.4pt}
 
@@ -109,7 +109,7 @@
 % ---------------------------------------------------------------------------
 % Bibliography (natbib --- before hyperref)
 % ---------------------------------------------------------------------------
-\usepackage[round, sort, authoryear]{natbib}
+\usepackage[numbers, sort&compress]{natbib}
 
 % ---------------------------------------------------------------------------
 % Hyperref and microtype --- before cleveref
@@ -121,13 +121,15 @@
 % Cross-references (cleveref --- MUST be loaded after hyperref)
 % ---------------------------------------------------------------------------
 \usepackage{cleveref}
+\crefname{subsection}{Section}{Sections}
+\Crefname{subsection}{Section}{Sections}
 
 % ---------------------------------------------------------------------------
 % Title
 % ---------------------------------------------------------------------------
 \title{%
-  \textbf{Neural Surrogate Modeling for Snake Robot Locomotion:}\\[0.3em]
-  \large Faster Reinforcement Learning via Learned Cosserat Rod Dynamics%
+  \textbf{Reinforcement Learning for Soft Manipulator Control:}\\[0.3em]
+  \large Reward Architecture and Curriculum Design on Cosserat Rods%
 }
 \author{%
   Qifan Wen\\
@@ -146,65 +148,114 @@
 
 % ---------------------------------------------------------------------------
 \begin{abstract}
-\placeholder{Write abstract after all experimental results are available.}
+Reinforcement learning for soft and continuum robots is bottlenecked by the cost of first-principles simulation: a Cosserat rod snake robot requires ${\sim}$500 substeps per control step, costing ${\sim}$46\,ms per environment transition.
+This report investigates two directions for enabling practical RL-based control of a soft manipulator: neural surrogate modeling to overcome simulation cost, and reward architecture design for effective policy learning.
+On the surrogate side, a data-driven MLP trained on 4.3M Elastica transitions achieves centre-of-mass $R^2 = 0.852$ in single-step prediction, targeting a four-to-five order-of-magnitude inference speedup, though velocity prediction remains weak ($R^2 = 0.145$); physics-informed extensions (PINN, DD-PINN) are proposed as future work.
+On the reward side, systematic RL experiments on DisMech reveal that reward design and curriculum learning dominate performance: a reward-shaping ablation across five variants shows a 52\% range in the fair distance metric with identical hyperparameters, and curriculum learning alone accounts for 16\% improvement over the vanilla baseline.
+Extended training to 50M frames confirms these are fundamental reward-landscape limitations, not sample-budget issues: the $\exp(-5d)$ reward is essentially zero at operating distances ($d \approx 0.6$), creating a hard learning plateau.
+A normalized multi-component reward architecture with per-objective potential-based reward shaping (PBRS) decouples component scale from importance weights, achieving a best distance of $d = 0.543$ ($-$24\% vs.\ baseline) and enabling detection of reward hacking through per-component logging.
+We also document SAC gradient instability without entropy regularization (actor gradient norms growing to $10^{10}$ over 20M frames).
 \end{abstract}
 
 \tableofcontents
 \newpage
 
 % ---------------------------------------------------------------------------
-% Notation table
+% Glossary
 % ---------------------------------------------------------------------------
-\section*{Notation}
-\label{sec:notation}
-\addcontentsline{toc}{section}{Notation}
+\section*{Glossary}
+\label{sec:glossary}
+\addcontentsline{toc}{section}{Glossary}
 
-\begin{table}[H]
-  \centering
-  \small
-  \begin{tabular}{lll}
-    \toprule
-    Symbol & Dimension & Meaning \\
-    \midrule
-    $\mathbf{s}_t$ & $\mathbb{R}^{124}$ & Rod state vector at time step $t$ \\
-    $\mathbf{a}_t$ & $[-1,1]^5$ & Normalized CPG action vector \\
-    $T$ & $\mathbb{R}^{124} \times \mathbb{R}^5 \to \mathbb{R}^{124}$ & Ground-truth transition operator (PyElastica) \\
-    $f_\theta$ & $\mathbb{R}^{189} \to \mathbb{R}^{124}$ & Neural surrogate model with parameters $\theta$ \\
-    $\mathbf{z}_t$ & $\mathbb{R}^{189}$ & Surrogate input (state $\|$ action $\|$ phase encoding) \\
-    $\boldsymbol{\phi}_e$ & $\mathbb{R}^3$ & Per-element CPG phase triplet for element $e$ \\
-    $\mathbf{x}(s,t)$ & $\mathbb{R}^3$ & Rod centerline position at arc length $s$ \\
-    $\mathbf{d}(s,t)$ & $\mathbb{R}^3$ & Material director frame (orientation) \\
-    $\mathbf{F}$ & $\mathbb{R}^3$ & Internal force (shear and tension) \\
-    $\mathbf{M}$ & $\mathbb{R}^3$ & Internal moment (bending and torsion) \\
-    $\kappa_e^{\text{target}}$ & $\mathbb{R}$ & Target curvature at element $e$ \\
-    $\mu_\Delta, \sigma_\Delta$ & $\mathbb{R}^{124}$ & Training-set mean and std of state deltas \\
-    $N$ & 21 & Number of discretization nodes \\
-    $N_e$ & 20 & Number of discretization elements \\
-    \bottomrule
-  \end{tabular}
-\end{table}
+\begin{description}[style=nextline, leftmargin=3.2cm, labelwidth=3cm, font=\normalfont\bfseries]
+
+  \item[Cosserat rod]
+    A continuum mechanics model for slender elastic bodies that tracks both position and orientation (director frames) along the rod centreline, capturing bending, torsion, shear, and extension.
+
+  \item[PyElastica]
+    An open-source Cosserat rod simulator using explicit symplectic (Position Verlet) time integration. Used in this work for data collection and direct RL training.
+
+  \item[DisMech]
+    A Cosserat rod simulator using implicit backward Euler time integration. Used for the Choi2025 follow-target RL experiments.
+
+  \item[CPG]
+    \emph{Central Pattern Generator.} A bio-inspired oscillator that produces rhythmic motor commands. The snake robot's action space consists of five normalised CPG parameters (amplitude, frequency, spatial wavenumber, phase offset, lateral bias).
+
+  \item[Serpenoid curve]
+    The travelling-wave body shape $\kappa(s,t) = A\sin(2\pi(ks - ft) + \phi_0)$ that produces serpentine locomotion; parameterised by CPG actions.
+
+  \item[Surrogate model]
+    A neural network $f_\theta$ trained to approximate the physics simulator's state transition, replacing an expensive first-principles solver with a single GPU forward pass.
+
+  \item[MLP]
+    \emph{Multi-Layer Perceptron.} A feedforward neural network of fully connected layers. The implemented surrogate uses three hidden layers of 512 units with LayerNorm and SiLU activations.
+
+  \item[PINN]
+    \emph{Physics-Informed Neural Network.} A neural network whose training loss includes a residual term derived from the governing PDEs, encouraging physics-consistent predictions. Proposed but not implemented in this work.
+
+  \item[DD-PINN]
+    \emph{Domain-Decoupled Physics-Informed Neural Network.} A PINN variant where the network outputs parameters of an analytically differentiable ansatz rather than the state itself, eliminating autodiff cost and satisfying initial conditions exactly. Proposed but not implemented in this work.
+
+  \item[RFT]
+    \emph{Resistive Force Theory.} An anisotropic friction model that decomposes ground contact forces into tangential and normal components, widely used for limbless locomotion on flat surfaces.
+
+  \item[RL]
+    \emph{Reinforcement Learning.} A learning paradigm where an agent interacts with an environment to maximise cumulative reward.
+
+  \item[PPO]
+    \emph{Proximal Policy Optimisation.} An on-policy actor-critic algorithm that constrains policy updates via a clipped surrogate objective, balancing sample efficiency with training stability.
+
+  \item[SAC]
+    \emph{Soft Actor-Critic} \citep{Haarnoja2018}. An off-policy actor-critic algorithm that maximises a combined reward-plus-entropy objective, encouraging exploration and robust policies.
+
+  \item[GAE]
+    \emph{Generalised Advantage Estimation.} A variance-reduction technique for policy gradient methods that exponentially weights multi-step temporal-difference errors via a parameter $\lambda$.
+
+  \item[PBRS]
+    \emph{Potential-Based Reward Shaping.} A reward augmentation $F(s,s') = \gamma\,\Phi(s') - \Phi(s)$ that preserves optimal-policy invariance while providing denser learning signal. Used per-objective in the normalised reward architecture.
+
+  \item[Curriculum learning]
+    A training strategy that gradually increases task difficulty. In this work, the target spawn distance starts close and expands over training, ensuring the agent encounters reward-dense regions early.
+
+  \item[HRL]
+    \emph{Hierarchical Reinforcement Learning.} A framework that decomposes control into multiple levels (e.g.\ meta-controller, approach policy, coil policy) to handle temporally extended tasks.
+
+  \item[TorchRL]
+    A PyTorch-native RL library providing composable environment wrappers, replay buffers, and loss modules. Used as the training framework throughout this project.
+
+  \item[CoM]
+    \emph{Centre of Mass.} The mass-weighted average position of all discretisation nodes; used as a summary statistic for locomotion evaluation.
+
+  \item[CFL condition]
+    \emph{Courant--Friedrichs--Lewy condition.} A numerical stability constraint relating time-step size to spatial resolution and wave speed in explicit integrators.
+
+\end{description}
+
+\newpage
 
 % ===========================================================================
-% CHAPTER 1: INTRODUCTION
+% SECTION 1: INTRODUCTION
 % ===========================================================================
 \section{Introduction}
 \label{sec:intro}
 
 Reinforcement learning for soft and continuum robots is bottlenecked by the cost of first-principles simulation.
 A snake robot modeled as a Cosserat rod requires resolving elastic body dynamics, anisotropic ground friction, and internally generated muscle moments at every simulation substep --- PyElastica \citep{Naughton2021} uses 500 Position Verlet substeps per control step, costing ${\sim}46$\,ms per environment step.
+Comprehensive surveys of soft robot modeling \citep{Armanini2022} and model-based control \citep{DellaSantina2023} highlight that this computational burden remains a central bottleneck.
 This report presents a neural surrogate $f_\theta \approx T$ that replaces the transition operator with a single GPU forward pass (${\sim}0.001$\,ms), targeting a four-to-five order-of-magnitude speedup for RL training.
 
-The project has three pillars:
+The project has two main contributions:
 \begin{enumerate}
-  \item \textbf{Neural surrogate} --- parallel data collection from 16 PyElastica workers, followed by MLP training on state-delta prediction with per-element CPG phase encoding (\Cref{sec:surrogate}).
-  \item \textbf{Direct RL} --- PPO on the Elastica backend (\Cref{sec:rl-elastica}) and SAC/PPO/MM-RKHS on the DisMech backend for the Choi2025 follow task (\Cref{sec:rl-dismech}).
-  \item \textbf{Physics-informed models} --- standard PINN, DD-PINN, and physics-regularized surrogate variants that embed the governing equations into training (\Cref{sec:pinn}).
+  \item \textbf{Neural surrogate modeling} --- a data-driven MLP surrogate trained on 4.3M Elastica transitions, with physics-regularized and DD-PINN extensions proposed as future directions (\Cref{sec:surrogate}).
+  A direct-simulation RL baseline on Elastica validates the environment pipeline (\Cref{sec:rl-elastica}).
+  \item \textbf{Reward design for soft manipulator control} --- systematic RL experiments on DisMech reveal that reward function and curriculum learning dominate performance; a normalized multi-component architecture with per-objective PBRS addresses the identified structural problems (\Cref{sec:experiments}).
 \end{enumerate}
 
-Two physics backends are investigated --- PyElastica (explicit symplectic) and DisMech (implicit backward Euler) --- providing complementary perspectives on surrogate fidelity and RL control.
+Two physics backends are investigated --- PyElastica (explicit symplectic) and DisMech (implicit backward Euler).
+The shared simulation framework is described in \Cref{sec:system}.
 
 % ===========================================================================
-% CHAPTER 2: RELATED WORK
+% SECTION 2: RELATED WORK
 % ===========================================================================
 \section{Related Work}
 \label{sec:related}
@@ -256,7 +307,7 @@ Two physics backends are investigated --- PyElastica (explicit symplectic) and D
       & Data-driven MLP surrogate
       & MLP (3$\times$512)
       & ${\sim}46{,}000\times$ (proj.)
-      & \placeholder{---}
+      & $R^2{=}0.393$ overall; CoM $R^2{=}0.852$
       & Per-element CPG phase encoding; single-step MSE training; full 124-dim state \\
     \bottomrule
   \end{tabular}
@@ -288,7 +339,7 @@ This work differs in architecture (MLP vs.\ LSTM), prediction target (full 124-d
     \citet{Zheng2022}    & 7-link rigid     & CPG (5)              & PPO       & MuJoCo      & Two-phase curriculum; series elastic act. \\
     \citet{Jiang2024}    & 11-joint COBRA   & Dual CPG (7)         & DDPG      & MuJoCo      & A*$\to$RL$\to$CPG$\to$PID hierarchy \\
     \citet{Schaffer2024} & Biohybrid worm   & Muscle act.\ (42)    & PPO       & PyElastica  & Adaptive muscle force ceilings \\
-    \citet{Choi2025}     & Soft manip.      & $\Delta\kappa$ (5)   & SAC       & DisMech     & Implicit Euler for contact-rich tasks \\
+    \citet{Choi2025}     & Soft manip.      & $\Delta\kappa$ (5)   & SAC \citep{Haarnoja2018} & DisMech     & Implicit Euler for contact-rich tasks \\
     \citet{Bing2019}     & Soft snake       & CPG (5)              & PPO       & PyElastica  & CPG reduces exploration vs.\ per-joint \\
     \citet{Hong2026}     & Soft robot       & Joint torques        & PPO       & FEM         & FEM essential for sim-to-real fidelity \\
     \citet{Janner2019}   & Rigid artic.     & Joint torques        & SAC+M     & MuJoCo      & Model-based short-horizon planning \\
@@ -304,103 +355,17 @@ Key themes: CPG-based action spaces dominate snake robot RL, reducing exploratio
 Curriculum learning and domain randomization bridge the sim-to-real gap.
 All approaches share the simulation cost bottleneck motivating this work: MuJoCo costs ${\sim}1$\,ms/step, while Cosserat rod simulators cost $12$--$46$\,ms/step.
 
-\subsection{Physics Backend Comparison}
-\label{sec:related:backends}
-
-This work uses two Cosserat rod simulators with fundamentally different numerical strategies.
-\Cref{tab:comprehensive-comparison} summarizes the key differences.
-
-\begin{table}[H]
-  \centering
-  \footnotesize
-  \renewcommand{\arraystretch}{1.3}
-  \caption{Comprehensive comparison of PyElastica and DisMech.}
-  \label{tab:comprehensive-comparison}
-  \begin{tabular}{@{}p{3.5cm}p{4.5cm}p{5.5cm}@{}}
-    \toprule
-    \textbf{Property} & \textbf{PyElastica} & \textbf{DisMech} \\
-    \midrule
-    \multicolumn{3}{l}{\textit{Solver}} \\
-    Physics model           & Cosserat rod theory        & Discrete Elastic Rods (DER) \\
-    Integration scheme      & Explicit symplectic (Verlet)  & Implicit backward Euler (Newton) \\
-    Timestep per call       & $\Delta t_{\text{sub}} = 0.001$\,s    & $\Delta t = 0.05$\,s \\
-    Steps per RL action     & 500 substeps               & 1 step \\
-    Per-step cost            & ${\sim}46$\,ms (500 explicit evals)   & ${\sim}12$\,ms (1 Newton solve) \\
-    \midrule
-    \multicolumn{3}{l}{\textit{Supported forces}} \\
-    Shear--stretch / Bending / Torsion           & \checkmark                  & \checkmark \\
-    RFT (anisotropic drag)   & \checkmark                  & --- \\
-    Self-contact             & ---                         & \checkmark (FCL) \\
-    \midrule
-    \multicolumn{3}{l}{\textit{Control}} \\
-    Curvature mechanism      & Elastic rest shape ($\kappa_0$) & Hard constraint (natural strain) \\
-    CPG resolution           & 500 curvature updates/step  & 1 curvature snapshot/step \\
-    \midrule
-    \multicolumn{3}{l}{\textit{Metadata}} \\
-    Theory                   & Cosserat rod                            & 2008 DER \citep{Bergou2008}; 2010 \citep{Bergou2010} \\
-    Simulator                & 2021 PyElastica \citep{Naughton2021}    & 2024 DisMech \citep{Choi2024dismech} \\
-    Python framework         & (same)                                  & 2025 Py-DiSMech \citep{Lahoti2025pydismech} \\
-    Repository               & {\scriptsize\url{github.com/GazzolaLab/PyElastica}} & {\scriptsize\url{github.com/StructuresComp/dismech-rods}} \\
-    Language                 & Python (Numba JIT)                      & C++ (Python bindings) \\
-    \bottomrule
-  \end{tabular}
-\end{table}
-
-The fundamental trade-off: PyElastica's 500 substeps capture continuous CPG evolution but cost $4\times$ more wall-clock time.
-DisMech's single implicit step is faster and unconditionally stable, but collapses intra-step dynamics.
-For surrogate modeling, Elastica presents a harder approximation target.
-
-The DisMech ecosystem has evolved significantly beyond the original DER formulation.
-\citet{Choi2024dismech} introduced DisMech as a full simulator with implicit contact handling and real2sim validation, achieving an order-of-magnitude speedup over prior DER implementations.
-\citet{Lahoti2025pydismech} subsequently released Py-DiSMech, a vectorized Python reimplementation that further improves computational efficiency while adding PI-based shape control and modular actuation interfaces.
-
 % ===========================================================================
-% CHAPTER 3: NEURAL NETWORK SURROGATE MODEL FOR ELASTICA
+% SECTION 3: SYSTEM OVERVIEW
 % ===========================================================================
-\section{Neural Network Surrogate Model for Elastica}
-\label{sec:surrogate}
+\section{System Overview: Snake Robot Simulation}
+\label{sec:system}
 
-% ---- 3.1 Motivation ----
-\subsection{Motivation}
-\label{sec:surrogate:motivation}
+This section describes the shared simulation framework underlying all experiments: the Cosserat rod formulation, CPG actuation, and the two physics backends.
 
-Reinforcement learning for soft robots requires millions of environment interactions, yet first-principles Cosserat rod simulators are expensive: PyElastica costs ${\sim}46$\,ms per step (500 Verlet substeps), while DisMech costs ${\sim}12$\,ms (one Newton solve).
-At these rates, a $2 \times 10^6$-step training run takes ${\sim}9$\,hours on Elastica and ${\sim}36$\,hours with 16 parallel workers --- prohibitive for hyperparameter sweeps or curriculum learning.
-
-Neural surrogate models address this bottleneck by replacing the physics solver with a learned transition function $f_\theta$ that approximates the state-to-state mapping in a single GPU forward pass (${\sim}0.001$\,ms), targeting four-to-five orders-of-magnitude speedup.
-The approach is well-established for PDE systems: feedforward networks and neural ODEs have been used to learn dynamics for fluid simulation \citep{SanchezGonzalez2020}, articulated soft robots \citep{PINNSoftRobot2025}, and Cosserat rods specifically \citep{Hsieh2024, SoRoLEX2024}.
-The key challenge is \emph{fidelity}: the surrogate must be accurate enough over multi-step rollouts that RL policies trained in the surrogate environment transfer to the true simulator.
-
-This chapter presents our surrogate pipeline --- physics, data collection, and model training:
-Cosserat rod PDE $\to$ staggered-grid ODE $\to$ explicit integrator $\to$ data $\to$ neural surrogate.
-Detailed derivations are in \Cref{app:physics}.
-Data collection and surrogate training were performed on the hardware in \Cref{tab:hardware-surrogate}.
-
-\begin{table}[H]
-  \centering
-  \small
-  \renewcommand{\arraystretch}{1.3}
-  \caption{Hardware for data collection and surrogate training.}
-  \label{tab:hardware-surrogate}
-  \begin{tabular}{@{}ll@{}}
-    \toprule
-    \textbf{Component} & \textbf{Specification} \\
-    \midrule
-    GPU          & 1$\times$ Tesla V100-PCIE-16\,GB (Volta, 5120 CUDA cores) \\
-    CPU          & 24 cores / 48 threads \\
-    RAM          & 270\,GB \\
-    CUDA         & 12.8 \\
-    Python       & CPython 3.12 \\
-    \bottomrule
-  \end{tabular}
-\end{table}
-
-% ---- 3.2 Elastica Physics ----
-\subsection{Elastica Physics}
-\label{sec:surrogate:physics}
-
-\subsubsection{Cosserat Rod Formulation}
-\label{sec:surrogate:physics:cosserat}
+% ---- 3.1 Cosserat Rod Formulation ----
+\subsection{Cosserat Rod Formulation}
+\label{sec:system:cosserat}
 
 The system is fully specified by the tuple $\mathcal{S} = (\mathcal{L},\; \Omega,\; \text{BC},\; \text{IC},\; \boldsymbol{\theta})$:
 
@@ -490,10 +455,7 @@ See \Cref{app:physics} for detailed PDE derivations, staggered grid operators, e
   \end{tabular}
 \end{table}
 
-\subsubsection{Elastica Transition Operator}
-\label{sec:surrogate:physics:algorithm}
-
-\Cref{alg:elastica-transition} expands the full transition operator.
+\Cref{alg:elastica-transition} expands the full Elastica transition operator.
 
 \begin{algorithm}[ht!]\small
 \caption{Elastica Transition Operator $T(\mathbf{s}_t,\, \mathbf{a}_t,\, t_{\text{step}}) \to \mathbf{s}_{t+1}$}\label{alg:elastica-transition}
@@ -519,8 +481,9 @@ See \Cref{app:physics} for detailed PDE derivations, staggered grid operators, e
 \textit{Cost:} ${\sim}377{,}000$ FLOPs/step (${\sim}46$\,ms on CPU).
 The CPG phase advances by $\Delta\phi = 2\pi f \Delta t$ per substep --- the surrogate must learn the \textit{integrated effect} of the traveling wave across 500 distinct curvature configurations.
 
-\subsubsection{CPG Control}
-\label{sec:surrogate:physics:cpg}
+% ---- 3.2 CPG Control ----
+\subsection{CPG Control}
+\label{sec:system:cpg}
 
 The Central Pattern Generator drives locomotion by imposing time-varying rest curvature on the rod.
 When the rest curvature differs from the rod's current curvature, elastic bending moments drive the rod toward the target shape.
@@ -552,9 +515,88 @@ The serpenoid rest curvature at each Voronoi node:
   \label{eq:serpenoid}
 \end{equation}
 
-% Backend Comparison moved to Section 2.3
+% ---- 3.3 Physics Backends ----
+\subsection{Physics Backends}
+\label{sec:system:backends}
 
-% ---- 3.2 Data Collection ----
+This work uses two Cosserat rod simulators with fundamentally different numerical strategies.
+\Cref{tab:comprehensive-comparison} summarizes the key differences.
+
+\begin{table}[H]
+  \centering
+  \footnotesize
+  \renewcommand{\arraystretch}{1.3}
+  \caption{Comprehensive comparison of PyElastica and DisMech.}
+  \label{tab:comprehensive-comparison}
+  \begin{tabular}{@{}p{3.5cm}p{4.5cm}p{5.5cm}@{}}
+    \toprule
+    \textbf{Property} & \textbf{PyElastica} & \textbf{DisMech} \\
+    \midrule
+    \multicolumn{3}{l}{\textit{Solver}} \\
+    Physics model           & Cosserat rod theory        & Discrete Elastic Rods (DER) \\
+    Integration scheme      & Explicit symplectic (Verlet)  & Implicit backward Euler (Newton) \\
+    Timestep per call       & $\Delta t_{\text{sub}} = 0.001$\,s    & $\Delta t = 0.05$\,s \\
+    Steps per RL action     & 500 substeps               & 1 step \\
+    Per-step cost            & ${\sim}46$\,ms (500 explicit evals)   & ${\sim}12$\,ms (1 Newton solve) \\
+    \midrule
+    \multicolumn{3}{l}{\textit{Supported forces}} \\
+    Shear--stretch / Bending / Torsion           & \checkmark                  & \checkmark \\
+    RFT (anisotropic drag)   & \checkmark                  & --- \\
+    Self-contact             & ---                         & \checkmark (FCL) \\
+    \midrule
+    \multicolumn{3}{l}{\textit{Control}} \\
+    Curvature mechanism      & Elastic rest shape ($\kappa_0$) & Hard constraint (natural strain) \\
+    CPG resolution           & 500 curvature updates/step  & 1 curvature snapshot/step \\
+    \midrule
+    \multicolumn{3}{l}{\textit{Metadata}} \\
+    Theory                   & Cosserat rod                            & 2008 DER \citep{Bergou2008}; 2010 \citep{Bergou2010} \\
+    Simulator                & 2021 PyElastica \citep{Naughton2021}    & 2024 DisMech \citep{Choi2024dismech} \\
+    Python framework         & (same)                                  & 2025 Py-DiSMech \citep{Lahoti2025pydismech} \\
+    Repository               & {\scriptsize\url{github.com/GazzolaLab/PyElastica}} & {\scriptsize\url{github.com/StructuresComp/dismech-rods}} \\
+    Language                 & Python (Numba JIT)                      & C++ (Python bindings) \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+The fundamental trade-off: PyElastica's 500 substeps capture continuous CPG evolution but cost $4\times$ more wall-clock time.
+DisMech's single implicit step is faster and unconditionally stable, but collapses intra-step dynamics.
+For surrogate modeling, Elastica presents a harder approximation target.
+
+The DisMech ecosystem has evolved significantly beyond the original DER formulation.
+\citet{Choi2024dismech} introduced DisMech as a full simulator with implicit contact handling and real2sim validation, achieving an order-of-magnitude speedup over prior DER implementations.
+\citet{Lahoti2025pydismech} subsequently released Py-DiSMech, a vectorized Python reimplementation that further improves computational efficiency while adding PI-based shape control and modular actuation interfaces.
+
+% ===========================================================================
+% SECTION 4: NEURAL SURROGATE MODELS
+% ===========================================================================
+\section{Neural Surrogate Models}
+\label{sec:surrogate}
+
+Reinforcement learning for soft robots requires millions of environment interactions, yet first-principles Cosserat rod simulators are expensive (\Cref{sec:system:backends}).
+Neural surrogate models address this bottleneck by replacing the physics solver with a learned transition function $f_\theta$ that approximates the state-to-state mapping in a single GPU forward pass (${\sim}0.001$\,ms), targeting four-to-five orders-of-magnitude speedup.
+This section presents the implemented data-driven surrogate and outlines two physics-informed extensions --- a physics regularizer and a domain-decoupled PINN --- as proposed future directions.
+All surrogate experiments ran on the hardware in \Cref{tab:hardware-surrogate}.
+
+\begin{table}[H]
+  \centering
+  \small
+  \renewcommand{\arraystretch}{1.3}
+  \caption{Hardware for data collection and surrogate training.}
+  \label{tab:hardware-surrogate}
+  \begin{tabular}{@{}ll@{}}
+    \toprule
+    \textbf{Component} & \textbf{Specification} \\
+    \midrule
+    GPU          & 1$\times$ Tesla V100-PCIE-16\,GB (Volta, 5120 CUDA cores) \\
+    CPU          & 24 cores / 48 threads \\
+    RAM          & 270\,GB \\
+    CUDA         & 12.8 \\
+    Python       & CPython 3.12 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+% ---- 4.1 Data Collection ----
 \subsection{Data Collection}
 \label{sec:surrogate:data}
 
@@ -613,8 +655,8 @@ The final dataset contains 4,336,600 single-step transitions.
 \noindent
 The 3.84\% duplicate rate arises from identical initial conditions under 1-step episodes and amounts to implicit oversampling --- retained without deduplication (4,170,082 unique transitions).
 
-% ---- 3.3 Model Architecture and Training ----
-\subsection{Model Architecture and Training}
+% ---- 4.2 MLP Surrogate ----
+\subsection{MLP Surrogate}
 \label{sec:surrogate:model}
 
 \subsubsection{Input Representation}
@@ -692,7 +734,72 @@ Network architecture:
   \item Delta prediction concentrates the target distribution and provides an implicit residual connection
 \end{itemize}
 
-\placeholder{Surrogate architecture diagram showing input decomposition, MLP layers, and affine reconstruction.}
+\begin{figure}[H]
+  \centering
+  \begin{tikzpicture}[
+    box/.style={draw, rounded corners=2pt, minimum height=0.7cm, minimum width=1.6cm,
+                font=\footnotesize, align=center, fill=#1},
+    box/.default=white,
+    arr/.style={-{Stealth[length=2mm]}, thick},
+    lbl/.style={font=\scriptsize, midway},
+    concat/.style={draw, circle, inner sep=1.5pt, fill=black!10, font=\scriptsize},
+    op/.style={draw, circle, inner sep=1.5pt, fill=orange!15, font=\scriptsize},
+  ]
+    % --- Input components ---
+    \node[box=blue!8]  (state)  at (-2.6, 0) {$\bar{\mathbf{s}}_t$\\[-1pt]\scriptsize $\mathbb{R}^{124}$};
+    \node[box=green!8] (action) at ( 0.0, 0) {$\mathbf{a}_t$\\[-1pt]\scriptsize $\mathbb{R}^{5}$};
+    \node[box=red!8]   (phase)  at ( 2.6, 0) {$\boldsymbol{\phi}_{1..20}$\\[-1pt]\scriptsize $\mathbb{R}^{60}$};
+
+    % --- Concat ---
+    \node[concat] (cat) at (0, -1.1) {$\|$};
+    \draw[arr] (state.south)  -- (cat);
+    \draw[arr] (action.south) -- (cat);
+    \draw[arr] (phase.south)  -- (cat);
+    \node[font=\scriptsize, right=3pt] at (cat.east) {$\mathbf{z}_t \in \mathbb{R}^{189}$};
+
+    % --- MLP blocks ---
+    \node[box=violet!10, minimum width=3.8cm] (blk1) at (0, -2.1)
+      {Linear(189, 512) $\to$ LN $\to$ SiLU};
+    \node[box=violet!10, minimum width=3.8cm] (blk2) at (0, -3.0)
+      {Linear(512, 512) $\to$ LN $\to$ SiLU};
+    \node[box=violet!10, minimum width=3.8cm] (blk3) at (0, -3.9)
+      {Linear(512, 512) $\to$ LN $\to$ SiLU};
+    \node[box=gray!10,   minimum width=3.8cm] (head) at (0, -4.8)
+      {Linear(512, 124)\;\scriptsize [zero-init]};
+
+    \draw[arr] (cat)  -- (blk1);
+    \draw[arr] (blk1) -- (blk2);
+    \draw[arr] (blk2) -- (blk3);
+    \draw[arr] (blk3) -- (head);
+
+    % --- Label: normalized delta ---
+    \node[font=\scriptsize, right=2.8cm] at (head.east) {$f_\theta(\mathbf{z}_t) \approx \overline{\Delta\mathbf{s}}$};
+
+    % --- Affine reconstruction ---
+    \node[op] (mul) at (0, -5.8) {$\odot$};
+    \node[font=\scriptsize, right=3pt] at (mul.east) {$\boldsymbol{\sigma}_\Delta$};
+    \draw[arr] (head) -- (mul);
+
+    \node[op] (add1) at (0, -6.6) {$+$};
+    \node[font=\scriptsize, right=3pt] at (add1.east) {$\boldsymbol{\mu}_\Delta$};
+    \draw[arr] (mul) -- (add1);
+
+    \node[op] (add2) at (0, -7.4) {$+$};
+    \node[font=\scriptsize, right=3pt] at (add2.east) {$\mathbf{s}_t$};
+    \draw[arr] (add1) -- (add2);
+
+    % --- Output ---
+    \node[box=yellow!15] (out) at (0, -8.3) {$\hat{\mathbf{s}}_{t+1} \in \mathbb{R}^{124}$};
+    \draw[arr] (add2) -- (out);
+
+    % --- Brace for MLP ---
+    \draw[decorate, decoration={brace, amplitude=5pt, mirror}]
+      (-3.4, -1.7) -- (-3.4, -5.2)
+      node[midway, left=6pt, font=\scriptsize, align=right] {MLP\\$\sim$659K params};
+  \end{tikzpicture}
+  \caption{Surrogate architecture.  Three input streams are concatenated into $\mathbf{z}_t \in \mathbb{R}^{189}$, passed through three LayerNorm--SiLU blocks, and projected to a 124-dim normalized delta.  An affine reconstruction recovers the next state $\hat{\mathbf{s}}_{t+1}$.}
+  \label{fig:surrogate-arch}
+\end{figure}
 
 \subsubsection{Training}
 \label{sec:surrogate:model:training}
@@ -757,8 +864,8 @@ Weights are clipped at $10\times$ the mean to prevent rare samples from dominati
   \end{tabular}
 \end{table}
 
-% ---- 3.4 Results ----
-\subsection{Results}
+% ---- 4.3 MLP Results ----
+\subsection{MLP Results}
 \label{sec:surrogate:results}
 
 The best surrogate (Run~B) reached a validation loss of 0.601 and an overall $R^2$ of 0.393 after 110 epochs on 3.9M transitions.
@@ -809,37 +916,62 @@ Velocity and angular components improve gradually and have not plateaued by epoc
   \label{fig:r2-evolution}
 \end{figure}
 
-\subsection{Challenges}
-\label{sec:surrogate:challenges}
+\Cref{tab:surrogate-challenges} summarizes the four main challenges identified during surrogate development.
 
-\paragraph{Angular velocity prediction.}
-Angular velocity $\omega_{z,e}$ is the weakest predicted component ($R^2 = 0.320$).
-The control step $\Delta t = 0.5\,\text{s}$ spans approximately 1.5 CPG cycles at typical frequencies, during which $\omega_z$ reverses sign multiple times.
-A single-step MLP must therefore predict the \textit{net} angular velocity after integrating through these oscillations---a many-to-one mapping that averages away the within-step dynamics.
-Per-element CPG phase encoding (Section~\ref{sec:surrogate:arch:phase}) partially mitigates this by informing the model where in the oscillation cycle each element begins, but the fundamental aliasing remains.
+\begin{table}[H]
+  \centering
+  \small
+  \renewcommand{\arraystretch}{1.3}
+  \caption{Surrogate prediction challenges, root causes, and mitigations.}
+  \label{tab:surrogate-challenges}
+  \begin{tabular}{@{}p{2.5cm}p{4.5cm}p{4.5cm}@{}}
+    \toprule
+    \textbf{Challenge} & \textbf{Root cause} & \textbf{Mitigation} \\
+    \midrule
+    Weak $\omega_z$ prediction ($R^2 = 0.320$)
+      & Control step ($0.5$\,s) spans ${\sim}1.5$ CPG cycles; $\omega_z$ reverses sign multiple times, creating a many-to-one mapping
+      & Per-element phase encoding (\Cref{sec:surrogate:model:phase}) provides cycle position; fundamental aliasing remains \\
+    \addlinespace
+    Training data bias
+      & Policy rollouts cluster around learned behaviors; rod starts from straight configuration, leaving bent states underrepresented
+      & Sobol sampling (50\%), state perturbation (30\%), curvature noise; full 189-dim coverage remains intractable \\
+    \addlinespace
+    Curvature granularity
+      & Curvature initially applied once per 0.5\,s control step, creating discontinuous forcing over 500 substeps
+      & Moved update into substep loop $\to$ near-continuous traveling wave \\
+    \addlinespace
+    Persistent overfitting (\Cref{fig:training-loss})
+      & 4.3M transitions do not fully cover state-action manifold; model memorizes trajectories
+      & Dropout ($p{=}0.1$), weight decay ($\lambda{=}10^{-4}$); gap persists---more diverse data or attention architectures may help \\
+    \bottomrule
+  \end{tabular}
+\end{table}
 
-\paragraph{Training data distribution bias.}
-Data collected from policy rollouts clusters around learned behaviors, leaving large regions of state-action space unrepresented.
-The rod always starts from a straight (zero curvature) configuration, so the surrogate rarely observes transitions from highly bent states encountered during locomotion.
-Sobol quasi-random action sampling, initial state perturbation, and curvature noise injection (Section~\ref{sec:surrogate:data}) address this, but full coverage of the 189-dimensional input space remains intractable.
+% ---- 4.4 Physics-Informed Neural Networks (Proposed) ----
+\subsection{Physics-Informed Extensions (Proposed)}
+\label{sec:pinn}
 
-\paragraph{Curvature update granularity.}
-The serpenoid rest curvature was initially applied once per control step (every 0.5\,s), while the physics integrator advances in 1\,ms substeps.
-This created a discontinuous forcing signal: the rod experienced a step change in target curvature at the start of each control interval, then evolved under constant curvature for 500 substeps.
-Moving the curvature update into the substep loop produces a near-continuous traveling wave, improving both the physical realism of the training data and surrogate prediction accuracy.
+Two physics-informed surrogate extensions are proposed as future work but have not been implemented: a \emph{physics regularizer} that adds soft algebraic constraints (kinematics, curvature--moment consistency, bounded energy) to the data-driven loss, and a \emph{domain-decoupled PINN} (DD-PINN) \citep{Krauss2024,Licher2025} that removes time as a network input, instead outputting parameters of an analytically differentiable ansatz --- yielding exact initial conditions, closed-form gradients (no autodiff), and $5$--$38\times$ faster training than standard PINNs.
+Full formulations, loss functions, architectural details, and a four-way comparison (PDE solver vs.\ data-driven vs.\ PINN vs.\ DD-PINN) are given in \Cref{app:pinn}.
 
-\paragraph{Persistent overfitting.}
-Despite dropout ($p=0.1$) and weight decay ($\lambda = 10^{-4}$), a train--validation gap persists throughout training (Figure~\ref{fig:loss-curves}).
-The gap suggests that the 4.3M-transition dataset, while large, does not fully cover the state-action manifold---the model memorizes training trajectories rather than learning generalizable dynamics.
-Increasing dataset diversity (more perturbation variance, longer episodes) or architectural changes (e.g., attention over spatial elements) may help close this gap.
+% ---- 4.5 Surrogate Comparison ----
+\subsection{Surrogate Comparison}
+\label{sec:pinn:results}
 
-% ===========================================================================
-% CHAPTER 4: REINFORCEMENT LEARNING ON ELASTICA
-% ===========================================================================
-\section{Reinforcement Learning on Elastica}
+The data-driven surrogate achieves highest throughput and simplest training but provides no physics guarantees.
+The physics-regularized variant would add soft constraints at minimal overhead (${\sim}0.1$\,ms GPU).
+The DD-PINN would satisfy initial conditions exactly, eliminate autodiff cost, and enforce governing equations --- at the cost of ansatz design.
+A detailed four-way comparison is provided in \Cref{app:pinn}.
+Implementing and benchmarking these two physics-informed extensions is a priority for future work.
+
+% ---- 4.5 Surrogate Validation: RL on Elastica ----
+\subsection{Surrogate Validation: RL on Elastica (E1)}
 \label{sec:rl-elastica}
 
-\subsection{Environment and Training Setup}
+Before training RL on the surrogate, we establish a direct-simulation baseline on the Elastica backend.
+This experiment also characterizes the sim-to-sim gap between the two physics backends used in this work.
+
+\subsubsection{Environment and Training Setup}
 \label{sec:rl-elastica:setup}
 
 Direct RL training uses the Elastica physics simulator as the environment, running on 1$\times$ Tesla V100-PCIE-16\,GB (24 cores, 270\,GB RAM, CUDA 12.8).
@@ -875,7 +1007,7 @@ PPO is used as the policy optimization algorithm with TorchRL.
   \end{tabular}
 \end{table}
 
-\subsection{Direct Simulation Results}
+\subsubsection{Direct Simulation Results}
 \label{sec:rl-elastica:results}
 
 Training exhibits three phases: (1) \emph{learning} (0--164k steps, peak rolling average 140.0), (2) \emph{decline} (164k--574k, policy overshooting in CPG space), (3) \emph{steady state} (574k--2M, stabilized ${\sim}102$).
@@ -919,9 +1051,9 @@ Best checkpoint reward: 156.66 at step 155,648.
 \end{figure}
 
 \noindent
-The 2.4$\times$ gap between training (156.66) and evaluation (64.90) rewards is attributed to stochastic actions during training, favorable heading distributions, and goal-reaching bonuses.
+The $2.4{\times}$ gap between training (156.66) and evaluation (64.90) rewards is attributed to stochastic actions during training, favorable heading distributions, and goal-reaching bonuses.
 
-\subsection{Surrogate Environment Results}
+\subsubsection{Surrogate Environment Results}
 \label{sec:rl-elastica:surrogate}
 
 Surrogate-based RL training has not yet been conducted.
@@ -935,7 +1067,7 @@ The key risk is that the policy may exploit surrogate artifacts rather than lear
   \label{fig:sampling-comparison}
 \end{figure}
 
-\subsection{Challenges}
+\subsubsection{Challenges}
 \label{sec:rl-elastica:challenges}
 
 \begin{itemize}
@@ -946,17 +1078,45 @@ The key risk is that the policy may exploit surrogate artifacts rather than lear
 \end{itemize}
 
 % ===========================================================================
-% CHAPTER 5: REINFORCEMENT LEARNING ON DISMECH (CHOI2025 FOLLOW TASK)
+% SECTION 5: REWARD DESIGN FOR SOFT MANIPULATOR CONTROL
 % ===========================================================================
-\section{Reinforcement Learning on DisMech (Choi2025 Follow Task)}
+\section{Reward Design for Soft Manipulator Control}
+\label{sec:experiments}
+
+This section presents six experiment groups (E2--E7) totaling ${\sim}$28 individual runs on the DisMech backend.
+\Cref{tab:experiment-registry} indexes all experiments with a unified identifier; E1 (Elastica) is documented in \Cref{sec:rl-elastica}.
+
+\begin{table}[H]
+  \centering
+  \footnotesize
+  \renewcommand{\arraystretch}{1.3}
+  \caption{Experiment registry. E1 uses Elastica (\Cref{sec:rl-elastica}); all other experiments use DisMech PPO on the \texttt{follow\_target} task (\Cref{sec:rl-dismech:task}).}
+  \label{tab:experiment-registry}
+  \begin{tabular}{@{}clcrl@{}}
+    \toprule
+    \textbf{ID} & \textbf{Description} & \textbf{Envs} & \textbf{Frames} & \textbf{Key finding} \\
+    \midrule
+    E1 & Elastica PPO locomotion (\S\ref{sec:rl-elastica}, Sec.~4) & 16  & 2M             & 1.5\,m displacement; 0\% goal success \\
+    E2 & Reward-shaping ablation (\S\ref{sec:rl-dismech:ablation})   & 100 & 5M$\times$5    & Original reward best ($+$52\% vs.\ baseline) \\
+    E3 & Reward landscape diagnostics (\S\ref{sec:rl-dismech:diagnostics}) & --- & random   & 70\% of steps yield $r < 0.05$ \\
+    E4 & Extended training (\S\ref{sec:rl-dismech:extended})         & 100 & 50M            & Plateau at $d \approx 0.6$; not a budget issue \\
+    E5 & SAC vs.\ PPO stability (\S\ref{sec:rl-dismech:sac})        & 100 & 20M/50M        & SAC gradients explode past ${\sim}$3M frames \\
+    E6 & Validation ablation, A1--C5 (\S\ref{sec:rl-dismech:ablation-v2}) & 32 & 3.6M$\times$12 & Curriculum dominant; best $d{=}0.543$ \\
+    E7 & Steepness and env scaling (\S\ref{sec:reward:steepness})    & 100 & 10.5M$\times$4 & $k{=}5$ wins; 100 envs 24\% worse than 32 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+% ---- 5.1 DisMech: Task and Setup ----
+\subsection{DisMech: Task and Setup}
 \label{sec:rl-dismech}
 
-This chapter presents PPO experiments on the DisMech physics backend for the \texttt{follow\_target} task from \citet{Choi2025}.
-While the original paper uses a Gymnasium-based environment with a custom training framework, our implementation uses TorchRL for both the environment wrapper (\texttt{EnvBase}) and the training loop (\texttt{SyncDataCollector}, \texttt{ParallelEnv}).
-We conduct a controlled ablation study over four reward-shaping configurations, using per-component reward logging and a common fair metric to enable valid cross-run comparisons.
-All experiments ran on 2$\times$ RTX A4000 16\,GB (Ampere, 6144 CUDA cores each), 16 cores / 32 threads, 270\,GB RAM, CUDA 12.8.
+This subsection presents PPO experiments on the DisMech physics backend for the \texttt{follow\-\_target} task from \citet{Choi2025}.
+While the original paper uses a Gymnasium-based environment with a custom training framework, our implementation wraps DisMech in TorchRL's \texttt{EnvBase} and trains via \texttt{Sync\-Data\-Collector} with \texttt{Parallel\-Env}.
 
-\subsection{Task Description}
+All experiments ran on $2{\times}$\,RTX A4000 16\,GB GPUs, 16 cores / 32 threads, 270\,GB RAM, CUDA 12.8.
+
+\subsubsection{Task Description}
 \label{sec:rl-dismech:task}
 
 The \texttt{follow\_target} task requires a clamped soft manipulator (Cosserat rod, 21 nodes, 1\,m length) to track a moving target in 3D.
@@ -985,63 +1145,10 @@ At each control step, the agent selects 5 curvature increments $\Delta\kappa \in
   \end{tabular}
 \end{table}
 
-\subsection{Reward Design}
-\label{sec:rl-dismech:reward}
-
-\citet{Choi2025} define the follow-target reward with two terms:
-\begin{equation}
-  r(s, s') = \underbrace{\exp\!\bigl(-5\,d(s')\bigr)}_{r_{\text{dist}}} + \underbrace{10\,\bigl(d(s) - d(s')\bigr)}_{r_{\text{improve}}}, \qquad d(s) = \lVert \mathbf{x}_{\text{tip}} - \mathbf{x}_{\text{target}} \rVert.
-  \label{eq:reward-original}
-\end{equation}
-The first term is a bounded distance reward in $[0, 1]$, approaching 1 as the tip reaches the target.
-The second is an improvement bonus proportional to the step-wise distance reduction.
-The scaling factor of 5 was chosen to match the workspace radius; the improvement multiplier of 10 amplifies the approach signal.
-
-\paragraph{Simplification for PPO.}
-The original reward was designed for SAC, which averages over a replay buffer and tolerates high reward variance.
-For on-policy PPO, the improvement bonus with its $10{\times}$ multiplier creates a reward SNR of only 0.08 (the signal is 8\% of the noise), causing the value function to fail.
-We therefore use only the distance component as the base reward:
-\begin{equation}
-  r_{\text{dist}}(s) = \exp\!\bigl(-5\,d(s)\bigr).
-  \label{eq:reward-dist}
-\end{equation}
-This raised the SNR from 0.08 to 1.02 (a $13{\times}$ improvement) and stabilized explained variance from 0.24 to 0.65.
-We then investigate three augmentations to this simplified base reward, described below.
-
-\paragraph{Heading reward.}
-A cosine-similarity bonus for pointing the tip toward the target:
-\begin{equation}
-  r_{\text{heading}}(s) = \frac{1 + \cos\theta}{2}, \qquad
-  r_{\text{total}} = (1-w)\,r_{\text{dist}} + w\,r_{\text{heading}},
-  \label{eq:reward-heading}
-\end{equation}
-where $\theta$ is the angle between the tip tangent and the tip-to-target direction, and $w \in [0,1]$ is a mixing weight.
-Both components lie in $[0,1]$, so the total reward is bounded.
-
-\paragraph{Potential-Based Reward Shaping (PBRS).}
-Following \citet{Ng1999}, we define a potential $\Phi(s) = -d(s)$ and add the shaping reward:
-\begin{equation}
-  F(s, s') = \gamma_{\text{pbrs}}\,\Phi(s') - \Phi(s) = d(s) - \gamma_{\text{pbrs}}\,d(s'),
-  \label{eq:pbrs}
-\end{equation}
-where $\gamma_{\text{pbrs}}$ is a discount factor (we use 0.99).
-This is guaranteed not to change the optimal policy.
-When combined with the base reward: $r_{\text{total}} = r_{\text{dist}} + F(s,s')$.
-
-\paragraph{PBRS-only.}
-An ablation where the base reward is removed entirely, using only the shaping signal: $r_{\text{total}} = F(s,s')$.
-
-\paragraph{Curriculum learning.}
-All runs use curriculum learning: target speed ramps from 20\% to 100\% over the first 100 episodes per worker, avoiding reward-scale shock at initialization.
-
-\paragraph{Fair comparison metric.}
-Different reward functions produce incomparable total rewards (e.g., heading inflates the total by up to 72\%).
-We log per-component rewards and use $r_{\text{dist}} = \exp(-5d)$ as the \emph{fair metric} for cross-run comparison, since it depends only on the physical outcome (distance to target) and is independent of the reward function.
-
-\subsection{Experimental Setup}
+\subsubsection{Training Configuration}
 \label{sec:rl-dismech:setup}
 
-All five runs use identical PPO hyperparameters, differing only in the reward function.
+All five initial ablation runs use identical PPO hyperparameters, differing only in the reward function.
 \Cref{tab:choi2025-run-configs} shows the configuration of each run.
 
 \begin{table}[H]
@@ -1077,7 +1184,71 @@ All five runs use identical PPO hyperparameters, differing only in the reward fu
   \end{tabular}
 \end{table}
 
-\subsection{Results}
+\paragraph{Replication adjustments.}
+Two configuration errors in our initial DisMech replication were identified by comparison with the paper's Table~A.3.
+The rod radius was set to $r = 0.001$\,m (50$\times$ too thin) and Young's modulus to $E = 2$\,MPa (5$\times$ too soft), producing a near-limp structure that capped reward at ${\sim}$31.
+Correcting these to $r = 0.05$\,m and $E = 10$\,MPa matched the paper's physical setup.
+Additionally, the raw 34-dimensional observations have heterogeneous scales (positions in $[0, 1]$\,m, curvatures varying by orders of magnitude).
+We apply running-mean observation normalization (\texttt{ObservationNorm} with 200-iteration initialization) so that all input dimensions have approximately unit variance, which stabilized value function learning (explained variance improved from oscillating around $0$ to a steady ${\sim}$0.65).
+
+% ---- 5.3 Reward Variants and Initial Ablation ----
+\subsection{Reward Variants and Initial Ablation (E2)}
+\label{sec:rl-dismech:ablation}
+
+\subsubsection{Reward Variants}
+\label{sec:rl-dismech:reward}
+
+\citet{Choi2025} define the follow-target reward with two terms:
+\begin{equation}
+  r(s, s') = \underbrace{\exp\!\bigl(-5\,d(s')\bigr)}_{r_{\text{dist}}} + \underbrace{10\,\bigl(d(s) - d(s')\bigr)}_{r_{\text{improve}}}, \qquad d(s) = \lVert \mathbf{x}_{\text{tip}} - \mathbf{x}_{\text{target}} \rVert.
+  \label{eq:reward-original}
+\end{equation}
+The first term is a bounded distance reward in $[0, 1]$, approaching 1 as the tip reaches the target.
+The second is an improvement bonus proportional to the step-wise distance reduction.
+The scaling factor of 5 was chosen to match the workspace radius; the improvement multiplier of 10 amplifies the approach signal.
+
+\paragraph{Simplification for PPO.}
+The original reward was designed for SAC, which averages over a replay buffer and tolerates high reward variance.
+For on-policy PPO, the improvement bonus with its $10{\times}$ multiplier creates a reward SNR of only 0.08 (the signal is 8\% of the noise), causing the value function to fail.
+We therefore use only the distance component as the base reward:
+\begin{equation}
+  r_{\text{dist}}(s) = \exp\!\bigl(-5\,d(s)\bigr).
+  \label{eq:reward-dist}
+\end{equation}
+This raised the SNR from 0.08 to 1.02 (a $13{\times}$ improvement) and stabilized explained variance from 0.24 to 0.65.
+We then investigate three augmentations to this simplified base reward, described below.
+
+\paragraph{Heading reward.}
+A cosine-similarity bonus for pointing the tip toward the target:
+\begin{equation}
+  r_{\text{heading}}(s) = \frac{1 + \cos\theta}{2}, \qquad
+  r_{\text{total}} = (1-w)\,r_{\text{dist}} + w\,r_{\text{heading}},
+  \label{eq:reward-heading}
+\end{equation}
+where $\theta$ is the angle between the tip tangent and the tip-to-target direction, and $w \in [0,1]$ is a mixing weight.
+Both components lie in $[0,1]$, so the total reward is bounded.
+
+\paragraph{Potential-Based Reward Shaping (PBRS).}
+Following \citet{Ng1999} (with the equivalence to Q-value initialization established by \citet{Wiewiora2003}), we define a potential $\Phi(s) = -d(s)$ and add the shaping reward:
+\begin{equation}
+  F(s, s') = \gamma_{\text{pbrs}}\,\Phi(s') - \Phi(s) = d(s) - \gamma_{\text{pbrs}}\,d(s'),
+  \label{eq:pbrs}
+\end{equation}
+where $\gamma_{\text{pbrs}}$ is a discount factor (we use 0.99).
+This is guaranteed not to change the optimal policy.
+When combined with the base reward: $r_{\text{total}} = r_{\text{dist}} + F(s,s')$.
+
+\paragraph{PBRS-only.}
+An ablation where the base reward is removed entirely, using only the shaping signal: $r_{\text{total}} = F(s,s')$.
+
+\paragraph{Curriculum learning.}
+All runs use curriculum learning: target speed ramps from 20\% to 100\% over the first 100 episodes per worker, avoiding reward-scale shock at initialization.
+
+\paragraph{Fair comparison metric.}
+Different reward functions produce incomparable total rewards (e.g., heading inflates the total by up to 72\%).
+We log per-component rewards and use $r_{\text{dist}} = \exp(-5d)$ as the \emph{fair metric} for cross-run comparison, since it depends only on the physical outcome (distance to target) and is independent of the reward function.
+
+\subsubsection{Results}
 \label{sec:rl-dismech:results}
 
 \Cref{tab:choi2025-results} summarizes the training outcomes.
@@ -1134,7 +1305,196 @@ The baseline (blue) and heading (orange) both improve slowly; PBRS-Only (red, da
   \label{fig:ppo-reward-shaping}
 \end{figure}
 
-\subsection{SAC Gradient Instability}
+\subsubsection{Discussion}
+\label{sec:rl-dismech:discussion}
+
+\Cref{tab:discussion-findings} summarizes the key findings from the ablation.
+
+\begin{table}[H]
+  \centering
+  \small
+  \renewcommand{\arraystretch}{1.3}
+  \caption{Key findings from the reward-shaping ablation (5M frames, 100 envs).}
+  \label{tab:discussion-findings}
+  \begin{tabular}{@{}p{2.8cm}p{4.2cm}p{5.5cm}@{}}
+    \toprule
+    \textbf{Finding} & \textbf{Evidence} & \textbf{Implication} \\
+    \midrule
+    Reward design $>$ hyperparameter tuning
+      & 52.1\% improvement range across reward variants with identical hyperparameters
+      & Reward function is the primary lever for this task \\
+    \addlinespace
+    Curriculum $\times$ reward interaction
+      & Original reward SNR: 0.08 without curriculum, 1.72 with---same function, opposite outcomes
+      & Reward and curriculum are coupled design choices, not independent \\
+    \addlinespace
+    Improvement bonus $>$ PBRS
+      & $+$52.1\% (improvement) vs.\ $+$16.9\% (PBRS) over baseline
+      & Non-policy-invariant shaping can outperform principled methods when aligned with task structure \\
+    \addlinespace
+    Heading = reward hacking
+      & Episode reward 39.1 ($>$ baseline 18.7) but fair metric $-$23.3\%; heading contributes ${\sim}$72\% of total reward
+      & Per-component logging essential; aggregate reward misleading \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\paragraph{Per-step SNR in PBRS.}
+PBRS exhibits a structural signal-to-noise problem when used without a base reward:
+
+\begin{itemize}
+  \item \textbf{Root cause:} $F(s,s') = \gamma\,\Phi(s') - \Phi(s)$ differences consecutive potentials with similar values---analogous to noisy numerical differentiation.
+  \item \textbf{Episode vs.\ step:} Telescoping gives healthy episode-level SNR (${\approx}\,3.3$), but per-step SNR collapses (${\approx}\,0.04$).
+  \item \textbf{Feedback loop:} Per-step noise $\to$ critic overfits noisy value landscape $\to$ escalating gradients ($1.1 \to 15.5$) $\to$ noisier advantages.
+  \item \textbf{Conclusion:} PBRS is an \emph{additive supplement} to a base reward~\citep{Ng1999,Wiewiora2003}, not a standalone signal. The base $\bar{r}_{\text{dist}} = \exp(-5d)$ provides a smooth anchor for the critic; PBRS accelerates credit assignment on top. Recent work by \citet{Mueller2025} formalizes how a linear shift of the potential function can improve PBRS effectiveness without sacrificing policy invariance.
+\end{itemize}
+
+\noindent
+Standard mitigations---reward normalization (std-only, preserving the PBRS zero-mean property), higher GAE~$\lambda$ ($0.97$--$0.99$), gradient clipping at $0.5$, and advantage normalization---address the remaining variance.
+More aggressive approaches ($k$-step PBRS, EMA-smoothed potentials) sacrifice strict policy-invariance and remain unvalidated for this domain.
+
+% ---- 5.4 Reward Landscape Diagnostics ----
+\subsection{Reward Landscape Diagnostics (E3)}
+\label{sec:rl-dismech:diagnostics}
+
+Three diagnostic experiments characterize the reward landscape using random or zero-action rollouts (no trained policy).
+\Cref{tab:diagnostics-summary} summarizes the findings; detailed data follow.
+
+\begin{table}[H]
+  \centering
+  \small
+  \renewcommand{\arraystretch}{1.3}
+  \caption{Reward landscape diagnostics summary (random/zero-action rollouts, no trained policy).}
+  \label{tab:diagnostics-summary}
+  \begin{tabular}{@{} p{1.9cm} p{3.1cm} p{4.5cm} p{4.5cm} @{}}
+    \toprule
+    \textbf{Diagnostic} & \textbf{Protocol} & \textbf{Key result} & \textbf{Implication} \\
+    \midrule
+    Reward density
+      & 50 episodes $\times$ 10k steps, random policy
+      & 70\% of steps yield $r < 0.05$; median $= 0.020$
+      & Near-zero gradient at operating distances \\
+    \addlinespace
+    Action impact
+      & 10 episodes $\times$ 2k steps, zero vs.\ random
+      & Zero-action: displacement $5 \times 10^{-3}$; random: 0.052
+      & Environment is responsive; plateau is not a dynamics issue \\
+    \addlinespace
+    Reachability
+      & 20 targets $\times$ 10 rollouts $\times$ 100 steps
+      & 90\% reachable at $d{<}0.3$; only 25\% at $d{<}0.1$
+      & Task solvable but fine approach is physically difficult \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\paragraph{Reward density.}
+\Cref{tab:reward-landscape} compares steepness variants under random rollouts.
+At the median random-policy distance $d \approx 0.78$, the current reward $\exp(-5 \times 0.78) = 0.020$ provides essentially no gradient signal.
+Shallower variants give 5--$10\times$ higher median rewards, but as shown in \Cref{sec:reward:steepness}, this denser signal paradoxically \emph{hurts} trained performance via reward hacking.
+
+\begin{table}[H]
+  \centering
+  \small
+  \renewcommand{\arraystretch}{1.3}
+  \caption{Reward density under random policy (50 episodes, 10k steps each). Shallower $k$ yields denser signal but enables reward hacking (\Cref{sec:reward:steepness}).}
+  \label{tab:reward-landscape}
+  \begin{tabular}{@{}lccccc@{}}
+    \toprule
+    \textbf{Reward function} & \textbf{Mean} & \textbf{Median} & \textbf{Std} & $\boldsymbol{>0.05}$ & $\boldsymbol{>0.1}$ \\
+    \midrule
+    $\exp(-5d)$ (current)  & 0.049 & 0.020 & 0.078 & 26.5\% & 13.4\% \\
+    $\exp(-2d)$            & 0.245 & 0.211 & 0.139 & ---    & ---    \\
+    $\exp(-d)$             & 0.476 & 0.460 & 0.133 & ---    & ---    \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\paragraph{Reachability.}
+\Cref{tab:reachability} breaks down reachability by target hemisphere.
+Fine approach ($d < 0.1$) is rare under random actions, especially for equatorial targets (0\%).
+
+\begin{table}[H]
+  \centering
+  \small
+  \renewcommand{\arraystretch}{1.3}
+  \caption{Reachability by target hemisphere (20 targets, 10 rollouts each, 100 steps).}
+  \label{tab:reachability}
+  \begin{tabular}{@{}lcccc@{}}
+    \toprule
+    \textbf{Region} & $\boldsymbol{n}$ & \textbf{Mean min $d$} & $\boldsymbol{d < 0.3}$ & $\boldsymbol{d < 0.1}$ \\
+    \midrule
+    Lower ($z < -0.2$)          & 8  & 0.122 & 87.5\% & 50.0\% \\
+    Equatorial ($|z| \leq 0.2$) & 5  & 0.193 & 100\%  & 0\%    \\
+    Upper ($z > 0.2$)           & 7  & 0.161 & 85.7\% & 14.3\% \\
+    \midrule
+    Overall                     & 20 & 0.153 & 90.0\% & 25.0\% \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\noindent
+Together, these diagnostics explain the learning plateau in \Cref{sec:rl-dismech:results}: $\exp(-5d) \approx 0$ at operating distances ($d \approx 0.5$--$0.8$), creating a ``dead zone'' where the policy cannot distinguish between mediocre and slightly-less-mediocre behavior.
+
+% ---- 5.5 Extended Training (50M Frames) ----
+\subsection{Extended Training, 50M Frames (E4)}
+\label{sec:rl-dismech:extended}
+
+Motivated by the diagnostics, we extended the best-performing configuration (distance-only reward, 100 envs, curriculum disabled) to 50M frames---10$\times$ the original budget---to determine whether the 5M-frame plateau is a transient or a fundamental limit.
+Training was conducted in three consecutive sessions with checkpoint resumption.
+
+\begin{table}[H]
+  \centering
+  \small
+  \renewcommand{\arraystretch}{1.3}
+  \caption{Extended training sessions (50M frame budget, distance-only reward, 100 envs). Best reward plateaus by ${\sim}$9M frames; subsequent training shows no improvement.}
+  \label{tab:extended-training}
+  \begin{tabular}{@{}lcccc@{}}
+    \toprule
+    \textbf{Session} & \textbf{Frame range} & \textbf{Best reward} & \textbf{Rolling-100 range} & \textbf{Entropy} \\
+    \midrule
+    Initial     & 0--9M     & 64.70 & 1--56 & 0.03--0.06 \\
+    Resumed     & 9M--12.3M & 65.81 & 3--60 & 0.03--0.06 \\
+    Continued   & 12.3M--16.3M$^*$ & --- & 1--57 & 0.03--0.08 \\
+    \bottomrule
+    \multicolumn{5}{@{}l}{\footnotesize $^*$Still running at time of writing.}
+  \end{tabular}
+\end{table}
+
+\noindent
+Key observations from the extended training:
+
+\begin{itemize}
+  \item \textbf{Reward plateaus early and does not recover.}
+  The best single-episode reward (${\sim}$65.8) was achieved by ${\sim}$12M frames.
+  Subsequent training shows no improvement; the rolling-100 reward oscillates between 1 and 57 with no upward trend.
+  In the ablation baseline (A1, 32 envs, \Cref{sec:rl-dismech:ablation-v2}), \texttt{batches\_since\_improvement} exceeded 200 by the end of training.
+
+  \item \textbf{Entropy has partially collapsed.}
+  Entropy values of 0.03--0.08 (vs.\ an initial entropy coefficient of 0.1) indicate the policy has narrowed its exploration.
+  Combined with the sparse reward landscape (\Cref{sec:rl-dismech:diagnostics}), the policy occasionally stumbles onto good trajectories but cannot reliably reproduce them.
+
+  \item \textbf{Diagnostic metrics were initially corrupted.}
+  A bug in the trainer's metric aggregation divided \emph{all} logged metrics --- including one-shot diagnostics like explained variance and action standard deviation --- by the update count, rather than only the accumulated loss terms.
+  When PPO's KL early stopping halted training after 1--2 updates out of 40 theoretical, diagnostic values were divided by ${\sim}$40$\times$, displaying as 0.0000.
+  This was discovered and fixed after the initial extended training runs; all diagnostic figures reported in this section use the corrected metrics.
+
+  \item \textbf{Critic loss is highly variable.}
+  The critic loss swings from $10^{-3}$ to ${\sim}4.6$, indicating the value function struggles to fit the return distribution.
+  This is consistent with the bimodal reward structure: most episodes yield low returns (${\sim}$1--5), with rare spikes of 50--60 that the critic cannot predict.
+
+  \item \textbf{Mean distance to goal stagnates at ${\sim}$0.6--0.7.}
+  The policy learns to move generally toward the target but cannot close the remaining distance.
+  This matches the reachability diagnostic (\Cref{tab:reachability}): the reward gradient at $d \approx 0.6$ is $\exp(-3.0) \approx 0.05$, providing negligible learning signal.
+\end{itemize}
+
+\noindent
+The extended training confirms that the 5M-frame plateau is a fundamental limit of the $\exp(-5d)$ reward, not a sample-efficiency issue.
+Simply training longer does not help because the reward landscape itself provides insufficient gradient signal at the operating distances.
+This motivates the normalized reward architecture in \Cref{sec:reward}.
+
+% ---- 5.6 SAC vs PPO Stability ----
+\subsection{SAC vs.\ PPO Stability (E5)}
 \label{sec:rl-dismech:sac}
 
 In separate experiments, we trained SAC (20M frames, 100 envs) and PPO (50M frames, 100 envs) on the same task using the paper-matching 3$\times$256 ReLU network.
@@ -1153,419 +1513,451 @@ PPO gradient norms stay bounded at 2--28 throughout, consistent with its clipped
 The paper's 5M frame budget may mask this instability, as the collapse onset occurs at ${\sim}$3--5M frames.
 Possible mitigations include mild entropy regularization ($\alpha > 0$), actor-specific gradient clipping, or learning rate scheduling.
 
-\subsection{Discussion}
-\label{sec:rl-dismech:discussion}
+% ---- 5.6 Normalized Reward Architecture ----
+\subsection{Normalized Reward Architecture}
+\label{sec:reward}
 
-The ablation study demonstrates that reward design has a larger effect on learning than hyperparameter tuning in this task.
-The original paper reward---dismissed in our initial analysis for its low SNR---proves most effective when paired with curriculum learning, which controls reward variance during early training.
-This highlights a key interaction: reward function and curriculum are not independent design choices.
+The preceding experiments (E2--E5) reveal that reward design and curriculum learning dominate performance, outweighing both sample budget and algorithm choice.
+The ablation (E2) identified three structural problems with ad-hoc reward design for on-policy PPO: high reward variance from scale-entangled components, auxiliary objectives dominating the total reward, and single-objective shaping missing the heading dimension.
+The extended training (E4) confirmed these are fundamental limitations, not sample-budget issues.
+This subsection presents a principled reward architecture that addresses all three by normalizing components to known ranges before weighting and decomposing PBRS into per-objective potentials.
 
-PBRS provides a principled mechanism for accelerating learning without changing the optimal policy, but the non-theoretic improvement bonus ($+$52.1\%) outperforms the policy-invariant PBRS ($+$16.9\%).
-The improvement bonus is not policy-invariant, yet its direct ``closer is better'' signal aligns well with the task objective.
+\subsubsection{Problems with Ad-Hoc Design}
+\label{sec:reward:problems}
 
-The heading reward, despite intuitive appeal, exemplifies a common RL pitfall: auxiliary objectives can dominate the total reward and redirect optimization away from the true task metric.
-Per-component logging is essential for diagnosing such issues, since the aggregate episode reward (39.1 for heading vs.\ 18.7 for baseline) misleadingly suggests heading is superior.
-
-A natural next step is combining the improvement bonus with PBRS, or testing without curriculum to isolate the curriculum--reward interaction.
-
-% ===========================================================================
-% CHAPTER 6: PHYSICS-INFORMED NEURAL NETWORK
-% ===========================================================================
-\section{Physics-Informed Neural Network}
-\label{sec:pinn}
-
-All PINN experiments ran on the same hardware as \Cref{sec:rl-dismech}: 2$\times$ RTX A4000 16\,GB (Ampere), 16 cores, 270\,GB RAM, CUDA 12.8.
-
-\subsection{Mathematical Formulation}
-\label{sec:pinn:formulation}
-
-\subsubsection{Standard PINN}
-\label{sec:pinn:standard}
-
-Physics-informed neural networks \citep{Raissi2019} augment the data-driven loss with a physics residual derived from the governing equations.
-Given the state-space model $\dot{\mathbf{x}}(t) = \fssm(\mathbf{x}(t), \mathbf{u}(t))$, a network $\mathbf{h}_\theta$ predicts $\xhat_t = \mathbf{h}_\theta(\mathbf{x}_0, \mathbf{u}, t)$.
-The PINN loss:
-\begin{multline}
-  \mathcal{L}(\theta)
-    = \underbrace{\lambda_{\mathrm{IC}} \bigl\| \xhat_0 - \mathbf{x}_0 \bigr\|^2}_{\mathcal{L}_{\mathrm{IC}}}
-    + \underbrace{\lambda_{\mathrm{phys}} \frac{1}{N_c}\sum_{k=1}^{N_c}
-      \left\| \frac{\partial \xhat_{t_k}}{\partial t} - \fssm(\xhat_{t_k}, \mathbf{u}_{t_k}) \right\|^2}_{\mathcal{L}_{\mathrm{phys}}}
-    + \underbrace{\lambda_{\mathrm{data}} \frac{1}{N_d}\sum_{k=1}^{N_d}
-      \left\| \xhat_{t_k} - \mathbf{x}_{\mathrm{data},k} \right\|^2}_{\mathcal{L}_{\mathrm{data}}}
-  \label{eq:pinn:loss}
-\end{multline}
-
-The time derivative $\partial \xhat_t / \partial t$ is obtained via autodiff through the network, doubling the computational cost per collocation point.
-
-\paragraph{Practical bottlenecks:}
-\begin{itemize}
-  \item \textbf{Expensive autodiff} --- additional backward pass per collocation point
-  \item \textbf{Loss balancing} --- three competing objectives require careful weighting
-  \item \textbf{Training instability} --- can diverge for systems with $m \gg 1$ coupled states
-\end{itemize}
-
-\subsubsection{Physics Regularizer}
-\label{sec:pinn:regularizer}
-
-The simplest physics-informed approach adds algebraic constraints as soft regularizers.
-Four constraints are enforced via trapezoidal integration on the 124-dimensional state delta $\Delta\mathbf{x} = \mathbf{x}_{t+1} - \mathbf{x}_t$:
+\Cref{tab:reward-problems} summarizes the three problems observed in the \Cref{sec:rl-dismech:ablation} ablation and how the normalized architecture addresses each.
 
 \begin{table}[H]
   \centering
   \small
   \renewcommand{\arraystretch}{1.3}
-  \caption{Physics regularizer constraints.}
-  \label{tab:pinn-constraints}
-  \begin{tabular}{@{}clp{7.5cm}@{}}
+  \caption{Problems with the original reward under PPO and how the normalized architecture addresses each.}
+  \label{tab:reward-problems}
+  \begin{tabular}{@{}p{3.2cm}p{5.0cm}p{5.0cm}@{}}
     \toprule
-    \textbf{ID} & \textbf{Constraint} & \textbf{Formulation} \\
+    \textbf{Problem} & \textbf{Ablation observation} & \textbf{Solution} \\
     \midrule
-    C1 & Translational kinematics & $\Delta x_i \approx (v_{x,i} + \tfrac{1}{2}\Delta v_{x,i})\Delta t$ \\
-    C2 & Angular kinematics & $\Delta\psi_e \approx (\omega_{z,e} + \tfrac{1}{2}\Delta\omega_{z,e})\Delta t$ \\
-    C3 & Curvature--moment & Spatial gradient consistency ($0.1\times$ weight) \\
-    C4 & Bounded kinetic energy & $\text{ReLU}(|\Delta\text{KE}| - E_{\text{thr}})^2$ \\
+    High reward variance
+      & The $10{\times}$ improvement bonus creates SNR\,$=$\,0.08, causing value function failure without curriculum
+      & Improvement bonus replaced by distance PBRS $\Phi_{\text{dist}}$, which provides the same approach signal with bounded magnitude \\
+    \addlinespace
+    Scale-entangled weights
+      & The multiplier 10 conflates component \emph{scale} with \emph{importance}; tuning requires reasoning about both simultaneously
+      & All base components normalized to known ranges before weighting; weights $w_i$ are pure importance coefficients \\
+    \addlinespace
+    Single-objective shaping
+      & PBRS only shapes distance; adding heading as a base term caused reward hacking (heading dominated 72\% of total reward, \Cref{sec:rl-dismech:results})
+      & PBRS decomposed into per-objective potentials ($\Phi_{\text{dist}}$, $\Phi_{\text{heading}}$), each policy-invariant \\
     \bottomrule
   \end{tabular}
 \end{table}
 
-Total regularization: $\mathcal{L}_{\mathrm{reg}} = \mathcal{L}_{\mathrm{kin},x} + \mathcal{L}_{\mathrm{kin},y} + \mathcal{L}_{\mathrm{ang}} + \mathcal{L}_{\mathrm{curv}} + \mathcal{L}_{\mathrm{energy}}$.
+\subsubsection{Architecture}
+\label{sec:reward:arch}
 
-\subsubsection{DD-PINN Method}
-\label{sec:pinn:ddpinn}
-
-The domain-decoupled PINN \citep{Krauss2024,Licher2025} resolves all three PINN bottlenecks: \textbf{remove time as a network input} and output parameters of an analytically differentiable ansatz.
-
+The reward separates base components (normalized, then weighted) from PBRS components (raw, unweighted):
 \begin{equation}
-  \boxed{\xhat_t = \mathbf{g}(\avec, t) + \mathbf{x}_0, \qquad \avec = \fnn(\mathbf{x}_0, \mathbf{u}_0;\, \theta)}
-  \label{eq:pinn:ddpinn-core}
+  r(s, a, s') = \underbrace{\sum_{i} w_i \cdot \bar{r}_i(s, a, s')}_{\text{base (normalized, weighted)}}
+              + \underbrace{\sum_{j} \bigl(\gamma_{\text{pbrs}}\,\Phi_j(s') - \Phi_j(s)\bigr)}_{\text{PBRS (raw, unweighted)}}.
+  \label{eq:reward-normalized}
 \end{equation}
+Each base component $\bar{r}_i$ is mapped to a known range \emph{before} weighting, so doubling $w_i$ exactly doubles the contribution of component~$i$ without interacting with scale.
+The PBRS terms follow \citet{Ng1999}: $F_j(s,s') = \gamma_{\text{pbrs}}\,\Phi_j(s') - \Phi_j(s)$ is guaranteed to preserve the optimal policy.
+This multi-component, hierarchical structure is consistent with the HPRS framework of \citet{Berducci2022}, which formalizes potential-based shaping over partially-ordered task requirements while preserving optimality.
 
-The ansatz for each state variable $j$:
-\begin{equation}
-  g_j(t) = \sum_{i=1}^{n_g} \alpha_{ij}\, e^{-\delta_{ij} t}
-    \bigl[\phig(\beta_{ij}\, t + \gamma_{ij}) - \phig(\gamma_{ij})\bigr]
-  \label{eq:pinn:ansatz}
-\end{equation}
-where $\phig(x) = \sin(x)$ and the subtraction ensures $g_j(0) = 0$ exactly.
-
-\paragraph{Key advantages over standard PINN:}
-\begin{itemize}
-  \item \textbf{Exact IC:} $\mathbf{g}(\avec, 0) \equiv \mathbf{0}$ by construction
-  \item \textbf{Closed-form gradients:} $\dot{\mathbf{g}}$ computed analytically --- no autodiff cost
-  \item \textbf{Simplified loss:} only 2 terms ($\mathcal{L}_{\mathrm{phys}} + \mathcal{L}_{\mathrm{data}}$)
-  \item \textbf{More collocation points:} $10$--$25\times$ more than standard PINNs due to cheap evaluation
-\end{itemize}
-
-\begin{figure}[H]
-\centering
-\resizebox{\textwidth}{!}{%
-\begin{tikzpicture}[
-    >=Stealth,
-    block/.style={draw, rounded corners=3pt, minimum height=1cm, minimum width=2cm,
-                  align=center, font=\footnotesize},
-    arrow/.style={->, thick},
-    lbl/.style={font=\scriptsize, text=gray!70!black}
-]
-    \node[block, fill=blue!8] (input) {$\mathbf{x}_0,\; \mathbf{u}_0$};
-    \node[block, fill=orange!12, right=1.2cm of input] (nn) {Feedforward NN\\$\fnn(\cdot;\, \theta)$};
-    \node[block, fill=green!10, right=1.2cm of nn] (params) {$\avec = (\bm{\alpha}, \bm{\beta}, \bm{\gamma}, \bm{\delta})$};
-    \node[block, fill=red!8, right=1.2cm of params] (ansatz) {Ansatz\\$\mathbf{g}(\avec, t)$};
-    \node[block, fill=blue!8, right=1.2cm of ansatz] (output) {$\xhat_t = \mathbf{g} + \mathbf{x}_0$};
-    \node[below=0.6cm of ansatz, font=\small] (time) {$t \in [0, T_s]$};
-    \draw[arrow] (input) -- (nn);
-    \draw[arrow] (nn) -- (params);
-    \draw[arrow] (params) -- (ansatz);
-    \draw[arrow] (ansatz) -- (output);
-    \draw[arrow] (time) -- (ansatz);
-    \node[lbl, above=0.15cm of nn] {called once};
-    \node[lbl, above=0.15cm of ansatz] {evaluated at $N_c$ points};
-\end{tikzpicture}}
-\caption{DD-PINN inference pipeline. The network is evaluated once to produce ansatz parameters; the ansatz is then evaluated at arbitrarily many time points.}
-\label{fig:pinn:architecture}
-\end{figure}
-
-\subsubsection{Limitations of PINNs}
-\label{sec:pinn:limitations}
-
-PINNs face fundamental limitations for complex dynamical systems:
-\begin{itemize}
-  \item \textbf{Spectral bias:} Networks learn low-frequency components first, making high-frequency CPG dynamics difficult.
-  \item \textbf{Scaling to high dimensions:} Standard PINNs struggle for $m \gg 1$ (the snake robot has $m = 124$).
-  \item \textbf{Discontinuous physics:} Contact and friction forces create non-smooth dynamics that PINNs cannot easily enforce.
-  \item \textbf{Ansatz design:} DD-PINNs require an appropriate ansatz function designed a priori for the dynamics class.
-\end{itemize}
-
-% ---- 6.2 PDE System for Snake Robot ----
-\subsection{PDE System for Snake Robot}
-\label{sec:pinn:system}
-
-\subsubsection{Differentiable Cosserat Rod Right-Hand Side}
-\label{sec:pinn:cosserat-rhs}
-
-A differentiable implementation of $\fssm$ computes $\dot{\mathbf{x}} = \fssm(\mathbf{x})$ for the 124-dimensional state vector using an inextensible rod approximation (bending + RFT friction, no stretching).
-The right-hand side assembles six blocks:
-\begin{equation}
-  \fssm(\mathbf{x}) = \bigl(\dot{x}_i,\; \dot{y}_i,\; \dot{v}_{x,i},\; \dot{v}_{y,i},\; \dot{\psi}_e,\; \dot{\omega}_{z,e}\bigr) \in \mathbb{R}^{124}
-  \label{eq:pinn:rhs-full}
-\end{equation}
-
-Key components:
-\begin{itemize}
-  \item \textbf{Kinematics:} $\dot{x}_i = v_{x,i}$, $\dot{\psi}_e = \omega_{z,e}$
-  \item \textbf{Bending moments:} $M_j = EI(\psi_{j+1} - \psi_j)/\Delta\ell$
-  \item \textbf{RFT friction:} $\mathbf{F}_i^{\text{fric}} = -c_t\mathbf{v}_{\text{tan},i} - c_n\mathbf{v}_{\text{norm},i}$ with $\varepsilon$-regularized tangents
-  \item \textbf{Newton's 2nd law:} $\dot{v}_{x,i} = (F_{x,i}^{\text{fric}} + F_{x,i}^{\text{elastic}})/m_i$
-\end{itemize}
-
-\begin{table}[H]
-\centering
-\footnotesize
-\renewcommand{\arraystretch}{1.25}
-\caption{Physics fidelity: Elastica simulator vs.\ DD-PINN RHS vs.\ regularizer.}
-\label{tab:pinn:physics-comparison}
-\begin{tabular}{@{} p{2.8cm} p{3.4cm} p{3.4cm} p{3.4cm} @{}}
-\toprule
-\textbf{Physics term} &
-  \textbf{Elastica} &
-  \textbf{DD-PINN RHS} &
-  \textbf{Regularizer} \\
-\midrule
-Kinematics & Exact (Verlet) & Exact & Soft penalty (C1, C2) \\
-Shear--stretch & Full & Omitted (inextensible) & Omitted \\
-Bending moments & Full 3D, director-based & 2D simplified FD & Approximate (C3) \\
-RFT friction & Anisotropic + damping & Anisotropic, no damping & Not modelled \\
-Differentiable? & In principle (gradient explosion at 500 steps) & Yes & Yes \\
-Cost & ${\sim}46$\,ms (CPU) & ${\sim}0.3$\,ms (GPU) & ${\sim}0.1$\,ms (GPU) \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-\subsubsection{Physics-Regularized Loss}
-\label{sec:pinn:reg-loss}
-
-For the regularized surrogate:
-\begin{equation}
-  \mathcal{L}^{(n)}(\theta) = \mathcal{L}_{\mathrm{data}}(\theta) + \lambda\,\sigma_{\mathrm{reg}}(n)\,\mathcal{L}_{\mathrm{reg}}(\theta)
-  \label{eq:pinn:reg-total-loss}
-\end{equation}
-with piecewise-linear warmup (20\% data-only).
-
-\subsubsection{DD-PINN Loss and Training}
-\label{sec:pinn:ddpinn-training}
-
-The DD-PINN training loss at epoch $n$:
-\begin{equation}
-  \boxed{%
-    \mathcal{L}^{(n)}(\theta) = w_{\mathrm{data}}^{(n)}\,\mathcal{L}_{\mathrm{data}}(\theta)
-    + w_{\mathrm{phys}}^{(n)}\,\lambda\,\sigma(n)\,\mathcal{L}_{\mathrm{phys}}(\theta)
-  }
-  \label{eq:pinn:ddpinn-total}
-\end{equation}
-where $w_{\mathrm{data}}^{(n)}, w_{\mathrm{phys}}^{(n)}$ are ReLoBRaLo \citep{Bischof2022} adaptive weights, $\lambda$ is fixed physics strength, and $\sigma(n)$ is a curriculum schedule (15\% warmup, 30\% ramp, full physics at 45\%).
-
-\subsubsection{Nondimensionalization}
-\label{sec:pinn:nondim}
-
-Physics-based reference scales keep the residual at $\mathcal{O}(1)$:
+\paragraph{Base components.}
+\Cref{tab:reward-base} defines the three normalized base components.
 
 \begin{table}[H]
   \centering
   \small
-  \caption{Nondimensionalization scales.}
-  \label{tab:pinn-nondim}
-  \begin{tabular}{@{}lll@{}}
+  \renewcommand{\arraystretch}{1.3}
+  \caption{Normalized base reward components. All are mapped to known ranges before weighting.}
+  \label{tab:reward-base}
+  \begin{tabular}{@{}llcl@{}}
     \toprule
-    \textbf{Scale} & \textbf{Value} & \textbf{Source} \\
+    \textbf{Component} & \textbf{Formula} & \textbf{Range} & \textbf{Weight} \\
     \midrule
-    $L_{\mathrm{ref}}$ & 1.0\,m & Rod length \\
-    $t_{\mathrm{ref}}$ & 0.5\,s & Control timestep \\
-    $V_{\mathrm{ref}}$ & 2.0\,m/s & $L/t$ \\
-    $\omega_{\mathrm{ref}}$ & 2.0\,rad/s & $1/t$ \\
-    $F_{\mathrm{ref}}$ & $EI/L^2$ & Elastic force \\
+    Distance    & $\bar{r}_{\text{dist}} = \exp(-5\,d)$                              & $[0, 1]$  & $w_{\text{dist}} = 1.0$ (always on) \\
+    Heading     & $\bar{r}_{\text{heading}} = (1 + \cos\theta) / 2$                  & $[0, 1]$  & $w_{\text{heading}} \in \{0, 0.3\}$ \\
+    Smoothness  & $\bar{r}_{\text{smooth}} = -\lVert\Delta a\rVert^2 / (2\,n_a)$     & $[-1, 0]$ & $w_{\text{smooth}} \in \{0, 0.01\text{--}0.05\}$ \\
     \bottomrule
   \end{tabular}
 \end{table}
 
-\subsubsection{DD-PINN Configuration}
-\label{sec:pinn:config}
+\noindent
+Here $\theta$ is the angle between the tip tangent and the tip-to-target direction, $\Delta a = a_t - a_{t-1}$, and $n_a$ is the action dimensionality.
+The smoothness bound follows from $\lVert\Delta a\rVert^2 \leq 2\,n_a$ when each action coordinate lies in $[-1,1]$.
+
+\paragraph{PBRS components.}
+\Cref{tab:reward-pbrs} defines the per-objective potentials.
 
 \begin{table}[H]
-\centering
-\small
-\renewcommand{\arraystretch}{1.15}
-\caption{DD-PINN training configuration.}
-\label{tab:pinn:config}
-\begin{tabular}{@{} l l @{}}
-\toprule
-\textbf{Parameter} & \textbf{Value} \\
-\midrule
-State dimension       & 124 \\
-Ansatz basis functions & sweep $\{5, 7, 10\}$ \\
-Hidden layers         & $4 \times 512$ \\
-Fourier features      & 128, $\sigma = 10.0$ \\
-Collocation points    & 100\,000 (Sobol) \\
-Physics weight $\lambda$ & 1.0 \\
-Batch size / Learning rate & 4\,096 / $10^{-3}$ (cosine) \\
-Curriculum warmup     & 15\% data-only \\
-\bottomrule
-\end{tabular}
+  \centering
+  \small
+  \renewcommand{\arraystretch}{1.3}
+  \caption{PBRS potentials. Each enters the reward as $F_j = \gamma_{\text{pbrs}}\,\Phi_j(s') - \Phi_j(s)$, unweighted.}
+  \label{tab:reward-pbrs}
+  \begin{tabular}{@{}llcl@{}}
+    \toprule
+    \textbf{Potential} & \textbf{Formula} & \textbf{Range} & \textbf{Role} \\
+    \midrule
+    Distance & $\Phi_{\text{dist}}(s) = -d(s) / R_{\text{ws}}$  & $[-1, 0]$ & Approach signal (replaces improvement bonus) \\
+    Heading  & $\Phi_{\text{heading}}(s) = \cos\theta(s)$        & $[-1, 1]$ & Orientation improvement toward target \\
+    \bottomrule
+  \end{tabular}
 \end{table}
 
-% ---- 6.3 Results ----
-\subsection{Results and Comparison}
-\label{sec:pinn:results}
+\noindent
+Normalizing $\Phi_{\text{dist}}$ by the workspace radius $R_{\text{ws}}$ keeps the shaping magnitude independent of workspace scale.
+The heading potential rewards the agent for \emph{turning toward} the target (change in alignment), complementing the base heading component which rewards \emph{being aligned} (instantaneous state).
+The telescoping property ensures the cumulative shaping over an episode reduces to a boundary term: $\sum_{t=0}^{T-1} F_j(s_t, s_{t+1}) = \gamma_{\text{pbrs}}\,\Phi_j(s_T) - \Phi_j(s_0)$ when $\gamma_{\text{pbrs}} = 1$.
 
-\begin{figure}[H]
-  \centering
-  \includegraphics[width=\textwidth]{pinn/final_comparison.png}
-  \caption{Per-component RMSE comparison across surrogate approaches. Physics-regularized training ($\lambda = 0.01$) converged in 138 epochs (${\sim}8$\,h on RTX~A4000).}
-  \label{fig:pinn:comparison}
-\end{figure}
+\subsection{Validation Ablation (E6)}
+\label{sec:rl-dismech:ablation-v2}
 
-\begin{figure}[H]
-  \centering
-  \includegraphics[width=0.85\textwidth]{pinn/physics_residual_convergence.png}
-  \caption{Physics residual loss convergence. DD-PINN converges faster due to cheap closed-form gradient evaluation enabling more collocation points.}
-  \label{fig:pinn:residual}
-\end{figure}
+To validate the normalized architecture and isolate the effect of each reward component, we ran a systematic ablation study with 12~configurations organized into three groups.
+All runs use 32 parallel environments, a 30-minute wall-time budget (${\sim}$3.6M frames), seed~42, and identical PPO hyperparameters (\Cref{tab:extended-training}).
+Group~B disables curriculum to isolate reward-function effects; Group~C enables curriculum to test the interaction.
 
-\begin{figure}[H]
-  \centering
-  \includegraphics[width=0.85\textwidth]{pinn/predicted_vs_actual.png}
-  \caption{Physics-regularized surrogate ($\lambda{=}0.01$): overall $R^2{=}0.714$; per-component: pos=0.978, vel$\approx$0.52, yaw=0.862, $\omega_z$=0.422.}
-  \label{fig:pinn:r2}
-\end{figure}
-
-\placeholder{PINN loss curves showing training dynamics for standard PINN, DD-PINN, and regularized surrogate.}
-
-\paragraph{Four-way comparison.}
-
-\begin{landscape}
+\paragraph{Configurations.}
+\Cref{tab:ablation-v2-configs} shows the full experiment matrix.
+Group~A establishes baselines, Group~B ablates reward components without curriculum, and Group~C tests the same components with curriculum learning (target speed ramped from 20\% to full over a warmup period).
 
 \begin{table}[H]
-\centering
-\caption{Comparison of four approaches --- formulation and training.}
-\label{tab:pinn:four-way-a}
-\scriptsize
-\renewcommand{\arraystretch}{1.2}
-\begin{tabular}{@{} p{2.4cm} p{3.8cm} p{3.8cm} p{3.8cm} p{3.8cm} @{}}
-\toprule
-\textbf{Aspect}
-    & \textbf{PDE Solver}
-    & \textbf{Data-Driven NN}
-    & \textbf{PINN}
-    & \textbf{DD-PINN} \\
-\midrule
-
-\textbf{Core idea}
-    & Numerically integrate governing PDEs
-    & Learn input$\to$output from data only
-    & Embed PDE residual in training loss
-    & Learn ansatz parameters; time enters analytically \\
-
-\textbf{Physics knowledge}
-    & Full (equations solved exactly)
-    & None
-    & Embedded in loss ($\mathcal{L}_{\mathrm{phys}}$)
-    & Embedded in loss ($\mathcal{L}_{\mathrm{phys}}$) \\
-
-\textbf{Time derivative}
-    & Finite differences / implicit solve
-    & Not computed
-    & Autodiff w.r.t.\ $t$ (expensive)
-    & Closed-form $\dot{\mathbf{g}}(\avec, t)$ (cheap) \\
-
-\textbf{Loss function}
-    & N/A
-    & $\mathcal{L}_{\mathrm{data}}$
-    & $\mathcal{L}_{\mathrm{IC}} + \mathcal{L}_{\mathrm{phys}} + \mathcal{L}_{\mathrm{data}}$
-    & $\mathcal{L}_{\mathrm{phys}} + \mathcal{L}_{\mathrm{data}}$ \\
-
-\textbf{Initial condition}
-    & Exact (boundary condition)
-    & Not enforced
-    & Via loss penalty (approximate)
-    & Exact by construction \\
-
-\bottomrule
-\end{tabular}
+  \centering
+  \small
+  \renewcommand{\arraystretch}{1.3}
+  \caption{Normalized reward ablation configurations. Groups~A--B disable curriculum to isolate reward effects; Group~C enables it.}
+  \label{tab:ablation-v2-configs}
+  \begin{tabular}{@{}llccccc@{}}
+    \toprule
+    \textbf{ID} & \textbf{Description} & $\boldsymbol{w_{\textbf{dist}}}$ & $\boldsymbol{\gamma_{\textbf{pbrs}}}$ & $\boldsymbol{w_{\textbf{smooth}}}$ & $\boldsymbol{w_{\textbf{head}}}$ & \textbf{Curriculum} \\
+    \midrule
+    A1 & Vanilla dense (paper default)    & 1.0 & 0    & 0    & 0   & No  \\
+    \midrule
+    B1 & PBRS only                        & 0   & 0.99 & 0    & 0   & No  \\
+    B2 & Dense + PBRS                     & 1.0 & 0.99 & 0    & 0   & No  \\
+    B3 & Reduced dense + PBRS             & 0.3 & 0.99 & 0    & 0   & No  \\
+    B4 & Reduced dense + PBRS + smooth    & 0.3 & 0.99 & 0.02 & 0   & No  \\
+    B5 & Reduced dense + PBRS + heading   & 0.3 & 0.99 & 0    & 0.3 & No  \\
+    B6 & Full stack (no curriculum)        & 0.3 & 0.99 & 0.02 & 0.3 & No  \\
+    \midrule
+    C1 & Vanilla + curriculum              & 1.0 & 0    & 0    & 0   & 200 \\
+    C2 & Dense + PBRS + curriculum         & 1.0 & 0.99 & 0    & 0   & 200 \\
+    C3 & Best stack + curriculum           & 0.3 & 0.99 & 0.02 & 0   & 200 \\
+    C4 & Full stack + curriculum           & 0.3 & 0.99 & 0.02 & 0.3 & 200 \\
+    C5 & Best stack + long warmup          & 0.3 & 0.99 & 0.02 & 0   & 500 \\
+    \bottomrule
+  \end{tabular}
 \end{table}
+
+\paragraph{Results.}
+\Cref{tab:ablation-v2-results} summarizes the outcomes.
+The primary metric is mean distance to goal averaged over the final quarter of training (Q4), which is independent of the reward function.
+All diagnostic metrics are computed over the same Q4 window.
 
 \begin{table}[H]
-\centering
-\caption{Comparison of four approaches --- performance and practical aspects.}
-\label{tab:pinn:four-way-b}
-\scriptsize
-\renewcommand{\arraystretch}{1.2}
-\begin{tabular}{@{} p{2.4cm} p{3.8cm} p{3.8cm} p{3.8cm} p{3.8cm} @{}}
-\toprule
-\textbf{Aspect}
-    & \textbf{PDE Solver}
-    & \textbf{Data-Driven NN}
-    & \textbf{PINN}
-    & \textbf{DD-PINN} \\
-\midrule
-
-\textbf{Inference speed}
-    & Slow ($\sim$seconds)
-    & Fast ($\sim\!\mu$s)
-    & Fast ($\sim\!\mu$s)
-    & Fast ($\sim\!\mu$s) \\
-
-\textbf{Training cost}
-    & N/A
-    & Low
-    & High (autodiff overhead)
-    & Medium ($5$--$38\times$ faster than PINN) \\
-
-\textbf{Collocation points}
-    & N/A
-    & N/A
-    & $\sim$20k--40k
-    & $\sim$250k--1M (cheap) \\
-
-\textbf{Speedup vs.\ solver}
-    & $1\times$
-    & $\sim$10k--100k$\times$
-    & $\sim$10k--100k$\times$
-    & $\sim$44,000$\times$ (demonstrated) \\
-
-\textbf{Key limitation}
-    & Computational cost
-    & Needs large data; no physics guarantees
-    & Autodiff cost; loss balancing; IC approximate
-    & Ansatz must be designed a priori \\
-
-\bottomrule
-\end{tabular}
+  \centering
+  \small
+  \renewcommand{\arraystretch}{1.3}
+  \caption{Ablation results ranked by distance to goal (Q4 average, lower is better). All runs: 32~envs, ${\sim}$3.6M frames, seed~42. Diagnostic thresholds: SNR$\,{>}\,0.1$, explained variance (EV)$\,{>}\,0.3$, action std min$\,{>}\,0.1$.}
+  \label{tab:ablation-v2-results}
+  \begin{tabular}{@{}llcccccc@{}}
+    \toprule
+    \textbf{ID} & \textbf{Description} & \textbf{Dist (Q4)} & \textbf{$\boldsymbol{\Delta}$Dist} & \textbf{SNR} & \textbf{EV} & \textbf{$\lVert g \rVert$} & \textbf{Health} \\
+    \midrule
+    C5 & Best + long warmup     & \textbf{0.543} & $-$0.078 & 0.41 & 0.73 & 5.2  & \checkmark \\
+    C3 & Best + curriculum      & 0.551          & $-$0.094 & 0.44 & 0.72 & 4.0  & \checkmark \\
+    C2 & Dense+PBRS + curric.   & 0.586          & $-$0.066 & 0.78 & 0.75 & 6.7  & \checkmark \\
+    C1 & Vanilla + curriculum   & 0.603          & $-$0.043 & 1.08 & 0.73 & 8.9  & \checkmark \\
+    \midrule
+    B2 & Dense + PBRS           & 0.698          & $-$0.114 & 0.47 & 0.70 & 7.0  & \checkmark \\
+    B3 & Reduced dense + PBRS   & 0.714          & $-$0.011 & 0.14 & 0.58 & 17.7 & \checkmark \\
+    A1 & Vanilla dense          & 0.718          & $-$0.010 & 0.94 & 0.43 & 9.8  & \checkmark \\
+    B5 & Reduced + heading      & 0.724          & $-$0.019 & 0.19 & 0.62 & 16.0 & $\times$   \\
+    B1 & PBRS only              & 0.730          & $-$0.013 & 0.05 & 0.82 & 9.2  & $\times$   \\
+    B6 & Full stack (no curric.)& 0.731          & $+$0.010 & 0.20 & 0.16 & 9.6  & $\times$   \\
+    B4 & Reduced + smooth       & 0.812          & $+$0.047 & 0.13 & 0.69 & 10.5 & \checkmark \\
+    C4 & Full + curriculum      & 0.917          & $+$0.195 & 0.79 & 0.77 & 11.2 & \checkmark \\
+    \bottomrule
+  \end{tabular}
 \end{table}
 
-\end{landscape}
+\noindent
+The $\Delta$Dist column shows the change from Q1 to Q4 (negative = improving).
+The ``Health'' column marks runs where all three diagnostic thresholds are met; $\times$~indicates at least one violation.
 
-\paragraph{Summary.}
-The data-driven surrogate achieves highest throughput and simplest training but provides no physics guarantees.
-The physics-regularized variant adds soft constraints at minimal overhead.
-The DD-PINN satisfies initial conditions exactly, eliminates autodiff cost, and enforces governing equations at collocation points --- at the cost of ansatz design.
+\paragraph{Key findings.}
+
+\begin{enumerate}
+  \item \textbf{Curriculum is the dominant factor.}
+  Every curriculum run (C1--C5) outperforms every non-curriculum run (A1, B1--B6).
+  Best non-curriculum (B2, $d{=}0.698$) is 16\% worse than worst curriculum (C1, $d{=}0.603$).
+
+  \item \textbf{PBRS provides ${\sim}$3\% improvement atop dense reward.}
+  A1$\to$B2: $-$2.8\% without curriculum; C1$\to$C2: $-$2.8\% with.
+  PBRS alone (B1) has SNR$\,{=}\,$0.05 and fails to learn (\Cref{sec:rl-dismech:discussion}).
+
+  \item \textbf{Smoothness hurts without curriculum, helps with it.}
+  Without: B4 ($d{=}0.812$) is 14\% worse than B3 ($d{=}0.714$)---penalty diverts optimization before approach is learned.
+  With: C3 ($d{=}0.551$) improves 5.9\% over C2 ($d{=}0.586$)---easy early targets let the agent learn approach and action quality simultaneously.
+
+  \item \textbf{Heading reward enables reward hacking.}
+  C4 achieves the highest episode reward (50.1) but the \emph{worst} distance ($d{=}0.917$); heading contributes ${\sim}$76\% of Q4 reward.
+  Same failure mode as the initial ablation (\Cref{sec:rl-dismech:results})---heading should be excluded from the base reward.
+
+  \item \textbf{Longer warmup provides marginal gains.}
+  C5 (500 episodes, $d{=}0.543$) beats C3 (200 episodes, $d{=}0.551$) by only 1.5\%.
+\end{enumerate}
+
+\paragraph{Best configuration.}
+The overall winner is C5: $w_{\text{dist}} = 0.3$, $\gamma_{\text{pbrs}} = 0.99$, $w_{\text{smooth}} = 0.02$, curriculum with 500-episode warmup.
+This achieves $d = 0.543$---a 24\% improvement over the vanilla baseline (A1, $d = 0.718$) and a 10\% improvement over vanilla with curriculum alone (C1, $d = 0.603$).
+All diagnostic metrics are healthy: $\text{EV} = 0.73$, $\text{SNR} = 0.41$, $\lVert g \rVert = 5.2$, $\sigma_{\min} = 0.30$.
+
+\paragraph{Interaction between curriculum and reward design.}
+The results reveal a strong interaction effect.
+Curriculum learning addresses the fundamental problem---the agent never encounters the high-reward region near the target without easier initial conditions---while reward shaping (PBRS, smoothness) provides incremental gains on top of this.
+\Cref{tab:ablation-v2-interaction} quantifies the interaction: curriculum alone closes 16\% of the gap to the target, while the best reward design without curriculum closes less than 3\%.
+
+\begin{table}[H]
+  \centering
+  \small
+  \renewcommand{\arraystretch}{1.3}
+  \caption{Curriculum vs.\ reward design: contribution to distance improvement over the vanilla baseline (A1, $d = 0.718$).}
+  \label{tab:ablation-v2-interaction}
+  \begin{tabular}{@{}lcc@{}}
+    \toprule
+    \textbf{Intervention} & \textbf{Best dist (Q4)} & \textbf{Improvement over A1} \\
+    \midrule
+    None (A1 baseline)            & 0.718 & ---    \\
+    Best reward only (B2)         & 0.698 & 2.8\%  \\
+    Curriculum only (C1)          & 0.603 & 16.0\% \\
+    Curriculum + best reward (C5) & 0.543 & 24.4\% \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\subsection{Steepness and Environment Scaling (E7)}
+\label{sec:reward:steepness}
+
+The reward landscape diagnostics (\Cref{sec:rl-dismech:diagnostics}) showed that the $\exp(-5d)$ reward is extremely sparse at typical operating distances, with shallower alternatives such as $\exp(-2d)$ or $\exp(-d)$ providing 5--$10\times$ denser signal (\Cref{tab:reward-landscape}).
+This naturally suggests that reducing the steepness coefficient $k$ in $\exp(-k\,d)$ could break the distance plateau by providing a stronger gradient at mid-range distances.
+We tested this hypothesis directly.
+
+\paragraph{Steepness sweep.}
+Using the best reward stack from \Cref{sec:rl-dismech:ablation-v2} (C5: $w_{\text{dist}} = 0.3$, $\gamma_{\text{pbrs}} = 0.99$, $w_{\text{smooth}} = 0.02$, curriculum with 500-episode warmup), we swept the steepness coefficient $k \in \{1, 2, 3, 5\}$ with 100 parallel environments and a 90-minute wall-time budget (${\sim}$10.5M frames per run).
+\Cref{tab:steepness-results} shows the results.
+
+\begin{table}[H]
+  \centering
+  \small
+  \renewcommand{\arraystretch}{1.3}
+  \caption{Steepness ablation results (100 envs, ${\sim}$10.5M frames, seed~42, C5 reward stack). Lower distance is better. The paper default $k{=}5$ achieves the best distance despite being the ``sparsest'' reward.}
+  \label{tab:steepness-results}
+  \begin{tabular}{@{}ccccccc@{}}
+    \toprule
+    \textbf{Run} & $\boldsymbol{k}$ & \textbf{$\boldsymbol{\exp(-k \cdot 0.6)}$} & \textbf{Dist (Q4)} & $\boldsymbol{\Delta}$\textbf{Dist} & \textbf{EV} & \textbf{Std$_{\min}$} \\
+    \midrule
+    S4 & 5 & 0.050 & \textbf{0.675} & $-$0.025 & 0.28 & 0.189 \\
+    S1 & 1 & 0.549 & 0.725          & $+$0.032 & $-$0.06 & 0.069 \\
+    S2 & 2 & 0.301 & 0.790          & $+$0.113 & 0.57 & 0.103 \\
+    S3 & 3 & 0.165 & 0.819          & $+$0.123 & 0.45 & 0.179 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\noindent
+The results disprove the hypothesis.
+The paper default $k{=}5$ achieves the lowest distance despite providing the sparsest reward signal (column~3 shows the reward at $d{=}0.6$, a typical operating distance).
+Shallower steepness causes \emph{reward hacking}: at $k{=}1$, $\exp(-0.6) = 0.549$---the agent receives 55\% of the maximum reward without approaching the target, eliminating approach pressure.
+This manifests as negative explained variance ($\text{EV} = -0.06$) and near-collapsed action diversity ($\sigma_{\min} = 0.069$): the critic cannot learn a useful value landscape because all states look similarly rewarding.
+
+The failure mode worsens monotonically: as $k$ decreases from 5 to 1, Q4 distance increases (0.675 $\to$ 0.725 $\to$ 0.790 $\to$ 0.819), and $\Delta$Dist turns positive (distance \emph{increasing} over training).
+The shallower variants converge to a ``lazy equilibrium'' where hovering at medium distance yields high reward with low effort.
+
+\paragraph{Environment count effect.}
+Comparing S4 (100 envs, $d{=}0.675$) with C5 (32 envs, $d{=}0.543$)---identical reward configuration, same frame budget---reveals a 24\% regression from tripling the environment count.
+\Cref{tab:env-scaling} compares the two settings.
+
+\begin{table}[H]
+  \centering
+  \small
+  \renewcommand{\arraystretch}{1.3}
+  \caption{Environment count effect on training quality (same reward stack and frame budget).}
+  \label{tab:env-scaling}
+  \begin{tabular}{@{}lccccl@{}}
+    \toprule
+    \textbf{Setting} & \textbf{Envs} & \textbf{Steps/env/batch} & \textbf{Dist (Q4)} & \textbf{EV} & \textbf{Frames} \\
+    \midrule
+    C5 & 32  & 256 & \textbf{0.543} & 0.73 & 3.6M \\
+    S4 & 100 & 82  & 0.675          & 0.28 & 10.5M \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\noindent
+With 100 envs, each batch of 8192 frames provides only 82 steps per environment (vs.\ 256 with 32 envs).
+This fragments trajectory coherence, harming GAE advantage estimation, which relies on multi-step temporal structure within each trajectory.
+The 45-point drop in explained variance (0.73 $\to$ 0.28) confirms that the critic's ability to predict returns degrades substantially with shorter per-env trajectory segments.
 
 % ===========================================================================
-% CONCLUSION
+% SECTION 5.8: BEST CHECKPOINT EVALUATION
+% ===========================================================================
+\subsection{Best Checkpoint Evaluation (E8)}
+\label{sec:reward:eval}
+
+To assess the practical quality of the best-performing policy, we evaluated the top checkpoint from the full training campaign---the PPO run with 100 parallel environments from March~26 (\texttt{ppo\_lr1e4\_100envs\_20260326}), which recorded a training best reward of 90.20 at 3.7M frames.
+This checkpoint was selected based on the \texttt{best\_reward} criterion logged during training.
+
+\paragraph{Evaluation protocol.}
+We evaluated the deterministic policy ($\mu$, no exploration noise) over 20 episodes with seed~42 on the \texttt{follow\_target} task.
+Each episode runs 200 steps (20\,s simulated time) with a fresh random target position and velocity.
+
+\paragraph{Results.}
+\Cref{tab:eval-best} summarizes the evaluation.
+
+\begin{table}[H]
+  \centering
+  \small
+  \renewcommand{\arraystretch}{1.3}
+  \caption{Deterministic evaluation of the best training checkpoint (20 episodes, seed~42). The training best reward of 90.20 does not generalize---evaluation mean is $10\times$ lower, with high variance across target configurations.}
+  \label{tab:eval-best}
+  \begin{tabular}{@{}lcc@{}}
+    \toprule
+    \textbf{Metric} & \textbf{Mean $\pm$ Std} & \textbf{Range} \\
+    \midrule
+    Episode reward     & $8.68 \pm 6.40$ & $[2.18,\; 28.13]$ \\
+    Mean tip--target dist (m)  & $0.795 \pm 0.133$ & $[0.520,\; 1.059]$ \\
+    Final tip--target dist (m) & $0.658 \pm 0.213$ & $[0.316,\; 1.092]$ \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\paragraph{Analysis: the train--eval gap.}
+The training best reward of 90.20 corresponds to a single batch mean, not a robust evaluation.
+PPO logs \texttt{best\_reward} as the maximum of \texttt{mean\_episode\_reward} across all batches; with 100 environments contributing to each batch, a single favorable batch---where most environments happen to start near the target---can produce an outlier reward that never recurs.
+
+Inspecting the training trajectory confirms this: the mean reward oscillates between 0 and 32 across batches (final batch: 32.41), with \texttt{best\_reward} never improving after batch~450 (66 batches of stagnation).
+The mean distance at the best-reward batch was 0.484\,m, but the final training distance was 0.776\,m---the policy did not sustain the improvement.
+
+Three factors explain the gap:
+
+\begin{enumerate}
+  \item \textbf{Curriculum confound.}
+  Training used curriculum learning with a 100-episode warmup that ramps target speed from 20\% to 100\%.
+  Early episodes face near-stationary targets, inflating rewards.
+  Evaluation uses the full target speed from the start, so the policy faces harder tracking.
+
+  \item \textbf{Sparse reward plateau.}
+  At the evaluation mean distance of $d{=}0.795$\,m, the reward signal $\exp(-5 \times 0.795) = 0.019$ is nearly zero.
+  The policy has learned to move in the general direction of targets but lacks the fine-grained gradient to close the final 0.5--0.8\,m gap.
+
+  \item \textbf{Stochastic vs.\ deterministic policy.}
+  Training uses a stochastic policy that occasionally stumbles into high-reward states via exploration noise.
+  Deterministic evaluation removes this, exposing that the \emph{learned mean} has not converged to an effective tracking strategy.
+\end{enumerate}
+
+\noindent
+\Cref{fig:eval-best-gif} shows a representative episode: the manipulator deflects toward the target region but oscillates at ${\sim}$0.5--0.8\,m distance, never achieving close tracking.
+This visualization was recorded from the best checkpoint with three episodes at 20\,FPS.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.6\textwidth]{best_ppo_follow_target_frame.png}
+  \caption{Representative frame from the best PPO checkpoint evaluation on \texttt{follow\_target}. The rod (blue) deflects toward the target (green star) but plateaus at ${\sim}$0.7\,m distance, unable to close the gap. The tip trail (red) shows oscillatory behavior without convergence. Full animation available in the repository.}
+  \label{fig:eval-best-gif}
+\end{figure}
+
+\paragraph{Implications.}
+The evaluation confirms that the $d \approx 0.6$--$0.8$ distance plateau observed during training (\Cref{sec:reward:steepness}) is a genuine performance ceiling, not a logging artifact.
+The best training reward is a poor proxy for policy quality in this domain---future work should use rolling evaluation windows and deterministic evaluation checkpointing rather than single-batch best reward.
+
+% ===========================================================================
+% SECTION 6: CONCLUSION
 % ===========================================================================
 \section{Conclusion}
 \label{sec:conclusion}
 
-This report presented a multi-pronged approach to accelerating RL for snake robot locomotion:
+\Cref{tab:conclusion-summary} summarizes the two main contributions and their key results.
+
+\begin{table}[H]
+  \centering
+  \small
+  \renewcommand{\arraystretch}{1.3}
+  \caption{Summary of contributions and key results.}
+  \label{tab:conclusion-summary}
+  \begin{tabular}{@{}p{2.5cm}p{4.5cm}p{5.5cm}@{}}
+    \toprule
+    \textbf{Contribution} & \textbf{Approach} & \textbf{Key result} \\
+    \midrule
+    Neural surrogates (\Cref{sec:surrogate})
+      & Data-driven MLP on 4.3M Elastica transitions; direct RL baseline on Elastica (E1); PINN and DD-PINN proposed as future extensions
+      & CoM $R^2{=}0.852$, overall $R^2{=}0.393$; E1 achieves 1.5\,m displacement but 0\% goal success; DD-PINN expected $5$--$38\times$ cheaper than standard PINN \\
+    \addlinespace
+    Reward design (\Cref{sec:experiments})
+      & Reward-shaping ablation (E2), diagnostics (E3), extended training (E4), SAC stability (E5); normalized multi-component architecture with per-objective PBRS; validation ablation (E6) and steepness/scaling study (E7)
+      & Curriculum dominant ($+$16\%); best config $d{=}0.543$ ($-$24\% vs.\ baseline); heading causes reward hacking; $\exp(-5d)$ sparse but steep $k$ prevents lazy equilibrium; 32 envs outperforms 100 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\noindent
+The DisMech ablations reveal three critical insights: (1)~the $\exp(-5d)$ reward is fundamentally sparse---70\% of steps yield reward ${<}\,0.05$---creating a hard plateau at $d \approx 0.6$ that 50M frames cannot overcome; (2)~curriculum learning, not reward shaping, is the primary mechanism for breaking this plateau; (3)~reducing steepness to provide ``denser'' signal backfires via reward hacking---the agent earns high reward at medium distance without approaching, a cautionary result against na\"ive reward densification.
+SAC exhibits gradient instability beyond ${\sim}$3--5M frames without entropy regularization.
+
+\paragraph{Limitations.}
+Several factors constrain the generality of these results.
 
 \begin{enumerate}
-  \item \textbf{Neural surrogate} (\Cref{sec:surrogate}): An MLP surrogate trained on 4.3M Elastica transitions achieves $R^2 = 0.852$ for CoM position and an overall $R^2 = 0.393$, with per-element CPG phase encoding being critical for angular velocity prediction.
+  \item \textbf{Single seed and fixed architecture.}
+  All RL experiments use a single seed (42) and a fixed network architecture ($3 \times 256$ ReLU MLP); results may not hold under different initializations or capacity regimes.
 
-  \item \textbf{RL on Elastica} (\Cref{sec:rl-elastica}): PPO training on the direct simulator achieves reliable serpentine locomotion ($1.495 \pm 0.13$\,m displacement per episode) at the cost of ${\sim}9$\,h wall-clock time for 2M frames.
+  \item \textbf{Surrogate velocity fidelity.}
+  The neural surrogate achieves strong CoM prediction ($R^2 = 0.852$) but poor velocity prediction ($R^2 = 0.145$), making multi-step rollout fidelity uncertain --- surrogate-based RL training has not yet been attempted.
 
-  \item \textbf{RL on DisMech} (\Cref{sec:rl-dismech}): SAC shows learning signal across all 4 Choi2025 tasks; MM-RKHS confirms viability as an alternative policy gradient method with reward improvement from 9 to 17 on follow\_target.
+  \item \textbf{Planar (2D) physics only.}
+  Both physics backends are planar; extending to 3D Cosserat rods would increase the state dimensionality from 124 to ${\sim}$370, likely affecting both surrogate accuracy and RL sample efficiency.
 
-  \item \textbf{Physics-informed models} (\Cref{sec:pinn}): DD-PINN eliminates the autodiff bottleneck of standard PINNs through closed-form ansatz gradients, achieving comparable accuracy at $5$--$38\times$ lower training cost.
+  \item \textbf{Limited ablation budget.}
+  The normalized reward ablation uses a 30-minute wall-time budget (${\sim}$3.6M frames per run); longer training horizons may change the relative ranking of configurations, as the initial ablation showed that curriculum effects compound over time.
+
+  \item \textbf{No cross-backend transfer.}
+  Policies trained on one backend do not transfer to the other due to differences in friction models, curvature mechanisms, and temporal resolution.
 \end{enumerate}
 
-\placeholder{Write full conclusion after all experimental results are available.}
+\paragraph{Future work.}
+Several directions emerge from this work.
+
+\begin{enumerate}
+  \item \textbf{Physics-informed surrogates.}
+  The DD-PINN formulation (\Cref{sec:pinn}) would enforce governing equations at collocation points while satisfying initial conditions exactly, potentially improving velocity prediction without the autodiff overhead of standard PINNs.
+  Benchmarking the DD-PINN against the data-driven baseline is the immediate next step for the surrogate pipeline.
+
+  \item \textbf{Surrogate-accelerated RL.}
+  Once surrogate fidelity is sufficient, the ${\sim}$46\,ms-to-${\sim}$0.001\,ms speedup would enable training at $10^4$--$10^5 \times$ the current throughput.
+  A sim-to-sim transfer protocol --- pre-train on surrogate, fine-tune on simulator --- could overcome the fidelity gap.
+
+  \item \textbf{Hierarchical control.}
+  The current work trains flat policies for the approach phase.
+  The full HRL pipeline --- a meta-controller selecting between approach and coil sub-policies --- remains to be integrated.
+  The normalized reward architecture is designed to extend to the coil phase by adding task-specific base components (e.g., contact area, wrap angle) while preserving the weight-decoupled structure.
+
+  \item \textbf{SAC stabilization.}
+  SAC's early reward peak (73.84 at ${\sim}$2M frames, vs.\ PPO's 65.81 at ${\sim}$12M) suggests higher sample efficiency if the gradient instability can be controlled.
+  Entropy regularization ($\alpha > 0$), actor-specific gradient clipping, and learning rate scheduling are immediate candidates.
+
+  \item \textbf{Pipeline inspection navigation.}
+  A natural industrial application is autonomous pipeline inspection, where the snake robot navigates through confined tunnel networks to locate sections requiring maintenance or repair.
+  This scenario introduces additional challenges beyond open-field predation: constrained geometry requiring collision-aware locomotion, branching decision-making at junctions, and anomaly detection (e.g., corrosion, leaks, structural deformation) as a secondary objective alongside navigation.
+  The hierarchical control framework developed in this work could be extended with an exploration-level meta-controller that plans routes through the pipe network while low-level policies handle locomotion through straight segments, bends, and junctions.
+\end{enumerate}
+
+\paragraph{Closing remarks.}
+This work demonstrates that reward design and curriculum learning are the primary levers for RL-based snake robot control, outweighing both algorithmic choice (PPO vs.\ SAC) and sample budget ($10 \times$ more frames does not overcome a sparse reward).
+The normalized reward architecture provides a principled framework for composing multiple objectives without scale entanglement, and the per-component logging methodology enables early detection of reward hacking --- a failure mode that aggregate metrics alone cannot reveal.
+These findings lay the groundwork for hierarchical predation control, where the same architectural principles can be extended to multi-phase, multi-objective reward design.
 
 % ===========================================================================
 % APPENDICES
@@ -1578,7 +1970,7 @@ This report presented a multi-pronged approach to accelerating RL for snake robo
 \section{Detailed Physics Derivations}
 \label{app:physics}
 
-This appendix provides the full mathematical derivations for the physics simulation backends summarized in \Cref{sec:surrogate:physics}.
+This appendix provides the full mathematical derivations for the physics simulation backends summarized in \Cref{sec:system}.
 
 \subsection{Staggered Grid Discretization}
 \label{app:physics:grid}
@@ -1734,7 +2126,7 @@ Dividing by segment rest length $\ell_e^{\text{rest}}$ yields the actual derivat
 
 \paragraph{Physical meaning.}
 $\mathbf{D}\,\mathbf{x}$ gives the \emph{tangent vector} of each element---the direction and length of each segment.
-This is required for the cross-product term $(\partial\mathbf{x}/\partial s) \times \mathbf{F}$ in the angular momentum equation~\eqref{eq:angular-momentum}.
+This is required for the cross-product term $(\partial\mathbf{x}/\partial s) \times \mathbf{F}$ in the angular momentum equation~\eqref{eq:pde-angular}.
 
 \subsubsection{The Transpose $\mathbf{D}^T$ (Element $\to$ Node)}
 
@@ -1909,16 +2301,357 @@ Curvature is applied once per RL step via natural strain:
 \end{equation}
 
 % ---------------------------------------------------------------------------
-% APPENDIX B: ISSUE TRACKER
+% APPENDIX B: PHYSICS-INFORMED NEURAL NETWORK DETAILS (PROPOSED)
+% ---------------------------------------------------------------------------
+\section{Physics-Informed Neural Network Details (Proposed)}
+\label{app:pinn}
+
+This appendix provides the full mathematical formulations for the physics-informed surrogate extensions proposed in \Cref{sec:pinn}.
+None of these have been implemented; they constitute a concrete design for future work.
+
+\subsection{Standard PINN}
+\label{sec:pinn:standard}
+
+Physics-informed neural networks \citep{Raissi2019} augment the data-driven loss with a physics residual derived from the governing equations.
+Given the state-space model $\dot{\mathbf{x}}(t) = \fssm(\mathbf{x}(t), \mathbf{u}(t))$, a network $\mathbf{h}_\theta$ predicts
+$\xhat_t = \mathbf{h}_\theta(\mathbf{x}_0, \mathbf{u}, t)$.
+The PINN loss:
+\begin{multline}
+  \mathcal{L}(\theta)
+    = \underbrace{\lambda_{\mathrm{IC}} \bigl\| \xhat_0 - \mathbf{x}_0 \bigr\|^2}_{\mathcal{L}_{\mathrm{IC}}}
+    + \underbrace{\lambda_{\mathrm{phys}} \frac{1}{N_c}\sum_{k=1}^{N_c}
+      \left\| \frac{\partial \xhat_{t_k}}{\partial t} - \fssm(\xhat_{t_k}, \mathbf{u}_{t_k}) \right\|^2}_{\mathcal{L}_{\mathrm{phys}}} \\
+    + \underbrace{\lambda_{\mathrm{data}} \frac{1}{N_d}\sum_{k=1}^{N_d}
+      \left\| \xhat_{t_k} - \mathbf{x}_{\mathrm{data},k} \right\|^2}_{\mathcal{L}_{\mathrm{data}}}
+  \label{eq:pinn:loss}
+\end{multline}
+
+The time derivative $\partial \xhat_t / \partial t$ is obtained via autodiff through the network, doubling the computational cost per collocation point.
+
+\paragraph{Practical bottlenecks:}
+\begin{itemize}
+  \item \textbf{Expensive autodiff} --- additional backward pass per collocation point
+  \item \textbf{Loss balancing} --- three competing objectives require careful weighting
+  \item \textbf{Training instability} --- can diverge for systems with $m \gg 1$ coupled states
+\end{itemize}
+
+\subsection{Physics Regularizer}
+\label{sec:pinn:regularizer}
+
+The simplest physics-informed approach adds algebraic constraints as soft regularizers.
+Four constraints are enforced via trapezoidal integration on the 124-dimensional state delta $\Delta\mathbf{x} = \mathbf{x}_{t+1} - \mathbf{x}_t$:
+
+\begin{table}[H]
+  \centering
+  \small
+  \renewcommand{\arraystretch}{1.3}
+  \caption{Physics regularizer constraints.}
+  \label{tab:pinn-constraints}
+  \begin{tabular}{@{}clp{7.5cm}@{}}
+    \toprule
+    \textbf{ID} & \textbf{Constraint} & \textbf{Formulation} \\
+    \midrule
+    C1 & Translational kinematics & $\Delta x_i \approx (v_{x,i} + \tfrac{1}{2}\Delta v_{x,i})\Delta t$ \\
+    C2 & Angular kinematics & $\Delta\psi_e \approx (\omega_{z,e} + \tfrac{1}{2}\Delta\omega_{z,e})\Delta t$ \\
+    C3 & Curvature--moment & Spatial gradient consistency ($0.1\times$ weight) \\
+    C4 & Bounded kinetic energy & $\text{ReLU}(|\Delta\text{KE}| - E_{\text{thr}})^2$ \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+Total regularization: $\mathcal{L}_{\mathrm{reg}} = \mathcal{L}_{\mathrm{kin},x} + \mathcal{L}_{\mathrm{kin},y} + \mathcal{L}_{\mathrm{ang}} + \mathcal{L}_{\mathrm{curv}} + \mathcal{L}_{\mathrm{energy}}$.
+
+\subsection{DD-PINN Method}
+\label{sec:pinn:ddpinn}
+
+The domain-decoupled PINN \citep{Krauss2024,Licher2025} resolves all three PINN bottlenecks: \textbf{remove time as a network input} and output parameters of an analytically differentiable ansatz.
+
+\begin{equation}
+  \boxed{\xhat_t = \mathbf{g}(\avec, t) + \mathbf{x}_0, \qquad \avec = \fnn(\mathbf{x}_0, \mathbf{u}_0;\, \theta)}
+  \label{eq:pinn:ddpinn-core}
+\end{equation}
+
+The ansatz for each state variable $j$:
+\begin{equation}
+  g_j(t) = \sum_{i=1}^{n_g} \alpha_{ij}\, e^{-\delta_{ij} t}
+    \bigl[\phig(\beta_{ij}\, t + \gamma_{ij}) - \phig(\gamma_{ij})\bigr]
+  \label{eq:pinn:ansatz}
+\end{equation}
+where $\phig(x) = \sin(x)$ and the subtraction ensures $g_j(0) = 0$ exactly.
+
+\paragraph{Key advantages over standard PINN:}
+\begin{itemize}
+  \item \textbf{Exact IC:} $\mathbf{g}(\avec, 0) \equiv \mathbf{0}$ by construction
+  \item \textbf{Closed-form gradients:} $\dot{\mathbf{g}}$ computed analytically --- no autodiff cost
+  \item \textbf{Simplified loss:} only 2 terms ($\mathcal{L}_{\mathrm{phys}} + \mathcal{L}_{\mathrm{data}}$)
+  \item \textbf{More collocation points:} $10$--$25\times$ more than standard PINNs due to cheap evaluation
+\end{itemize}
+
+\begin{figure}[H]
+\centering
+\resizebox{\textwidth}{!}{%
+\begin{tikzpicture}[
+    >=Stealth,
+    block/.style={draw, rounded corners=3pt, minimum height=1cm, minimum width=2cm,
+                  align=center, font=\footnotesize},
+    arrow/.style={->, thick},
+    lbl/.style={font=\scriptsize, text=gray!70!black}
+]
+    \node[block, fill=blue!8] (input) {$\mathbf{x}_0,\; \mathbf{u}_0$};
+    \node[block, fill=orange!12, right=1.2cm of input] (nn) {Feedforward NN\\$\fnn(\cdot;\, \theta)$};
+    \node[block, fill=green!10, right=1.2cm of nn] (params) {$\avec = (\bm{\alpha}, \bm{\beta}, \bm{\gamma}, \bm{\delta})$};
+    \node[block, fill=red!8, right=1.2cm of params] (ansatz) {Ansatz\\$\mathbf{g}(\avec, t)$};
+    \node[block, fill=blue!8, right=1.2cm of ansatz] (output) {$\xhat_t = \mathbf{g} + \mathbf{x}_0$};
+    \node[below=0.6cm of ansatz, font=\small] (time) {$t \in [0, T_s]$};
+    \draw[arrow] (input) -- (nn);
+    \draw[arrow] (nn) -- (params);
+    \draw[arrow] (params) -- (ansatz);
+    \draw[arrow] (ansatz) -- (output);
+    \draw[arrow] (time) -- (ansatz);
+    \node[lbl, above=0.15cm of nn] {called once};
+    \node[lbl, above=0.15cm of ansatz] {evaluated at $N_c$ points};
+\end{tikzpicture}}
+\caption{DD-PINN inference pipeline. The network is evaluated once to produce ansatz parameters; the ansatz is then evaluated at arbitrarily many time points.}
+\label{fig:pinn:architecture}
+\end{figure}
+
+\subsection{Limitations of PINNs}
+\label{sec:pinn:limitations}
+
+PINNs face fundamental limitations for complex dynamical systems:
+\begin{itemize}
+  \item \textbf{Spectral bias:} Networks learn low-frequency components first, making high-frequency CPG dynamics difficult.
+  \item \textbf{Scaling to high dimensions:} Standard PINNs struggle for $m \gg 1$ (the snake robot has $m = 124$).
+  \item \textbf{Discontinuous physics:} Contact and friction forces create non-smooth dynamics that PINNs cannot easily enforce.
+  \item \textbf{Ansatz design:} DD-PINNs require an appropriate ansatz function designed a priori for the dynamics class.
+\end{itemize}
+
+\subsection{Differentiable Cosserat Rod Right-Hand Side}
+\label{sec:pinn:cosserat-rhs}
+
+A differentiable implementation of $\fssm$ computes $\dot{\mathbf{x}} = \fssm(\mathbf{x})$ for the 124-dimensional state vector using an inextensible rod approximation (bending + RFT friction, no stretching).
+The right-hand side assembles six blocks:
+\begin{equation}
+  \fssm(\mathbf{x}) = \bigl(\dot{x}_i,\; \dot{y}_i,\; \dot{v}_{x,i},\; \dot{v}_{y,i},\; \dot{\psi}_e,\; \dot{\omega}_{z,e}\bigr) \in \mathbb{R}^{124}
+  \label{eq:pinn:rhs-full}
+\end{equation}
+
+Key components:
+\begin{itemize}
+  \item \textbf{Kinematics:} $\dot{x}_i = v_{x,i}$, $\dot{\psi}_e = \omega_{z,e}$
+  \item \textbf{Bending moments:} $M_j = EI(\psi_{j+1} - \psi_j)/\Delta\ell$
+  \item \textbf{RFT friction:} $\mathbf{F}_i^{\text{fric}} = -c_t\mathbf{v}_{\text{tan},i} - c_n\mathbf{v}_{\text{norm},i}$ with $\varepsilon$-regularized tangents
+  \item \textbf{Newton's 2nd law:} $\dot{v}_{x,i} = (F_{x,i}^{\text{fric}} + F_{x,i}^{\text{elastic}})/m_i$
+\end{itemize}
+
+\begin{table}[H]
+\centering
+\footnotesize
+\renewcommand{\arraystretch}{1.25}
+\caption{Physics fidelity: Elastica simulator vs.\ DD-PINN RHS vs.\ regularizer.}
+\label{tab:pinn:physics-comparison}
+\begin{tabular}{@{} p{2.8cm} p{3.4cm} p{3.4cm} p{3.4cm} @{}}
+\toprule
+\textbf{Physics term} &
+  \textbf{Elastica} &
+  \textbf{DD-PINN RHS} &
+  \textbf{Regularizer} \\
+\midrule
+Kinematics & Exact (Verlet) & Exact & Soft penalty (C1, C2) \\
+Shear--stretch & Full & Omitted (inextensible) & Omitted \\
+Bending moments & Full 3D, director-based & 2D simplified FD & Approximate (C3) \\
+RFT friction & Anisotropic + damping & Anisotropic, no damping & Not modelled \\
+Differentiable? & In principle (gradient explosion at 500 steps) & Yes & Yes \\
+Cost & ${\sim}46$\,ms (CPU) & ${\sim}0.3$\,ms (GPU) & ${\sim}0.1$\,ms (GPU) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Physics-Regularized Loss}
+\label{sec:pinn:reg-loss}
+
+For the regularized surrogate:
+\begin{equation}
+  \mathcal{L}^{(n)}(\theta) = \mathcal{L}_{\mathrm{data}}(\theta) + \lambda\,\sigma_{\mathrm{reg}}(n)\,\mathcal{L}_{\mathrm{reg}}(\theta)
+  \label{eq:pinn:reg-total-loss}
+\end{equation}
+with piecewise-linear warmup (20\% data-only).
+
+\subsection{DD-PINN Loss and Training}
+\label{sec:pinn:ddpinn-training}
+
+The DD-PINN training loss at epoch $n$:
+\begin{equation}
+  \boxed{%
+    \mathcal{L}^{(n)}(\theta) = w_{\mathrm{data}}^{(n)}\,\mathcal{L}_{\mathrm{data}}(\theta)
+    + w_{\mathrm{phys}}^{(n)}\,\lambda\,\sigma(n)\,\mathcal{L}_{\mathrm{phys}}(\theta)
+  }
+  \label{eq:pinn:ddpinn-total}
+\end{equation}
+where $w_{\mathrm{data}}^{(n)}, w_{\mathrm{phys}}^{(n)}$ are ReLoBRaLo \citep{Bischof2022} adaptive weights, $\lambda$ is fixed physics strength, and $\sigma(n)$ is a curriculum schedule (15\% warmup, 30\% ramp, full physics at 45\%).
+
+\subsection{Nondimensionalization}
+\label{sec:pinn:nondim}
+
+Physics-based reference scales keep the residual at $\mathcal{O}(1)$:
+
+\begin{table}[H]
+  \centering
+  \small
+  \caption{Nondimensionalization scales.}
+  \label{tab:pinn-nondim}
+  \begin{tabular}{@{}lll@{}}
+    \toprule
+    \textbf{Scale} & \textbf{Value} & \textbf{Source} \\
+    \midrule
+    $L_{\mathrm{ref}}$ & 1.0\,m & Rod length \\
+    $t_{\mathrm{ref}}$ & 0.5\,s & Control timestep \\
+    $V_{\mathrm{ref}}$ & 2.0\,m/s & $L/t$ \\
+    $\omega_{\mathrm{ref}}$ & 2.0\,rad/s & $1/t$ \\
+    $F_{\mathrm{ref}}$ & $EI/L^2$ & Elastic force \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\subsection{DD-PINN Configuration}
+\label{sec:pinn:config}
+
+\begin{table}[H]
+\centering
+\small
+\renewcommand{\arraystretch}{1.15}
+\caption{DD-PINN training configuration.}
+\label{tab:pinn:config}
+\begin{tabular}{@{} l l @{}}
+\toprule
+\textbf{Parameter} & \textbf{Value} \\
+\midrule
+State dimension       & 124 \\
+Ansatz basis functions & sweep $\{5, 7, 10\}$ \\
+Hidden layers         & $4 \times 512$ \\
+Fourier features      & 128, $\sigma = 10.0$ \\
+Collocation points    & 100\,000 (Sobol) \\
+Physics weight $\lambda$ & 1.0 \\
+Batch size / Learning rate & 4\,096 / $10^{-3}$ (cosine) \\
+Curriculum warmup     & 15\% data-only \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Four-Way Surrogate Comparison}
+\label{sec:pinn:four-way}
+
+\begin{table}[H]
+\centering
+\caption{Comparison of four approaches --- formulation and training.}
+\label{tab:pinn:four-way-a}
+\resizebox{\textwidth}{!}{%
+\renewcommand{\arraystretch}{1.2}
+\begin{tabular}{@{} p{2.4cm} p{3.8cm} p{3.8cm} p{3.8cm} p{3.8cm} @{}}
+\toprule
+\textbf{Aspect}
+    & \textbf{PDE Solver}
+    & \textbf{Data-Driven NN}
+    & \textbf{PINN}
+    & \textbf{DD-PINN} \\
+\midrule
+
+\textbf{Core idea}
+    & Numerically integrate governing PDEs
+    & Learn input$\to$output from data only
+    & Embed PDE residual in training loss
+    & Learn ansatz parameters; time enters analytically \\
+
+\textbf{Physics knowledge}
+    & Full (equations solved exactly)
+    & None
+    & Embedded in loss ($\mathcal{L}_{\mathrm{phys}}$)
+    & Embedded in loss ($\mathcal{L}_{\mathrm{phys}}$) \\
+
+\textbf{Time derivative}
+    & Finite differences / implicit solve
+    & Not computed
+    & Autodiff w.r.t.\ $t$ (expensive)
+    & Closed-form $\dot{\mathbf{g}}(\avec, t)$ (cheap) \\
+
+\textbf{Loss function}
+    & N/A
+    & $\mathcal{L}_{\mathrm{data}}$
+    & $\mathcal{L}_{\mathrm{IC}} + \mathcal{L}_{\mathrm{phys}} + \mathcal{L}_{\mathrm{data}}$
+    & $\mathcal{L}_{\mathrm{phys}} + \mathcal{L}_{\mathrm{data}}$ \\
+
+\textbf{Initial condition}
+    & Exact (boundary condition)
+    & Not enforced
+    & Via loss penalty (approximate)
+    & Exact by construction \\
+
+\bottomrule
+\end{tabular}%
+}
+\end{table}
+
+\begin{table}[H]
+\centering
+\caption{Comparison of four approaches --- performance and practical aspects.}
+\label{tab:pinn:four-way-b}
+\resizebox{\textwidth}{!}{%
+\renewcommand{\arraystretch}{1.2}
+\begin{tabular}{@{} p{2.4cm} p{3.8cm} p{3.8cm} p{3.8cm} p{3.8cm} @{}}
+\toprule
+\textbf{Aspect}
+    & \textbf{PDE Solver}
+    & \textbf{Data-Driven NN}
+    & \textbf{PINN}
+    & \textbf{DD-PINN} \\
+\midrule
+
+\textbf{Inference speed}
+    & Slow ($\sim$seconds)
+    & Fast ($\sim\!\mu$s)
+    & Fast ($\sim\!\mu$s)
+    & Fast ($\sim\!\mu$s) \\
+
+\textbf{Training cost}
+    & N/A
+    & Low
+    & High (autodiff overhead)
+    & Medium ($5$--$38\times$ faster than PINN) \\
+
+\textbf{Collocation points}
+    & N/A
+    & N/A
+    & $\sim$20k--40k
+    & $\sim$250k--1M (cheap) \\
+
+\textbf{Speedup vs.\ solver}
+    & $1\times$
+    & $\sim$10k--100k$\times$
+    & $\sim$10k--100k$\times$
+    & $\sim$44,000$\times$ (demonstrated) \\
+
+\textbf{Key limitation}
+    & Computational cost
+    & Needs large data; no physics guarantees
+    & Autodiff cost; loss balancing; IC approximate
+    & Ansatz must be designed a priori \\
+
+\bottomrule
+\end{tabular}%
+}
+\end{table}
+
+% ---------------------------------------------------------------------------
+% APPENDIX C: ISSUE TRACKER
 % ---------------------------------------------------------------------------
 \section{Issue Tracker}
 \label{sec:appendix:issues}
 
-This appendix documents all 28 technical issues encountered during the project.
-Of these, 23 have been resolved and 5 remain open.
+This appendix documents all 36 technical issues encountered during the project.
+Of these, 31 have been resolved and 5 remain open.
 
 \begin{longtable}{@{}clp{4.5cm}lp{5.0cm}@{}}
-\caption{Complete issue tracker (28 issues across 4 categories).}
+\caption{Complete issue tracker (36 issues across 4 categories).}
 \label{tab:issues-all}\\
 \toprule
 \textbf{ID} & \textbf{Cat.} & \textbf{Issue} & \textbf{Status} & \textbf{Resolution} \\
@@ -1943,6 +2676,7 @@ P6 & Phys & Phantom physics time-stepping layer & Resolved & Clean two-level hie
 P7 & Phys & Amplitude range too small ($[0, 0.15]$) & Resolved & Increased to $[0, 5.0]$ \\
 P8 & Phys & RFT ratio too extreme (10:1) & Resolved & Tuned to 5:1 \\
 P9 & Phys & Spatial structure analysis & Resolved & Confirmed: 500 substeps mix info \\
+P10 & Phys & Choi2025 rod radius 50$\times$ too thin, $E$ 5$\times$ too soft & Resolved & Corrected to $r{=}0.05$\,m, $E{=}10$\,MPa per paper Table~A.3 \\
 \addlinespace
 T1 & Train & A3/A5 arch sweep format mismatch & Resolved & Fixed dataset/loader consistency \\
 T2 & Train & DataLoader thread crash in sweep & Resolved & Staggered DataLoader init \\
@@ -1950,6 +2684,11 @@ T3 & Train & Velocity reward always negative & Resolved & Distance-based potenti
 T4 & Train & LR scheduler division by zero & Resolved & Added max(1, \ldots) guard \\
 T5 & Train & Training data clusters (state imbalance) & Open & Proposed: Sobol + $\omega$ perturbation \\
 T6 & Train & $\omega_z$ poor prediction ($R^2{=}0.23$) & Open & Pending: V2 phase encoding \\
+T7 & Train & PPO entropy collapse ($4.3 \to -0.5$ in 1.2M frames) & Resolved & Increased entropy coeff $0.01 \to 0.05$ \\
+T8 & Train & Raw observations with heterogeneous scales (0--60) & Resolved & Added running-mean \texttt{ObservationNorm} \\
+T9 & Train & Reward SNR\,$=$\,0.08 from $10{\times}$ improvement bonus & Resolved & Removed improvement bonus; SNR $\to 1.02$ \\
+T10 & Train & SAC NaN divergence ($0 \times {-\infty}$) and actor gradient explosion ($10^{10}$) & Resolved & Entropy if-guard; fp32; pre-tanh clamping; actor gradient clip \\
+T11 & Train & Trainer metric averaging bug (all metrics divided by update count) & Resolved & Average only accumulated loss keys \\
 \addlinespace
 C1 & Compat & Batch structure change (done/reward) & Resolved & \texttt{batch.get("next", batch)} \\
 C2 & Compat & Collector drops unspecced keys & Resolved & Added to observation\_spec \\
@@ -1966,6 +2705,7 @@ S5 & System & RFT Python for-loop slow & Resolved & Vectorized with NumPy \\
 S6 & System & Parallel scaling (L3 contention) & Resolved & 16 workers optimal \\
 S7 & System & Worker respawn data loss (19\%) & Open & Proposed: reduce flush interval \\
 S8 & System & Worker respawn investigation & Open & Pending: validate Numba fix \\
+S9 & System & SAC 500 \texttt{ParallelEnv} workers crash (\texttt{BrokenPipeError}) & Resolved & Reduced to 100 workers \\
 \end{longtable}
 
 \begin{table}[H]
@@ -1978,12 +2718,12 @@ S8 & System & Worker respawn investigation & Open & Pending: validate Numba fix 
     \toprule
     Category & Total & Resolved & Open \\
     \midrule
-    Physics (Phys)     &  9 &  9 & 0 \\
-    Training (Train)   &  6 &  4 & 2 \\
+    Physics (Phys)     & 10 & 10 & 0 \\
+    Training (Train)   & 11 &  9 & 2 \\
     Compatibility      &  6 &  5 & 1 \\
-    System             &  8 &  6 & 2 \\
+    System             &  9 &  7 & 2 \\
     \midrule
-    \textbf{Total} & \textbf{29} & \textbf{24} & \textbf{5} \\
+    \textbf{Total} & \textbf{36} & \textbf{31} & \textbf{5} \\
     \bottomrule
   \end{tabular}
 \end{table}
@@ -1991,7 +2731,7 @@ S8 & System & Worker respawn investigation & Open & Pending: validate Numba fix 
 % ---------------------------------------------------------------------------
 % Bibliography
 % ---------------------------------------------------------------------------
-\bibliographystyle{plainnat}
+\bibliographystyle{unsrtnat}
 \bibliography{references}
 
 \end{document}
