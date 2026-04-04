@@ -136,7 +136,8 @@
   \small Electrical and Computer Engineering\\
   \small The Ohio State University\\
   \small \texttt{wen.679@buckeyemail.osu.edu}\\[0.6em]
-  \small \textit{Advisor:} Prof.\ Abhishek Gupta\quad\small\texttt{gupta.706@osu.edu}%
+  \small \textit{Advisor:} Prof.\ Abhishek Gupta\quad\small\texttt{gupta.706@osu.edu}\\[1.5em]
+  \small\textit{Master of Science Non-Thesis Graduation Project Report}%
 }
 \date{}
 
@@ -145,16 +146,26 @@
 % ===========================================================================
 
 \maketitle
+\thispagestyle{empty}
+
+\newpage
 
 % ---------------------------------------------------------------------------
 \begin{abstract}
-Reinforcement learning for soft and continuum robots is bottlenecked by the cost of first-principles simulation: a Cosserat rod snake robot requires ${\sim}$500 substeps per control step, costing ${\sim}$46\,ms per environment transition.
-This report investigates two directions for enabling practical RL-based control of a soft manipulator: neural surrogate modeling to overcome simulation cost, and reward architecture design for effective policy learning.
-On the surrogate side, a data-driven MLP trained on 4.3M Elastica transitions achieves centre-of-mass $R^2 = 0.852$ in single-step prediction, targeting a four-to-five order-of-magnitude inference speedup, though velocity prediction remains weak ($R^2 = 0.145$); physics-informed extensions (PINN, DD-PINN) are proposed as future work.
-On the reward side, systematic RL experiments on DisMech reveal that reward design and curriculum learning dominate performance: a reward-shaping ablation across five variants shows a 52\% range in the fair distance metric with identical hyperparameters, and curriculum learning alone accounts for 16\% improvement over the vanilla baseline.
-Extended training to 50M frames confirms these are fundamental reward-landscape limitations, not sample-budget issues: the $\exp(-5d)$ reward is essentially zero at operating distances ($d \approx 0.6$), creating a hard learning plateau.
-A normalized multi-component reward architecture with per-objective potential-based reward shaping (PBRS) decouples component scale from importance weights, achieving a best distance of $d = 0.543$ ($-$24\% vs.\ baseline) and enabling detection of reward hacking through per-component logging.
-We also document SAC gradient instability without entropy regularization (actor gradient norms growing to $10^{10}$ over 20M frames).
+\noindent
+Reinforcement learning for soft and continuum robots is bottlenecked by the cost of first-principles simulation: a Cosserat rod snake robot requires ${\sim}$500 substeps per control step, costing ${\sim}$46\,ms per environment transition. This report investigates two directions for enabling practical RL-based control of a soft manipulator: neural surrogate modeling and reward architecture design.
+
+\medskip\noindent\textbf{Neural Surrogate Modeling.}
+A data-driven MLP trained on 4.3M PyElastica transitions achieves centre-of-mass position $R^2 = 0.852$ in single-step prediction, targeting a four-to-five order-of-magnitude inference speedup. Velocity prediction remains weak ($R^2 = 0.145$); physics-informed extensions (PINN, DD-PINN) are proposed as future work.
+
+\medskip\noindent\textbf{Reward Design and Ablation.}
+Systematic RL experiments on DisMech show that reward shaping and curriculum learning dominate performance: a five-variant ablation reveals a 52\% range in the fair distance metric under identical hyperparameters, and curriculum learning alone accounts for 16\% improvement over the vanilla baseline. Extended training to 50M frames confirms these are reward-landscape limitations, not sample-budget issues: the $\exp(-5d)$ reward vanishes at operating distances ($d \approx 0.6$), creating a hard learning plateau.
+
+\medskip\noindent\textbf{Normalized Reward Architecture.}
+A normalized multi-component reward with per-objective potential-based reward shaping (PBRS) decouples component scale from importance weights, achieving a best distance of $d = 0.543$ ($-$24\% vs.\ baseline) and enabling reward-hacking detection through per-component logging.
+
+\medskip\noindent\textbf{Evaluation and Limitations.}
+Deterministic evaluation of the best PPO checkpoint reveals a large train--eval gap: the training best reward of 90.20 drops to a mean of 8.68 over 20 episodes, with the manipulator plateauing at ${\sim}$0.7\,m from the target. The policy learns coarse directional movement but fails to achieve close tracking, confirming the reward-landscape plateau as a genuine performance ceiling. We also document SAC gradient instability without entropy regularization, with actor gradient norms growing to $10^{10}$ over 20M frames.
 \end{abstract}
 
 \tableofcontents
@@ -1870,9 +1881,15 @@ This visualization was recorded from the best checkpoint with three episodes at 
   \label{fig:eval-best-gif}
 \end{figure}
 
-\paragraph{Implications.}
-The evaluation confirms that the $d \approx 0.6$--$0.8$ distance plateau observed during training (\Cref{sec:reward:steepness}) is a genuine performance ceiling, not a logging artifact.
-The best training reward is a poor proxy for policy quality in this domain---future work should use rolling evaluation windows and deterministic evaluation checkpointing rather than single-batch best reward.
+\paragraph{Verdict: PPO failed to learn target tracking.}
+Despite ${\sim}$28 training runs totaling over 150M frames, seven reward configurations, and extensive hyperparameter tuning, PPO did not produce a policy capable of tracking a moving target on the DisMech backend.
+The best checkpoint maintains a mean tip--target distance of 0.795\,m---nearly the full workspace radius of 1.0\,m---meaning the manipulator barely moves toward the target in a meaningful way.
+The $10\times$ train--eval reward gap (90.20 vs.\ 8.68) reveals that the high training reward was an artifact of curriculum warmup and stochastic exploration, not genuine learned behavior.
+
+This is a negative result: PPO with the $\exp(-kd)$ reward family, across all tested steepness values ($k \in \{1, 2, 3, 5\}$), reward shaping variants (PBRS, heading, smoothness), and curriculum schedules, cannot overcome the sparse-reward plateau on this physics backend.
+The fundamental issue is that the DisMech implicit time-stepper produces highly nonlinear, stiff dynamics where small action changes cause large, discontinuous state transitions---creating a reward landscape that gradient-based policy optimization cannot navigate.
+
+Future work should investigate model-based RL approaches, population-based methods (e.g., CMA-ES), or sim-to-sim transfer from a simpler backend where PPO succeeds, rather than continuing to tune the reward function on a fundamentally adversarial optimization landscape.
 
 % ===========================================================================
 % SECTION 6: CONCLUSION
