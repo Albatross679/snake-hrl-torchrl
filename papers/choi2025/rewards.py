@@ -24,6 +24,7 @@ def compute_follow_target_reward(
     prev_action: np.ndarray | None = None,
     action_dim: int = 10,
     workspace_radius: float = 1.0,
+    reward_steepness: float = 5.0,
     return_components: bool = False,
 ) -> float | tuple[float, dict]:
     """Reward for following a moving target.
@@ -33,7 +34,7 @@ def compute_follow_target_reward(
               + Σ (γ·Φⱼ(s') - Φⱼ(s))   (PBRS components, raw/unweighted)
 
     Base components (all normalized to known ranges):
-        - Distance:  exp(-5·dist)           → [0, 1], weight=1.0 (always on)
+        - Distance:  exp(-k·dist)             → [0, 1], weight=1.0 (always on)
         - Heading:   (1+cos_sim)/2          → [0, 1], weight=heading_weight
         - Smoothness: -||Δa||²/(2·action_dim) → [-1, 0], weight=smooth_weight
 
@@ -63,7 +64,7 @@ def compute_follow_target_reward(
     dist = np.linalg.norm(tip_pos - target_pos)
 
     # === Base components (normalized, weighted) ===
-    dist_reward = np.exp(-5.0 * dist)  # [0, 1]
+    dist_reward = np.exp(-reward_steepness * dist)  # [0, 1]
 
     heading_reward = 0.0
     cos_sim = 0.0

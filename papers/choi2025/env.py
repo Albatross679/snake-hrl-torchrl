@@ -575,6 +575,7 @@ class SoftManipulatorEnv(EnvBase):
                 prev_action=self._prev_action,
                 action_dim=self._action_dim,
                 workspace_radius=self.config.workspace_radius,
+                reward_steepness=self.config.reward_steepness,
                 return_components=True,
             )
             # Update prev_dist for next PBRS computation

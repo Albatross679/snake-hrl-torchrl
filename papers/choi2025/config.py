@@ -182,7 +182,11 @@ class Choi2025EnvConfig:
     # Paper uses 2 substeps at dt=0.05 = 0.1s per action = 10 Hz control.
     control_period: int = 2
 
-    # Base distance reward weight for follow_target: exp(-5*dist) in [0, 1].
+    # Steepness coefficient k in exp(-k*dist). Higher = steeper falloff.
+    # k=5 (paper default) is sparse at d>0.5; k=2 gives 6× denser signal.
+    reward_steepness: float = 5.0
+
+    # Base distance reward weight for follow_target: exp(-k*dist) in [0, 1].
     # 0.0 = disabled (use PBRS only). 1.0 = full weight (default).
     dist_weight: float = 1.0
 

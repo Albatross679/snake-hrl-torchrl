@@ -94,6 +94,24 @@ def parse_args() -> argparse.Namespace:
         default=0.0,
         help="Action smoothness penalty weight (normalized to [-1,0]). Typical: 0.01-0.05. 0.0=disabled.",
     )
+    parser.add_argument(
+        "--reward-steepness",
+        type=float,
+        default=5.0,
+        help="Steepness k in exp(-k*dist). Lower = denser signal at distance. Paper default: 5.0.",
+    )
+    parser.add_argument(
+        "--gae-lambda",
+        type=float,
+        default=None,
+        help="Override GAE lambda (default from config: 0.95). Higher values (0.99) smooth PBRS noise.",
+    )
+    parser.add_argument(
+        "--entropy-coef",
+        type=float,
+        default=None,
+        help="Override entropy coefficient (default from config: 0.1). Lower values sharpen policy.",
+    )
     return parser.parse_args()
 
 
@@ -106,8 +124,9 @@ def main():
     # Build config (construct env first so __post_init__ sees the task)
     env_config = Choi2025EnvConfig(task=TaskType(args.task), device=device)
 
-    # Set base distance reward weight
+    # Set reward parameters
     env_config.dist_weight = args.dist_weight
+    env_config.reward_steepness = args.reward_steepness
 
     # Enable heading reward if requested
     if args.heading_weight > 0:
@@ -134,6 +153,10 @@ def main():
         config.max_wall_time = parse_wall_time(args.max_wall_time)
     if args.num_envs > 1:
         config.num_envs = args.num_envs
+    if args.gae_lambda is not None:
+        config.gae_lambda = args.gae_lambda
+    if args.entropy_coef is not None:
+        config.entropy_coef = args.entropy_coef
 
     # Re-run __post_init__ to update name with correct num_envs
     config.__post_init__()

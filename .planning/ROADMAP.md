@@ -31,6 +31,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 15: MM-RKHS algorithm** - Implement Operator-Theoretic Policy Gradient (MM-RKHS) as third RL trainer, benchmark on Choi2025 tasks (completed 2026-03-19)
 - [ ] **Phase 16: RL debugging framework research** - Research systematic RL debugging methodologies, diagnostic tools, and frameworks for identifying common training failures (sparse rewards, reward stagnation, gradient explosion, etc.) and determine applicability to our TorchRL snake robot pipeline
 - [x] **Phase 17: Design PINN debugging workflow and diagnostic pipeline** - Build diagnostic instrumentation and Claude Code skill for systematic PINN training failure detection (completed 2026-03-26)
+- [x] **Phase 18: Normalized multi-component PBRS reward design** - Refactor Choi2025 reward system: normalize all components to known ranges, decompose PBRS per-objective (distance, heading, smoothness), make weights pure importance coefficients (completed 2026-04-02)
 
 ## Phase Details
 
