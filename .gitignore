@@ -52,13 +52,15 @@ Thumbs.db
 # Project specific
 runs/
 checkpoints/
-logs/
 *.pth
 *.pt
 tensorboard/
 Media/
 output/
+outputs/
 model/
+*.log
+*.tmp
 
 # Numba cache
 *.nbc
@@ -84,6 +86,10 @@ doc-db/
 # W&B run data
 wandb/
 
-# Training logs
-training_output.log
+# Claude Code / local tooling
+*.skill
+skills-lock.json
+.pkm/
+fileClasses/
+
 .claude/worktrees/
