@@ -1,0 +1,1398 @@
+% System Formulation: Cosserat Rod Dynamics as a Well-Posed ODE/PDE System
+% Standalone reference document — formalizes the (L, Omega, BC, IC, theta) tuple
+
+\documentclass[11pt]{article}
+
+% ---------------------------------------------------------------------------
+% Font and encoding
+% ---------------------------------------------------------------------------
+\usepackage{palatino}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+
+% ---------------------------------------------------------------------------
+% Page layout
+% ---------------------------------------------------------------------------
+\usepackage[top=1in, bottom=1in, left=1.25in, right=1.25in]{geometry}
+\usepackage{setspace}
+\setstretch{1.15}
+\setlength{\parindent}{1em}
+\setlength{\parskip}{0.4em}
+
+% ---------------------------------------------------------------------------
+% Math
+% ---------------------------------------------------------------------------
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{mathtools}
+\usepackage{bm}
+
+% ---------------------------------------------------------------------------
+% Figures and tables
+% ---------------------------------------------------------------------------
+\usepackage{booktabs}
+\usepackage{float}
+\usepackage{array}
+\usepackage{tabularx}
+
+% ---------------------------------------------------------------------------
+% Colors and hyperlinks
+% ---------------------------------------------------------------------------
+\usepackage{xcolor}
+\usepackage[hidelinks]{hyperref}
+
+% ---------------------------------------------------------------------------
+% Lists
+% ---------------------------------------------------------------------------
+\usepackage{enumitem}
+\setlist[itemize]{nosep, topsep=0.3em, itemsep=0.2em}
+
+% ---------------------------------------------------------------------------
+% Section formatting
+% ---------------------------------------------------------------------------
+\usepackage{titlesec}
+\titlespacing*{\section}{0pt}{1.2em}{0.6em}
+\titlespacing*{\subsection}{0pt}{0.9em}{0.3em}
+
+% ---------------------------------------------------------------------------
+% Custom commands
+% ---------------------------------------------------------------------------
+\newcommand{\vect}[1]{\mathbf{#1}}
+\newcommand{\mat}[1]{\mathbf{#1}}
+\newcommand{\Real}{\mathbb{R}}
+\newcommand{\ddt}[1]{\frac{\partial #1}{\partial t}}
+\newcommand{\dds}[1]{\frac{\partial #1}{\partial s}}
+\newcommand{\dd}[2]{\frac{d #1}{d #2}}
+
+% ---------------------------------------------------------------------------
+\begin{document}
+% ---------------------------------------------------------------------------
+
+\begin{center}
+  {\Large\bfseries System Formulation: Cosserat Rod Dynamics} \\[0.5em]
+  {\large Well-Posedness via the $({\mathcal{L}},\, \Omega,\, \text{BC},\, \text{IC},\, \bm{\theta})$ Tuple} \\[1.5em]
+  \textit{Snake-HRL Project --- Reference Document}
+\end{center}
+
+\vspace{1em}
+
+% ===================================================================
+\section*{Nomenclature}
+\label{sec:nomenclature}
+% ===================================================================
+
+\renewcommand{\arraystretch}{1.25}
+
+\newlist{nomenclature}{description}{1}
+\setlist[nomenclature]{
+  font=\normalfont,
+  labelwidth=3cm,
+  labelsep=0.5em,
+  leftmargin=3.5cm,
+  nosep,
+  itemsep=0.1em,
+}
+\newcommand{\nom}[2]{\item[$#1$] #2}
+
+\paragraph{Coordinates and domain.}
+\begin{nomenclature}
+  \nom{s}{Arc-length coordinate along the rod, $s \in [0, L]$}
+  \nom{t}{Time, $t \in [0, T]$}
+  \nom{L}{Total rod length (1.0\,m)}
+  \nom{T}{Simulation horizon (episode-dependent)}
+  \nom{\Omega}{Spatio-temporal domain: $\{(s, t) \mid s \in [0, L],\; t \in [0, T]\}$}
+  \nom{\partial\Omega}{Boundary of the domain}
+\end{nomenclature}
+
+\paragraph{State variables (continuous).}
+\begin{nomenclature}
+  \nom{\vect{x}(s,t)}{Rod centerline position $\in \Real^3$}
+  \nom{\vect{v}(s,t)}{Translational velocity, $\vect{v} = \partial\vect{x}/\partial t$}
+  \nom{\vect{d}(s,t)}{Material director frame (local orientation triad)}
+  \nom{\bm{\omega}(s,t)}{Angular velocity of the material frame}
+  \nom{\bm{\varepsilon}(s,t)}{Generalized strain (shear and axial stretch)}
+  \nom{\bm{\kappa}(s,t)}{Generalized curvature (bending and twist)}
+  \nom{\bm{\kappa}_0(s,t)}{Rest curvature --- the control input from the CPG}
+  \nom{\bm{\sigma}(s,t)}{Generalized strain in the local (material) frame}
+\end{nomenclature}
+
+\paragraph{Discrete state variables (semi-discrete / ODE).}
+\begin{nomenclature}
+  \nom{x_i, y_i}{Nodal positions in the plane, $i = 1, \ldots, N$}
+  \nom{\dot{x}_i, \dot{y}_i}{Nodal translational velocities}
+  \nom{\ddot{x}_i, \ddot{y}_i}{Nodal translational accelerations (not stored as state)}
+  \nom{\psi_e}{Element yaw angle, $e = 1, \ldots, N_e$}
+  \nom{\omega_{z,e}}{Element angular velocity about the vertical ($z$) axis}
+  \nom{\dot{\omega}_{z,e}}{Element angular acceleration (not stored as state)}
+  \nom{\vect{s}}{Full state vector $\in \Real^{124}$: $(x_i, y_i, \dot{x}_i, \dot{y}_i, \psi_e, \omega_{z,e})$}
+  \nom{\vect{q}}{Generalized positions: $(x_i, y_i, \psi_e) \in \Real^{62}$}
+  \nom{\dot{\vect{q}}}{Generalized velocities: $(\dot{x}_i, \dot{y}_i, \omega_{z,e}) \in \Real^{62}$}
+\end{nomenclature}
+
+\paragraph{Internal forces and moments.}
+\begin{nomenclature}
+  \nom{\vect{F}(s,t)}{Internal force resultant (shear $+$ tension)}
+  \nom{\vect{M}(s,t)}{Internal moment resultant (bending $+$ torsion)}
+  \nom{\vect{n}_e^L}{Internal stress on element $e$ in the local frame}
+  \nom{\bm{\tau}_v^L}{Bending--twist couple at Voronoi node $v$}
+  \nom{\vect{F}_i^{\text{int}}}{Net internal force on node $i$ (from finite differences)}
+  \nom{\vect{m}_e^{\text{int}}}{Net internal torque on element $e$ (five-term assembly)}
+\end{nomenclature}
+
+\paragraph{External forces.}
+\begin{nomenclature}
+  \nom{\vect{f}_{\text{ext}}}{External distributed force (continuous)}
+  \nom{\vect{m}_{\text{ext}}}{External distributed moment (continuous)}
+  \nom{\vect{f}_i^{\text{grav}}}{Gravitational force on node $i$: $m_i \vect{g}$}
+  \nom{\vect{f}_i^{\text{rft}}}{Anisotropic ground friction (RFT) on node $i$}
+  \nom{\vect{f}_i^{\text{damp}}}{Numerical damping force on node $i$: $-\gamma\,\vect{v}_i$}
+  \nom{\vect{F}^{\text{ext}}}{Total external force vector (all nodes, stacked)}
+  \nom{\vect{m}_e^{\text{ext}}}{External torque on element $e$}
+\end{nomenclature}
+
+\paragraph{Material properties and constitutive law.}
+\begin{nomenclature}
+  \nom{E}{Young's modulus ($2 \times 10^6$\,Pa)}
+  \nom{G}{Shear modulus, $G = E/2(1+\nu)$}
+  \nom{\nu}{Poisson's ratio (0.5)}
+  \nom{\rho}{Material density (1200\,kg\,m$^{-3}$)}
+  \nom{R}{Cross-sectional radius (0.001\,m)}
+  \nom{A}{Cross-sectional area, $A = \pi R^2$}
+  \nom{I}{Second moment of area, $I = \pi R^4/4$}
+  \nom{J}{Polar second moment of area, $J = \pi R^4/2$}
+  \nom{\mat{S}}{Shear--stretch stiffness matrix: $\operatorname{diag}(GA, GA, EA)$}
+  \nom{\mat{B}}{Bending--twist stiffness matrix: $\operatorname{diag}(EI, EI, GJ)$}
+  \nom{EA, GA}{Axial and shear stiffness (scalar products)}
+  \nom{EI, GJ}{Bending and torsional stiffness (scalar products)}
+\end{nomenclature}
+
+\paragraph{Geometry and discretization.}
+\begin{nomenclature}
+  \nom{N}{Number of nodes (21)}
+  \nom{N_e}{Number of elements (20), $N_e = N - 1$}
+  \nom{m_i}{Lumped mass at node $i$}
+  \nom{\mat{J}_e}{Second moment of inertia tensor of element $e$}
+  \nom{\ell_e}{Current length of element $e$}
+  \nom{\ell_e^{\text{rest}}}{Rest (reference) length of element $e$}
+  \nom{\varepsilon_e}{Dilatation (axial stretch ratio): $\ell_e / \ell_e^{\text{rest}}$}
+  \nom{\hat{\varepsilon}_v}{Voronoi dilatation at Voronoi node $v$}
+  \nom{\dot{\varepsilon}_e}{Dilatation rate (time derivative of $\varepsilon_e$)}
+  \nom{\vect{t}_e}{Unit tangent vector of element $e$}
+  \nom{\kappa_e}{Discrete curvature at element $e$}
+  \nom{\kappa_e^{\text{rest}}}{Rest curvature at element $e$ (set by CPG)}
+  \nom{\bm{\kappa}_v}{Curvature vector at Voronoi node $v$}
+\end{nomenclature}
+
+\paragraph{Friction and damping.}
+\begin{nomenclature}
+  \nom{c_t}{Tangential friction coefficient (0.01)}
+  \nom{c_n}{Normal friction coefficient (0.1)}
+  \nom{\gamma}{Numerical damping coefficient (0.1)}
+  \nom{\vect{v}_{t,i}}{Tangential component of velocity at node $i$}
+  \nom{\vect{v}_{n,i}}{Normal component of velocity at node $i$}
+  \nom{\vect{g}}{Gravitational acceleration vector, $(0, 0, -9.81)$\,m\,s$^{-2}$}
+\end{nomenclature}
+
+\paragraph{Time integration.}
+\begin{nomenclature}
+  \nom{\Delta t}{Integration substep size (0.001\,s)}
+  \nom{\Delta t_{\text{ctrl}}}{RL control step duration (0.5\,s)}
+  \nom{n_{\text{sub}}}{Number of substeps per control step (500)}
+  \nom{V_{\Delta t}}{One Position Verlet substep map: $\Real^{124} \to \Real^{124}$}
+  \nom{T(\vect{s}_t, \vect{a}_t)}{Transition operator: composition of $n_{\text{sub}}$ substeps}
+  \nom{n}{Substep index (superscript)}
+\end{nomenclature}
+
+\paragraph{Matrix operators (Section~\ref{sec:matrix-form}).}
+\begin{nomenclature}
+  \nom{\mat{D}}{Difference operator (node $\to$ element), $\Real^{20 \times 21}$, bidiagonal}
+  \nom{\mat{D}^T}{Transpose difference (element $\to$ node), force assembly}
+  \nom{\mat{A}_v}{Voronoi averaging (element $\to$ Voronoi), $\Real^{19 \times 20}$, tridiagonal}
+  \nom{\mat{D}_v}{Voronoi difference (Voronoi $\to$ element), $\Real^{20 \times 19}$, bidiagonal}
+  \nom{\mat{S}_{\text{blk}}}{Block-diagonal shear--stretch stiffness, $\Real^{60 \times 60}$}
+  \nom{\mat{B}_{\text{blk}}}{Block-diagonal bending--twist stiffness, $\Real^{57 \times 57}$}
+  \nom{\mat{M}^{-1}}{Diagonal inverse mass matrix, $\Real^{21 \times 21}$}
+  \nom{\mat{J}_{\text{blk}}^{-1}}{Block-diagonal inverse inertia, $\Real^{60 \times 60}$}
+  \nom{\mat{Q}_{\text{blk}}(\bm{\psi})}{Block-diagonal rotation (state-dependent), $\Real^{40 \times 40}$}
+  \nom{\mat{Q}_e}{$2 \times 2$ rotation matrix for element $e$: entries $\cos\psi_e, \sin\psi_e$}
+  \nom{\mat{C}_{\text{rft}}(\vect{t})}{Friction projection matrix (state-dependent), $\Real^{42 \times 42}$}
+  \nom{\mat{P}_t}{Tangential projection: $\operatorname{blkdiag}(\vect{t}_i\,\vect{t}_i^T)$}
+  \nom{\mat{I}_k}{Identity matrix of size $k$}
+\end{nomenclature}
+
+\paragraph{Element-wise operations.}
+\begin{nomenclature}
+  \nom{\lVert\cdot\rVert}{Euclidean norm (per element or node)}
+  \nom{\odot}{Hadamard (element-wise) product}
+  \nom{\oslash}{Element-wise division}
+  \nom{\times}{Cross product (bilinear, per element)}
+  \nom{\Delta_s}{Discrete spatial derivative (difference kernel on staggered grid)}
+  \nom{\mathcal{A}{[\cdot]}}{Quadrature (averaging) kernel on Voronoi grid}
+  \nom{\bigoplus}{Direct sum (block-diagonal assembly)}
+\end{nomenclature}
+
+\paragraph{Control (CPG action).}
+\begin{nomenclature}
+  \nom{\vect{a}}{RL action vector $\in \Real^5$: $(A, f, k, \phi_0, b)$}
+  \nom{A}{CPG amplitude (rad\,m$^{-1}$)}
+  \nom{f}{CPG frequency (Hz)}
+  \nom{k}{CPG wave number (wavelengths per body length)}
+  \nom{\phi_0}{CPG phase offset (rad)}
+  \nom{b}{CPG turn bias (rad\,m$^{-1}$)}
+\end{nomenclature}
+
+\paragraph{System-level notation.}
+\begin{nomenclature}
+  \nom{\mathcal{S}}{The well-posed system: $(\mathcal{L}, \Omega, \text{BC}, \text{IC}, \bm{\theta})$}
+  \nom{\mathcal{S}_h}{Semi-discrete system (after spatial discretization)}
+  \nom{\mathcal{L}}{Differential operator (governing equations)}
+  \nom{\vect{g}(\vect{s}, \vect{a}, t)}{Right-hand side of the semi-discrete ODE system}
+  \nom{\bm{\theta}}{Parameter vector (material, friction, damping, solver)}
+  \nom{f_\theta}{Neural surrogate model: $\Real^{129} \to \Real^{124}$}
+  \nom{\vect{z}_t}{Surrogate input (state $+$ action concatenation)}
+\end{nomenclature}
+
+\paragraph{Formatting conventions.}
+\begin{nomenclature}
+  \nom{(\cdot)^{n+1/2}}{Value at half-step}
+  \nom{(\cdot)^{\text{rest}}}{Reference / undeformed value}
+  \nom{(\cdot)^{\text{int}}}{Internal (elastic) contribution}
+  \nom{(\cdot)^{\text{ext}}}{External contribution}
+  \nom{(\cdot)^L}{Quantity expressed in the local (material) frame}
+\end{nomenclature}
+
+\renewcommand{\arraystretch}{1.0}
+
+\vspace{1em}
+
+% ===================================================================
+\section{The Well-Posedness Tuple}
+\label{sec:tuple}
+% ===================================================================
+
+A well-posed initial--boundary value problem (IBVP) is uniquely determined by five components (Hadamard's conditions):
+
+\begin{equation}
+  \boxed{\;\mathcal{S} = \bigl(\,\mathcal{L},\;\; \Omega,\;\; \text{BC},\;\; \text{IC},\;\; \bm{\theta}\,\bigr)\;}
+  \label{eq:system-tuple}
+\end{equation}
+
+\begin{table}[H]
+  \centering
+  \begin{tabular}{clp{8.5cm}}
+    \toprule
+    Symbol & Name & Meaning \\
+    \midrule
+    $\mathcal{L}$ & Differential operator & The governing equation(s) --- the relationship between unknowns and their derivatives \\
+    $\Omega$ & Domain & Where the equations hold (spatial region $\times$ time interval) \\
+    BC & Boundary conditions & Constraints at the boundary $\partial\Omega$ \\
+    IC & Initial conditions & The system state at $t = 0$ \\
+    $\bm{\theta}$ & Parameters & Physical constants, material properties, and forcing terms \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\noindent
+Changing \emph{any one} of these five components yields a different system with a different solution.
+A problem is well-posed when these components are specified such that a solution (i) exists, (ii) is unique, and (iii) depends continuously on the data.
+
+% ===================================================================
+\section{Continuous Cosserat Rod System}
+\label{sec:continuous}
+% ===================================================================
+
+The snake robot body is modeled as a Cosserat rod --- a one-dimensional elastic continuum that supports shear, extension, bending, and torsion.
+The governing equations are the conservation of linear and angular momentum per unit arc length.
+
+% -------------------------------------------------------------------
+\subsection{\texorpdfstring{$\mathcal{L}$}{L} --- Governing PDEs}
+\label{sec:L}
+% -------------------------------------------------------------------
+
+\begin{subequations}
+\label{eq:cosserat-pdes}
+\begin{alignat}{2}
+  \rho A \,\ddt{\vect{v}}
+    &= \dds{\vect{F}} + \vect{f}_{\text{ext}}
+    &\qquad& \text{(linear momentum)}
+  \label{eq:linear-momentum} \\[6pt]
+  \rho \mat{I} \,\ddt{\bm{\omega}}
+    &= \dds{\vect{M}} + \vect{m}_{\text{ext}}
+       + \dds{\vect{x}} \times \vect{F}
+    &\qquad& \text{(angular momentum)}
+  \label{eq:angular-momentum}
+\end{alignat}
+\end{subequations}
+
+\noindent
+with kinematic relations $\vect{v} = \partial\vect{x}/\partial t$ (translational velocity) and $\bm{\omega}$ (angular velocity of the material frame), and constitutive (closure) relations:
+
+\begin{subequations}
+\label{eq:constitutive}
+\begin{alignat}{2}
+  \vect{F} &= \mat{S}\,(\bm{\varepsilon} - \bm{\varepsilon}_0),
+    &\qquad& \mat{S} = \operatorname{diag}(GA,\, GA,\, EA)
+  \label{eq:constitutive-force} \\[4pt]
+  \vect{M} &= \mat{B}\,(\bm{\kappa} - \bm{\kappa}_0),
+    &\qquad& \mat{B} = \operatorname{diag}(EI,\, EI,\, GJ)
+  \label{eq:constitutive-moment}
+\end{alignat}
+\end{subequations}
+
+\begin{itemize}
+  \item $\vect{x}(s,t) \in \Real^3$ --- rod centerline position at arc length $s$
+  \item $\vect{d}(s,t)$ --- material director frame (local orientation)
+  \item $\vect{F}(s,t)$ --- internal force resultant (shear $+$ tension)
+  \item $\vect{M}(s,t)$ --- internal moment resultant (bending $+$ torsion)
+  \item $\bm{\varepsilon}$ --- generalized strain (shear and axial stretch)
+  \item $\bm{\kappa}$ --- generalized curvature (bending and twist)
+  \item $\bm{\kappa}_0(s,t)$ --- \textbf{rest curvature} (the control input from the CPG)
+  \item $\vect{f}_{\text{ext}}$ --- external distributed force (gravity, RFT ground friction)
+  \item $\vect{m}_{\text{ext}}$ --- external distributed moment (CPG muscle torque)
+\end{itemize}
+
+% -------------------------------------------------------------------
+\subsection{\texorpdfstring{$\Omega$}{Omega} --- Domain}
+\label{sec:Omega}
+% -------------------------------------------------------------------
+
+\begin{equation}
+  \Omega = \bigl\{\,(s, t) \;\big|\; s \in [0, L],\;\; t \in [0, T]\,\bigr\}
+  \label{eq:domain}
+\end{equation}
+
+\begin{table}[H]
+  \centering
+  \begin{tabular}{cllr}
+    \toprule
+    Symbol & Description & & Value \\
+    \midrule
+    $s$ & Arc-length coordinate & spatial & $[0, 1.0]$\,m \\
+    $L$ & Total rod length & & $1.0$\,m \\
+    $t$ & Time coordinate & temporal & $[0, T]$ \\
+    $T$ & Simulation horizon & & episode-dependent \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+% -------------------------------------------------------------------
+\subsection{BC --- Boundary Conditions}
+\label{sec:BC}
+% -------------------------------------------------------------------
+
+The snake rod is \textbf{free--free} (no clamped or pinned ends):
+
+\begin{subequations}
+\label{eq:bc}
+\begin{alignat}{3}
+  \vect{F}(0, t) &= \vect{0}, &\qquad \vect{F}(L, t) &= \vect{0}
+    &\qquad& \text{(no end forces)}
+  \label{eq:bc-force} \\[4pt]
+  \vect{M}(0, t) &= \vect{0}, &\qquad \vect{M}(L, t) &= \vect{0}
+    &\qquad& \text{(no end moments)}
+  \label{eq:bc-moment}
+\end{alignat}
+\end{subequations}
+
+\noindent
+Both endpoints are traction-free: no external force or moment is applied at either end of the rod.
+The snake is free to translate and rotate in the plane.
+
+% -------------------------------------------------------------------
+\subsection{IC --- Initial Conditions}
+\label{sec:IC}
+% -------------------------------------------------------------------
+
+\begin{subequations}
+\label{eq:ic}
+\begin{align}
+  \vect{x}(s, 0) &= \vect{x}_0 + s\,\hat{\vect{e}}_x
+    && \text{(straight rod along $x$-axis)} \label{eq:ic-position} \\[4pt]
+  \vect{v}(s, 0) &= \vect{0}
+    && \text{(at rest)} \label{eq:ic-velocity} \\[4pt]
+  \bm{\kappa}(s, 0) &= \vect{0}
+    && \text{(zero curvature --- straight)} \label{eq:ic-curvature} \\[4pt]
+  \bm{\omega}(s, 0) &= \vect{0}
+    && \text{(no rotation)} \label{eq:ic-angular}
+\end{align}
+\end{subequations}
+
+\noindent
+where $\vect{x}_0$ is the starting position of the snake head.
+
+% -------------------------------------------------------------------
+\subsection{\texorpdfstring{$\bm{\theta}$}{theta} --- Parameters}
+\label{sec:theta}
+% -------------------------------------------------------------------
+
+The parameter vector is organized into four groups.
+
+\paragraph{Material properties.}
+
+\begin{table}[H]
+  \centering
+  \begin{tabular}{clcrl}
+    \toprule
+    Symbol & Name & Config field & Value & Units \\
+    \midrule
+    $E$ & Young's modulus & \texttt{youngs\_modulus} & $2 \times 10^6$ & Pa \\
+    $\nu$ & Poisson's ratio & \texttt{poisson\_ratio} & 0.5 & --- \\
+    $G$ & Shear modulus & $E/2(1+\nu)$ & $6.67 \times 10^5$ & Pa \\
+    $\rho$ & Density & \texttt{density} & 1200 & kg\,m$^{-3}$ \\
+    $R$ & Cross-sectional radius & \texttt{snake\_radius} & 0.001 & m \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\paragraph{Derived stiffnesses.}
+From the material properties and circular cross-section ($A = \pi R^2$, $I = \pi R^4/4$, $J = \pi R^4/2$):
+
+\begin{table}[H]
+  \centering
+  \begin{tabular}{clp{6cm}}
+    \toprule
+    Symbol & Expression & Physical meaning \\
+    \midrule
+    $EA$ & $E \cdot \pi R^2$ & Axial (stretch) stiffness \\
+    $GA$ & $G \cdot \pi R^2$ & Shear stiffness \\
+    $EI$ & $E \cdot \pi R^4 / 4$ & Bending stiffness \\
+    $GJ$ & $G \cdot \pi R^4 / 2$ & Torsional stiffness \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\paragraph{External forces.}
+
+\begin{table}[H]
+  \centering
+  \begin{tabular}{lp{5cm}l}
+    \toprule
+    Force & Model & Parameters \\
+    \midrule
+    Gravity & $\vect{f}_g = \rho A \, \vect{g}$ & $\vect{g} = (0, 0, -9.81)$\,m\,s$^{-2}$ \\
+    Ground friction (RFT) & $\vect{f}_{\text{rft}} = -c_t \vect{v}_t - c_n \vect{v}_n$ & $c_t = 0.01$, $c_n = 0.1$ \\
+    Numerical damping & $\vect{f}_{\text{damp}} = -\gamma\,\vect{v}$ & $\gamma = 0.1$ \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\paragraph{Time integration.}
+
+\begin{table}[H]
+  \centering
+  \begin{tabular}{cllrl}
+    \toprule
+    Symbol & Name & Config field & Value & Units \\
+    \midrule
+    $\Delta t_{\text{ctrl}}$ & RL control step & \texttt{substeps\_per\_action $\times$ dt\_substep} & 0.5 & s \\
+    $\Delta t$ & Integration substep & \texttt{dt\_substep} & 0.001 & s \\
+    $n_{\text{sub}}$ & Substeps per control step & \texttt{substeps\_per\_action} & 500 & --- \\
+    --- & Integrator & \texttt{elastica\_time\_stepper} & \multicolumn{2}{l}{Position Verlet} \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+% ===================================================================
+\section{Semi-Discrete ODE System}
+\label{sec:ode}
+% ===================================================================
+
+Spatial discretization with $N = 21$ nodes and $N_e = 20$ elements on a staggered grid replaces the continuous PDEs (\ref{eq:cosserat-pdes}) with a system of 124 coupled first-order ODEs.
+Restricting to 2D planar motion ($z \equiv 0$):
+
+\paragraph{Nodal translational dynamics} ($i = 1, \ldots, N$):
+
+\begin{subequations}
+\label{eq:node-ode}
+\begin{align}
+  \dd{x_i}{t} &= \dot{x}_i, \qquad
+  \dd{y_i}{t} = \dot{y}_i
+  \label{eq:node-pos} \\[4pt]
+  m_i\,\dd{\dot{x}_i}{t} &= \Delta_s F_{x,i} + f_{x,i}^{\text{ext}}, \qquad
+  m_i\,\dd{\dot{y}_i}{t} = \Delta_s F_{y,i} + f_{y,i}^{\text{ext}}
+  \label{eq:node-vel}
+\end{align}
+\end{subequations}
+
+\paragraph{Element rotational dynamics} ($e = 1, \ldots, N_e$):
+
+\begin{subequations}
+\label{eq:element-ode}
+\begin{align}
+  \dd{\psi_e}{t} &= \omega_{z,e}
+  \label{eq:elem-yaw} \\[4pt]
+  J_e\,\dd{\omega_{z,e}}{t} &= \Delta_s M_{z,e} + m_{z,e}^{\text{ext}}
+    + \bigl(\Delta_s \vect{x}_e \times \vect{F}_e\bigr)_z
+  \label{eq:elem-omega}
+\end{align}
+\end{subequations}
+
+\noindent
+where $\psi_e$ is the element yaw angle and $\omega_{z,e}$ is the angular velocity about the vertical axis.
+The bending moment is given by $M_{z,e} = EI\,(\kappa_e - \kappa_e^{\text{rest}})$, with $\kappa_e^{\text{rest}}$ set by the CPG controller.
+
+\paragraph{State vector.}
+These 124 scalar ODEs define the state vector $\vect{s} \in \Real^{124}$:
+
+\begin{equation}
+  \vect{s} = \bigl(\underbrace{x_1, \ldots, x_{21}}_{21},\;
+               \underbrace{y_1, \ldots, y_{21}}_{21},\;
+               \underbrace{\dot{x}_1, \ldots, \dot{x}_{21}}_{21},\;
+               \underbrace{\dot{y}_1, \ldots, \dot{y}_{21}}_{21},\;
+               \underbrace{\psi_1, \ldots, \psi_{20}}_{20},\;
+               \underbrace{\omega_{z,1}, \ldots, \omega_{z,20}}_{20}\bigr)
+  \label{eq:state-vector}
+\end{equation}
+
+In compact form, the semi-discrete ODE system is:
+
+\begin{equation}
+  \boxed{\;\dot{\vect{s}} = \vect{g}(\vect{s},\, \vect{a},\, t), \qquad
+  \vect{s} \in \Real^{124},\;\; \vect{a} \in \Real^{5}\;}
+  \label{eq:ode-compact}
+\end{equation}
+
+% ===================================================================
+\section{The Semi-Discrete System as a Tuple}
+\label{sec:ode-tuple}
+% ===================================================================
+
+After spatial discretization, the IBVP becomes an initial value problem (IVP) for an ODE system.
+The tuple specializes as follows:
+
+\begin{equation}
+  \boxed{\;\mathcal{S}_h = \bigl(\,\vect{g},\;\; [0, T],\;\; \text{---},\;\; \vect{s}_0,\;\; \bm{\theta}\,\bigr)\;}
+  \label{eq:ode-tuple}
+\end{equation}
+
+\begin{table}[H]
+  \centering
+  \begin{tabular}{clp{8cm}}
+    \toprule
+    Component & Specialization & Description \\
+    \midrule
+    $\mathcal{L} \to \vect{g}$ & RHS function & 124 coupled ODEs (\ref{eq:node-ode}--\ref{eq:element-ode}) assembling elastic, contact, and control forces \\[4pt]
+    $\Omega \to [0, T]$ & Time interval & Spatial domain absorbed into DOF indexing \\[4pt]
+    BC $\to$ --- & Eliminated & Free--free BCs become natural conditions in the discrete force assembly \\[4pt]
+    IC $\to \vect{s}_0$ & Initial state & $\vect{s}_0 \in \Real^{124}$: straight rod at rest \\[4pt]
+    $\bm{\theta}$ & Unchanged & Material, friction, damping, and solver parameters \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+% ===================================================================
+\section{Time Integration: The Transition Operator}
+\label{sec:integration}
+% ===================================================================
+
+The Position Verlet scheme advances the ODE system (\ref{eq:ode-compact}) through $n_{\text{sub}}$ substeps per control step.
+Each substep $V_{\Delta t}$ is a second-order symplectic map:
+
+\begin{subequations}
+\label{eq:verlet}
+\begin{align}
+  \vect{q}^{n+\frac{1}{2}}
+    &= \vect{q}^{n} + \tfrac{1}{2}\,\Delta t\;\dot{\vect{q}}^{n}
+  \label{eq:verlet-half} \\[4pt]
+  \dot{\vect{q}}^{n+1}
+    &= \dot{\vect{q}}^{n} + \Delta t\;\ddot{\vect{q}}(\vect{q}^{n+\frac{1}{2}})
+  \label{eq:verlet-vel} \\[4pt]
+  \vect{q}^{n+1}
+    &= \vect{q}^{n+\frac{1}{2}} + \tfrac{1}{2}\,\Delta t\;\dot{\vect{q}}^{n+1}
+  \label{eq:verlet-full}
+\end{align}
+\end{subequations}
+
+\noindent
+Here $\vect{q}$ collects the generalized positions $(x_i, y_i, \psi_e)$ and $\dot{\vect{q}}$ collects the velocities $(\dot{x}_i, \dot{y}_i, \omega_{z,e})$.
+
+The ground-truth transition operator for one RL control step is the composition:
+
+\begin{equation}
+  T(\vect{s}_t, \vect{a}_t)
+    = \underbrace{V_{\Delta t} \circ V_{\Delta t} \circ \cdots \circ V_{\Delta t}}_{n_{\text{sub}} \text{ substeps}}
+      (\vect{s}_t;\; \vect{a}_t)
+  \label{eq:transition}
+\end{equation}
+
+The neural surrogate $f_\theta$ replaces this composition with a single forward pass:
+$f_\theta(\vect{z}_t) \approx T(\vect{s}_t, \vect{a}_t) - \vect{s}_t$.
+
+% ===================================================================
+\section{Computation Within a Single Verlet Substep}
+\label{sec:substep-detail}
+% ===================================================================
+
+Each Position Verlet substep $V_{\Delta t}$ is not a simple algebraic update --- the velocity step (\ref{eq:verlet-vel}) requires evaluating the acceleration $\ddot{\vect{q}}(\vect{q}^{n+1/2})$, which triggers the full force assembly pipeline.
+The computation proceeds in three stages.
+
+% -------------------------------------------------------------------
+\subsection{Stage 1: Half-Step Positions (Kinematic)}
+\label{sec:stage1}
+% -------------------------------------------------------------------
+
+Advance generalized positions by half a timestep using current velocities:
+
+\begin{subequations}
+\label{eq:stage1}
+\begin{alignat}{3}
+  x_i^{n+\frac{1}{2}} &= x_i^n + \tfrac{1}{2}\Delta t\;\dot{x}_i^n,
+  &\quad
+  y_i^{n+\frac{1}{2}} &= y_i^n + \tfrac{1}{2}\Delta t\;\dot{y}_i^n,
+  &\qquad& i = 1, \ldots, 21
+  \label{eq:stage1-pos} \\[4pt]
+  \psi_e^{n+\frac{1}{2}} &= \psi_e^n + \tfrac{1}{2}\Delta t\;\omega_{z,e}^n,
+  &&
+  &\qquad& e = 1, \ldots, 20
+  \label{eq:stage1-yaw}
+\end{alignat}
+\end{subequations}
+
+\noindent
+This produces 62 updated position values (42 nodal + 20 element).
+
+% -------------------------------------------------------------------
+\subsection{Stage 2: Force Assembly and Velocity Update (Dynamic)}
+\label{sec:stage2}
+% -------------------------------------------------------------------
+
+Using the half-stepped configuration $\vect{q}^{n+1/2}$, the simulator computes all forces and accelerations.
+This is the expensive stage.
+
+\paragraph{Step 2a: Geometry update.}
+Recompute geometric quantities from the half-stepped positions:
+
+\begin{subequations}
+\label{eq:geometry}
+\begin{align}
+  \vect{t}_e &= \frac{\vect{x}_{e+1}^{n+\frac{1}{2}} - \vect{x}_e^{n+\frac{1}{2}}}
+    {\|\vect{x}_{e+1}^{n+\frac{1}{2}} - \vect{x}_e^{n+\frac{1}{2}}\|},
+    \qquad e = 1, \ldots, 20
+    && \text{(tangent vectors)}
+  \label{eq:tangent} \\[4pt]
+  \ell_e &= \|\vect{x}_{e+1}^{n+\frac{1}{2}} - \vect{x}_e^{n+\frac{1}{2}}\|,
+    \qquad e = 1, \ldots, 20
+    && \text{(element lengths)}
+  \label{eq:lengths} \\[4pt]
+  \varepsilon_e &= \frac{\ell_e}{\ell_e^{\text{rest}}}
+    && \text{(dilatation / axial stretch)}
+  \label{eq:dilatation}
+\end{align}
+\end{subequations}
+
+\paragraph{Step 2b: Internal shear--stretch forces.}
+Compute the generalized strain $\bm{\sigma}$ in the local (material) frame and apply the constitutive law:
+
+\begin{subequations}
+\label{eq:shear-stretch}
+\begin{align}
+  \bm{\sigma}_e &= \mat{Q}_e^T \,\frac{\vect{x}_{e+1}^{n+\frac{1}{2}} - \vect{x}_e^{n+\frac{1}{2}}}{\ell_e^{\text{rest}}}
+    && \text{(strain in local frame)}
+  \label{eq:strain-local} \\[4pt]
+  \vect{n}_e^L &= \mat{S}\,(\bm{\sigma}_e - \bm{\sigma}_e^{\text{rest}})
+    && \text{(internal stress, constitutive law)}
+  \label{eq:stress-constitutive} \\[4pt]
+  \vect{F}_i^{\text{int}} &= \Delta_s\!\left(\frac{\mat{Q}_e^T\,\vect{n}_e^L}{\varepsilon_e}\right)
+    && \text{(internal force per node, finite differences)}
+  \label{eq:internal-force}
+\end{align}
+\end{subequations}
+
+\noindent
+where $\mat{Q}_e$ is the director (rotation) matrix of element $e$ and $\Delta_s$ denotes the discrete spatial derivative (difference kernel) on the staggered grid.
+
+\paragraph{Step 2c: Internal bending--twist torques.}
+Compute the curvature and bending--twist stresses:
+
+\begin{subequations}
+\label{eq:bend-twist}
+\begin{align}
+  \bm{\kappa}_v &= \text{curvature at Voronoi nodes}
+    && \text{(from director differences)}
+  \label{eq:curvature-discrete} \\[4pt]
+  \bm{\tau}_v^L &= \mat{B}\,(\bm{\kappa}_v - \bm{\kappa}_v^{\text{rest}})
+    && \text{(bending--twist couple, constitutive law)}
+  \label{eq:couple-constitutive}
+\end{align}
+\end{subequations}
+
+\noindent
+The internal torque on each element $e$ is then assembled from four contributions:
+
+\begin{equation}
+  \vect{m}_e^{\text{int}} =
+    \underbrace{\Delta_s\!\left(\frac{\bm{\tau}_v^L}{\hat{\varepsilon}_v^3}\right)}_{\text{bend--twist gradient}}
+    + \underbrace{\mathcal{A}\!\left[\frac{(\bm{\kappa}_v \times \bm{\tau}_v^L)\,\hat{\ell}_v}{\hat{\varepsilon}_v^3}\right]}_{\text{curvature $\times$ couple}}
+    + \underbrace{(\mat{Q}_e\vect{t}_e) \times \vect{n}_e^L \cdot \ell_e^{\text{rest}}}_{\text{shear--stretch couple}}
+    + \underbrace{\frac{\mat{J}_e\,\bm{\omega}_e}{\varepsilon_e} \times \bm{\omega}_e}_{\text{Lagrangian transport}}
+    + \underbrace{\frac{\mat{J}_e\,\bm{\omega}_e}{\varepsilon_e^2}\,\dot{\varepsilon}_e}_{\text{unsteady dilatation}}
+  \label{eq:internal-torque}
+\end{equation}
+
+\noindent
+where $\hat{\varepsilon}_v$ is the Voronoi dilatation, $\mathcal{A}[\cdot]$ is the quadrature kernel, $\mat{J}_e$ is the second moment of inertia, and $\dot{\varepsilon}_e$ is the dilatation rate computed from position and velocity data.
+
+\paragraph{Step 2d: External forces.}
+Add the external distributed loads at each node or element:
+
+\begin{subequations}
+\label{eq:external}
+\begin{align}
+  \vect{f}_{i}^{\text{grav}} &= m_i\,\vect{g}
+    && \text{(gravity, per node)}
+  \label{eq:gravity} \\[4pt]
+  \vect{f}_{i}^{\text{rft}} &= -c_t\,\vect{v}_{t,i} - c_n\,\vect{v}_{n,i}
+    && \text{(anisotropic ground friction, per node)}
+  \label{eq:rft} \\[4pt]
+  \vect{f}_{i}^{\text{damp}} &= -\gamma\,\vect{v}_i
+    && \text{(numerical damping, per node)}
+  \label{eq:damping}
+\end{align}
+\end{subequations}
+
+\paragraph{Step 2e: Acceleration computation.}
+Divide the total force by mass to obtain accelerations:
+
+\begin{subequations}
+\label{eq:accelerations}
+\begin{align}
+  \ddot{x}_i &= \frac{F_{x,i}^{\text{int}} + f_{x,i}^{\text{grav}} + f_{x,i}^{\text{rft}} + f_{x,i}^{\text{damp}}}{m_i},
+  \quad
+  \ddot{y}_i = \frac{F_{y,i}^{\text{int}} + f_{y,i}^{\text{grav}} + f_{y,i}^{\text{rft}} + f_{y,i}^{\text{damp}}}{m_i}
+  \label{eq:acc-translational} \\[4pt]
+  \dot{\omega}_{z,e} &= \frac{1}{\varepsilon_e}\,\mat{J}_e^{-1}\,
+    \bigl(\vect{m}_e^{\text{int}} + \vect{m}_e^{\text{ext}}\bigr)\bigg|_z
+  \label{eq:acc-angular}
+\end{align}
+\end{subequations}
+
+\noindent
+This yields 42 translational accelerations (21 nodes $\times$ 2 components) and 20 angular accelerations (20 elements), totaling 62 acceleration evaluations.
+These accelerations are \emph{not} stored as state --- they are recomputed from scratch at every substep because they depend on the half-stepped configuration $\vect{q}^{n+1/2}$.
+
+\paragraph{Step 2f: Velocity update.}
+Apply accelerations to advance velocities by a full timestep:
+
+\begin{subequations}
+\label{eq:vel-update}
+\begin{align}
+  \dot{x}_i^{n+1} &= \dot{x}_i^n + \Delta t\;\ddot{x}_i, \qquad
+  \dot{y}_i^{n+1} = \dot{y}_i^n + \Delta t\;\ddot{y}_i
+  \label{eq:vel-update-trans} \\[4pt]
+  \omega_{z,e}^{n+1} &= \omega_{z,e}^n + \Delta t\;\dot{\omega}_{z,e}
+  \label{eq:vel-update-rot}
+\end{align}
+\end{subequations}
+
+% -------------------------------------------------------------------
+\subsection{Stage 3: Complete Position Update (Kinematic)}
+\label{sec:stage3}
+% -------------------------------------------------------------------
+
+Advance positions to the full timestep using the \emph{updated} velocities:
+
+\begin{subequations}
+\label{eq:stage3}
+\begin{alignat}{3}
+  x_i^{n+1} &= x_i^{n+\frac{1}{2}} + \tfrac{1}{2}\Delta t\;\dot{x}_i^{n+1},
+  &\quad
+  y_i^{n+1} &= y_i^{n+\frac{1}{2}} + \tfrac{1}{2}\Delta t\;\dot{y}_i^{n+1},
+  &\qquad& i = 1, \ldots, 21
+  \label{eq:stage3-pos} \\[4pt]
+  \psi_e^{n+1} &= \psi_e^{n+\frac{1}{2}} + \tfrac{1}{2}\Delta t\;\omega_{z,e}^{n+1},
+  &&
+  &\qquad& e = 1, \ldots, 20
+  \label{eq:stage3-yaw}
+\end{alignat}
+\end{subequations}
+
+% -------------------------------------------------------------------
+\subsection{Equation Count per RL Step}
+\label{sec:equation-count}
+% -------------------------------------------------------------------
+
+\begin{table}[H]
+  \centering
+  \renewcommand{\arraystretch}{1.3}
+  \begin{tabular}{lrrl}
+    \toprule
+    \textbf{Operation} & \textbf{Per substep} & \textbf{$\times\, 500$} & \textbf{Reference} \\
+    \midrule
+    Half-step positions (Stage 1)
+      & 62 & 31{,}000 & (\ref{eq:stage1}) \\
+    Geometry update (tangents, lengths, dilatation)
+      & 60 & 30{,}000 & (\ref{eq:geometry}) \\
+    Shear--stretch stress $+$ internal forces
+      & $\sim\!120$ & 60{,}000 & (\ref{eq:shear-stretch}) \\
+    Bending--twist stress $+$ internal torques
+      & $\sim\!200$ & 100{,}000 & (\ref{eq:bend-twist}--\ref{eq:internal-torque}) \\
+    External forces (gravity, RFT, damping)
+      & 126 & 63{,}000 & (\ref{eq:external}) \\
+    Accelerations (translational $+$ angular)
+      & 62 & 31{,}000 & (\ref{eq:accelerations}) \\
+    Velocity update (Stage 2f)
+      & 62 & 31{,}000 & (\ref{eq:vel-update}) \\
+    Full-step positions (Stage 3)
+      & 62 & 31{,}000 & (\ref{eq:stage3}) \\
+    \midrule
+    \textbf{Total scalar operations}
+      & $\sim\!\mathbf{754}$ & $\sim\!\mathbf{377{,}000}$ & \\
+    \bottomrule
+  \end{tabular}
+  \caption{Approximate equation count for one RL control step ($\Delta t_{\text{ctrl}} = 0.5$\,s).
+    The neural surrogate replaces all $\sim$377{,}000 scalar operations with a single forward pass
+    $f_\theta\colon \Real^{129} \to \Real^{124}$.}
+  \label{tab:equation-count}
+\end{table}
+
+\noindent
+The dominant cost is the internal torque assembly (\ref{eq:internal-torque}), which involves five terms per element, each requiring cross products, matrix--vector products, and finite differences.
+
+% ===================================================================
+\section{Matrix-Operation Form}
+\label{sec:matrix-form}
+% ===================================================================
+
+Every operation in the Verlet substep is either a \emph{matrix--vector product} (with a constant or state-dependent matrix), an \emph{element-wise nonlinear function}, or a \emph{Hadamard (element-wise) product}.
+This section reformulates the full substep as a dataflow pipeline of such operations, making the input/output interface of each block explicit.
+
+We define the following matrix operators.
+\textbf{Shape convention:} PyElastica stores all quantities as 3D vectors ($(3, N)$ or $(3, N_e)$ arrays) even for planar motion.
+The matrix sizes below reflect this 3D storage.
+However, for the 2D planar case ($z \equiv 0$), the effective degrees of freedom reduce to 2 translational components per node and 1 rotational component ($\omega_z$) per element, giving the 124 scalar state variables of Section~\ref{sec:ode}.
+
+% -------------------------------------------------------------------
+\subsection{Constant Matrices (Independent of State)}
+\label{sec:constant-matrices}
+% -------------------------------------------------------------------
+
+\begin{table}[H]
+  \centering
+  \renewcommand{\arraystretch}{1.3}
+  \begin{tabular}{cllc}
+    \toprule
+    Symbol & Name & Structure & Size \\
+    \midrule
+    $\mat{D}$ & Difference operator (node $\to$ element) & Bidiagonal: $D_{e,i} = \delta_{i,e+1} - \delta_{i,e}$ & $20 \times 21$ \\
+    $\mat{D}^T$ & Transpose difference (element $\to$ node) & Force assembly & $21 \times 20$ \\
+    $\mat{A}_v$ & Voronoi averaging (element $\to$ Voronoi) & Tridiagonal: $\tfrac{1}{2}((\cdot)_e + (\cdot)_{e+1})$ & $19 \times 20$ \\
+    $\mat{D}_v$ & Voronoi difference (Voronoi $\to$ element) & Bidiagonal & $20 \times 19$ \\
+    $\mat{S}_{\text{blk}}$ & Shear--stretch stiffness & Block-diagonal: $\operatorname{diag}(\mat{S}_1, \ldots, \mat{S}_{20})$ & $60 \times 60$ \\
+    $\mat{B}_{\text{blk}}$ & Bend--twist stiffness & Block-diagonal: $\operatorname{diag}(\mat{B}_1, \ldots, \mat{B}_{19})$ & $57 \times 57$ \\
+    $\mat{M}$ & Mass & Diagonal: $\operatorname{diag}(m_1, \ldots, m_{21})$ & $21 \times 21$ \\
+    $\mat{M}^{-1}$ & Inverse mass & Diagonal: $\operatorname{diag}(1/m_1, \ldots, 1/m_{21})$ & $21 \times 21$ \\
+    $\mat{J}_{\text{blk}}^{-1}$ & Inverse second moment of inertia & Block-diagonal & $60 \times 60$ \\
+    \bottomrule
+  \end{tabular}
+  \caption{Constant sparse matrices.  Assembled once at initialization.
+    Sizes reflect PyElastica's 3D storage; effective 2D sizes are $\mat{S}_{\text{blk}} \in \Real^{40 \times 40}$ (2 components $\times$ 20 elements), $\mat{B}_{\text{blk}} \in \Real^{19 \times 19}$ (scalar $\kappa_z$ at 19 Voronoi nodes), $\mat{J}_{\text{blk}}^{-1} \in \Real^{20 \times 20}$ (scalar $J_z$ per element).}
+  \label{tab:constant-matrices}
+\end{table}
+
+\noindent
+The block entries of $\mat{S}_{\text{blk}}$, $\mat{B}_{\text{blk}}$, $\mat{M}$, and $\mat{J}_{\text{blk}}^{-1}$ are computed from the material parameters (Section~\ref{sec:theta}) and the circular cross-section ($R = 0.001$\,m):
+
+\begin{subequations}
+\label{eq:block-entries}
+\begin{align}
+  A &= \pi R^2 \approx 3.14 \times 10^{-6}\,\text{m}^2, \quad
+  I = \tfrac{\pi R^4}{4} \approx 7.85 \times 10^{-13}\,\text{m}^4, \quad
+  J = \tfrac{\pi R^4}{2} \approx 1.57 \times 10^{-12}\,\text{m}^4
+  \label{eq:cross-section-values}
+\end{align}
+\end{subequations}
+
+\paragraph{Shear--stretch stiffness block.}
+Each $\mat{S}_e$ is identical (uniform rod).
+In 3D: $\mat{S}_e = \operatorname{diag}(GA,\; GA,\; EA)$.
+In the effective 2D case (one shear $+$ one axial component):
+\begin{equation}
+  \mat{S}_e^{(2\text{D})} = \operatorname{diag}(GA,\; EA) =
+  \operatorname{diag}(2.09,\; 6.28)\;\text{N}
+  \label{eq:S-block-2d}
+\end{equation}
+
+\paragraph{Bending--twist stiffness block.}
+In 2D, only the $z$-bending curvature matters, so each block reduces to a scalar:
+\begin{equation}
+  B_v^{(2\text{D})} = EI = 2 \times 10^6 \times 7.85 \times 10^{-13} \approx 1.57 \times 10^{-6}\;\text{N\,m}^2
+  \label{eq:B-block-2d}
+\end{equation}
+
+\paragraph{Lumped mass.}
+Interior nodes carry the mass of two half-elements; boundary nodes carry one half-element:
+\begin{equation}
+  m_i = \rho A \times
+  \begin{cases}
+    \tfrac{1}{2}\,\ell^{\text{rest}} = 9.42 \times 10^{-5}\;\text{kg} & i = 1 \text{ or } 21 \\[3pt]
+    \ell^{\text{rest}} = 1.88 \times 10^{-4}\;\text{kg} & i = 2, \ldots, 20
+  \end{cases}
+  \label{eq:lumped-mass}
+\end{equation}
+
+\paragraph{Inverse second moment of inertia.}
+In 2D, the rotational inertia per element about the $z$-axis is:
+\begin{equation}
+  J_{z,e} = \rho I \, \ell_e^{\text{rest}} = 1200 \times 7.85 \times 10^{-13} \times 0.05
+    \approx 4.71 \times 10^{-11}\;\text{kg\,m}^2
+  \label{eq:Jz-value}
+\end{equation}
+so $\mat{J}_{\text{blk}}^{-1(2\text{D})} = \operatorname{diag}(1/J_{z,1}, \ldots, 1/J_{z,20})$ with $1/J_{z,e} \approx 2.12 \times 10^{10}\;\text{(kg\,m}^2\text{)}^{-1}$.
+
+% -------------------------------------------------------------------
+\subsection{State-Dependent Matrices}
+\label{sec:state-dependent-matrices}
+% -------------------------------------------------------------------
+
+\begin{table}[H]
+  \centering
+  \renewcommand{\arraystretch}{1.3}
+  \begin{tabular}{cllc}
+    \toprule
+    Symbol & Name & Depends on & Size \\
+    \midrule
+    $\mat{Q}_{\text{blk}}(\bm{\psi})$ & Rotation (material $\to$ lab frame) & $\psi_e$ via $\cos\psi_e, \sin\psi_e$ & $40 \times 40$ \\
+    $\operatorname{diag}(\bm{\varepsilon}^{-1})$ & Inverse dilatation & $\vect{x}$ via element lengths & $20 \times 20$ \\
+    $\operatorname{diag}(\hat{\bm{\varepsilon}}_v^{-3})$ & Inv.\ cube Voronoi dilatation & $\vect{x}$ via Voronoi lengths & $19 \times 19$ \\
+    $\mat{C}_{\text{rft}}(\vect{t})$ & Friction projection & tangent $\vect{t}_e$ (anisotropy direction) & $42 \times 42$ \\
+    \bottomrule
+  \end{tabular}
+  \caption{State-dependent matrices.  Entries are nonlinear functions of the current configuration, reassembled at every substep.}
+  \label{tab:state-dependent-matrices}
+\end{table}
+
+% -------------------------------------------------------------------
+\subsection{Reference (Rest) Configuration Constants}
+\label{sec:rest-constants}
+% -------------------------------------------------------------------
+
+The following quantities describe the undeformed rod and are computed once at initialization from the material and geometric parameters in Section~\ref{sec:theta}:
+
+\begin{table}[H]
+  \centering
+  \renewcommand{\arraystretch}{1.3}
+  \begin{tabular}{cllc}
+    \toprule
+    Symbol & Name & Value / definition & Shape \\
+    \midrule
+    $\bm{\ell}^{\text{rest}}$ & Rest element lengths & $\ell_e^{\text{rest}} = L / N_e = 0.05$\,m (uniform) & $\Real^{20}$ \\
+    $\hat{\bm{\ell}}_v^{\text{rest}}$ & Rest Voronoi lengths & $\hat{\ell}_v^{\text{rest}} = \tfrac{1}{2}(\ell_e^{\text{rest}} + \ell_{e+1}^{\text{rest}}) = 0.05$\,m & $\Real^{19}$ \\
+    $\bm{\sigma}^{\text{rest}}$ & Rest strain & $\bm{\sigma}_e^{\text{rest}} = (0,\; 0,\; 1)^T$ (no shear, unit stretch) & $\Real^{20 \times 3}$ \\
+    $\bm{\kappa}_v^{\text{rest}}$ & Rest curvature & Set by CPG: $\kappa_e^{\text{rest}}(t)$ from (\ref{eq:cpg}) & $\Real^{19}$ \\
+    $\vect{g}$ & Gravity vector & $(0,\; 0,\; -9.81)$\,m\,s$^{-2}$ (only $z$; zero in 2D plane) & $\Real^{3}$ \\
+    \bottomrule
+  \end{tabular}
+  \caption{Reference configuration constants.  $\bm{\sigma}^{\text{rest}}$ and $\bm{\ell}^{\text{rest}}$ are fixed; $\bm{\kappa}_v^{\text{rest}}$ is the \textbf{control input} that changes at each RL step.}
+  \label{tab:rest-constants}
+\end{table}
+
+% -------------------------------------------------------------------
+\subsection{Element-Wise Nonlinear Functions}
+\label{sec:nonlinear-functions}
+% -------------------------------------------------------------------
+
+The following element-wise (pointwise) operations appear between matrix multiplications:
+
+\begin{table}[H]
+  \centering
+  \renewcommand{\arraystretch}{1.3}
+  \begin{tabular}{llll}
+    \toprule
+    Notation & Operation & Input & Output \\
+    \midrule
+    $\|\cdot\|$ & Euclidean norm per element & $\Delta\vect{x}_e \in \Real^2$ & $\ell_e \in \Real$ \\
+    $(\cdot)^{-1}$ & Reciprocal & $\ell_e$ or $\varepsilon_e$ & $1/\ell_e$ or $1/\varepsilon_e$ \\
+    $(\cdot)^{-3}$ & Cube reciprocal & $\hat{\varepsilon}_v$ & $\hat{\varepsilon}_v^{-3}$ \\
+    $\cos(\cdot),\;\sin(\cdot)$ & Trigonometric & $\psi_e$ & Entries of $\mat{Q}_e$ \\
+    $\times$ & Cross product (bilinear) & $\vect{u}, \vect{w} \in \Real^2$ & $(\vect{u} \times \vect{w})_z \in \Real$ (2D $\to$ scalar) \\
+    $\odot$ & Hadamard product & Two vectors of same size & Element-wise product \\
+    \bottomrule
+  \end{tabular}
+  \caption{Element-wise nonlinear operations.  Each is applied independently to every element or node.}
+  \label{tab:nonlinear-ops}
+\end{table}
+
+% -------------------------------------------------------------------
+\subsection{The Full Substep as a Dataflow Pipeline}
+\label{sec:dataflow}
+% -------------------------------------------------------------------
+
+Using the notation above, one complete Position Verlet substep $V_{\Delta t}$ is the following pipeline.
+Each line shows: \textbf{output $\leftarrow$ operation(inputs)}, with the matrix or nonlinearity that produces it.
+
+\paragraph{Stage 1: Kinematic half-step.}
+\begin{equation}
+  \boxed{\;
+  \begin{aligned}
+    \vect{x}^{n+\frac{1}{2}} &\leftarrow \vect{x}^n + \tfrac{1}{2}\Delta t\;\dot{\vect{x}}^n
+      && [\text{linear, per component}] \\
+    \bm{\psi}^{n+\frac{1}{2}} &\leftarrow \bm{\psi}^n + \tfrac{1}{2}\Delta t\;\bm{\omega}^n
+      && [\text{linear, per element}]
+  \end{aligned}
+  \;}
+  \label{eq:mat-stage1}
+\end{equation}
+\textit{Input:} $\vect{x}^n \in \Real^{21 \times 2}$, $\bm{\psi}^n \in \Real^{20}$, $\dot{\vect{x}}^n \in \Real^{21 \times 2}$, $\bm{\omega}^n \in \Real^{20}$\quad (124 scalars total). \\
+\textit{Output:} $\vect{x}^{n+1/2} \in \Real^{21 \times 2}$, $\bm{\psi}^{n+1/2} \in \Real^{20}$\quad (62 scalars).
+
+\paragraph{Stage 2a: Geometry.}
+\begin{equation}
+  \boxed{\;
+  \begin{aligned}
+    \Delta\vect{x} &\leftarrow \mat{D}\,\vect{x}^{n+\frac{1}{2}}
+      && [\text{constant } \mat{D} \in \Real^{20 \times 21}, \text{ per component}] \\
+    \bm{\ell} &\leftarrow \|\Delta\vect{x}\|_{\text{row}}
+      && [\text{element-wise norm}] \\
+    \bm{\varepsilon} &\leftarrow \bm{\ell} \oslash \bm{\ell}^{\text{rest}}
+      && [\text{element-wise division}] \\
+    \vect{t} &\leftarrow \Delta\vect{x} \oslash \bm{\ell}
+      && [\text{element-wise division (normalize)}]
+  \end{aligned}
+  \;}
+  \label{eq:mat-geometry}
+\end{equation}
+\textit{Input:} $\vect{x}^{n+1/2} \in \Real^{21 \times 2}$. \\
+\textit{Output:} $\Delta\vect{x} \in \Real^{20 \times 2}$, $\bm{\ell} \in \Real^{20}$, $\bm{\varepsilon} \in \Real^{20}$, $\vect{t} \in \Real^{20 \times 2}$.
+
+\paragraph{Stage 2b: Rotation assembly.}
+\begin{equation}
+  \boxed{\;
+  \mat{Q}_{\text{blk}} \leftarrow \bigoplus_{e=1}^{20}
+    \begin{pmatrix} \cos\psi_e & -\sin\psi_e \\ \sin\psi_e & \cos\psi_e \end{pmatrix}
+  \;}
+  \label{eq:mat-rotation}
+\end{equation}
+\textit{Input:} $\bm{\psi}^{n+1/2} \in \Real^{20}$. \quad
+\textit{Output:} $\mat{Q}_{\text{blk}} \in \Real^{40 \times 40}$ (block-diagonal, $\cos/\sin$ nonlinearity).
+
+\paragraph{Stage 2c: Internal shear--stretch forces.}
+\begin{equation}
+  \boxed{\;
+  \begin{aligned}
+    \bm{\sigma} &\leftarrow \mat{Q}_{\text{blk}}^T\,(\Delta\vect{x} \oslash \bm{\ell}^{\text{rest}})
+      && [\text{state-dependent rotation}] \\
+    \vect{n}^L &\leftarrow \mat{S}_{\text{blk}}\,(\bm{\sigma} - \bm{\sigma}^{\text{rest}})
+      && [\text{constant stiffness}] \\
+    \vect{F}^{\text{int}} &\leftarrow \mat{D}^T\!\left[\operatorname{diag}(\bm{\varepsilon}^{-1}) \;\mat{Q}_{\text{blk}}^T\;\vect{n}^L\right]
+      && [\text{rotate, scale, difference}]
+  \end{aligned}
+  \;}
+  \label{eq:mat-shear-force}
+\end{equation}
+\textit{Input:} $\Delta\vect{x} \in \Real^{20 \times 2}$, $\bm{\ell}^{\text{rest}} \in \Real^{20}$, $\bm{\varepsilon} \in \Real^{20}$, $\mat{Q}_{\text{blk}} \in \Real^{40 \times 40}$. \\
+\textit{Output:} $\bm{\sigma} \in \Real^{20 \times 2}$, $\vect{n}^L \in \Real^{20 \times 2}$, $\vect{F}^{\text{int}} \in \Real^{21 \times 2}$ (internal force per node).
+
+\paragraph{Stage 2d: Internal bending--twist torques.}
+\begin{equation}
+  \boxed{\;
+  \begin{aligned}
+    \bm{\kappa}_v &\leftarrow \text{curvature}(\mat{Q}_{\text{blk}}, \bm{\ell}_v^{\text{rest}})
+      && [\text{director differences at Voronoi}] \\
+    \bm{\tau}_v^L &\leftarrow \mat{B}_{\text{blk}}\,(\bm{\kappa}_v - \bm{\kappa}_v^{\text{rest}})
+      && [\text{constant stiffness}] \\[6pt]
+    \vect{m}^{\text{int}} &\leftarrow
+      \mat{D}_v\!\left[\operatorname{diag}(\hat{\bm{\varepsilon}}_v^{-3})\;\bm{\tau}_v^L\right]
+      && [\text{(i) bend--twist gradient}] \\
+    &\quad + \mat{A}_v\!\left[(\bm{\kappa}_v \times \bm{\tau}_v^L) \odot \hat{\bm{\ell}}_v \odot \hat{\bm{\varepsilon}}_v^{-3}\right]
+      && [\text{(ii) curvature $\times$ couple}] \\
+    &\quad + (\mat{Q}_{\text{blk}}\,\vect{t}) \times \vect{n}^L \odot \bm{\ell}^{\text{rest}}
+      && [\text{(iii) shear--stretch couple}] \\
+    &\quad + (\mat{J}_{\text{blk}}\,\bm{\omega} \odot \bm{\varepsilon}^{-1}) \times \bm{\omega}
+      && [\text{(iv) Lagrangian transport}] \\
+    &\quad + \mat{J}_{\text{blk}}\,\bm{\omega} \odot \bm{\varepsilon}^{-2} \odot \dot{\bm{\varepsilon}}
+      && [\text{(v) unsteady dilatation}]
+  \end{aligned}
+  \;}
+  \label{eq:mat-torque}
+\end{equation}
+\noindent
+where the Voronoi dilatation and dilatation rate are intermediate quantities:
+\begin{align}
+  \hat{\bm{\varepsilon}}_v &= \mat{A}_v\,\bm{\varepsilon} \in \Real^{19}
+    && \text{(average of adjacent element dilatations)}
+  \label{eq:voronoi-dilatation} \\
+  \dot{\bm{\varepsilon}} &= \bigl(\Delta\dot{\vect{x}} \cdot \vect{t}\bigr) \oslash \bm{\ell}^{\text{rest}} \in \Real^{20}
+    && \text{(from velocity and tangent projections)}
+  \label{eq:dilatation-rate}
+\end{align}
+
+\textit{Input:} $\mat{Q}_{\text{blk}} \in \Real^{40 \times 40}$, $\bm{\varepsilon} \in \Real^{20}$, $\bm{\omega} \in \Real^{20}$, $\vect{t} \in \Real^{20 \times 2}$, $\vect{n}^L \in \Real^{20 \times 2}$, $\dot{\vect{x}} \in \Real^{21 \times 2}$, $\bm{\ell}^{\text{rest}} \in \Real^{20}$, $\hat{\bm{\ell}}_v^{\text{rest}} \in \Real^{19}$. \\
+\textit{Output:} $\bm{\kappa}_v \in \Real^{19}$, $\bm{\tau}_v^L \in \Real^{19}$, $\hat{\bm{\varepsilon}}_v \in \Real^{19}$, $\dot{\bm{\varepsilon}} \in \Real^{20}$, $\vect{m}^{\text{int}} \in \Real^{20}$.
+
+\paragraph{Stage 2e: External forces and torques.}
+\begin{equation}
+  \boxed{\;
+  \begin{aligned}
+    \vect{F}^{\text{ext}} &\leftarrow
+      \underbrace{\mat{M}\,\vect{g}}_{\text{gravity}}
+      - \underbrace{\mat{C}_{\text{rft}}(\vect{t})\;\dot{\vect{x}}}_{\text{anisotropic friction}}
+      - \underbrace{\gamma\;\dot{\vect{x}}}_{\text{damping}}
+      && [\text{translational}] \\[4pt]
+    \vect{m}^{\text{ext}} &\leftarrow \vect{0}
+      && [\text{no external torques in this model}]
+  \end{aligned}
+  \;}
+  \label{eq:mat-external}
+\end{equation}
+\textit{Input:} $\dot{\vect{x}} \in \Real^{21 \times 2}$, $\vect{t} \in \Real^{20 \times 2}$, $\mat{M} \in \Real^{21 \times 21}$, $\vect{g} \in \Real^{2}$, $c_t, c_n, \gamma \in \Real$. \\
+\textit{Output:} $\vect{F}^{\text{ext}} \in \Real^{21 \times 2}$, $\vect{m}^{\text{ext}} \in \Real^{20}$.
+
+\noindent
+Note: gravity acts only in the vertical direction.
+For planar motion on a horizontal surface, $\vect{g}_{\text{2D}} = (0, 0)$ and the gravitational effect enters only through the normal force that enables friction.
+The CPG muscle actuation enters via $\bm{\kappa}_v^{\text{rest}}$ in Stage~2d, not as an external torque.
+
+The friction matrix $\mat{C}_{\text{rft}}(\vect{t})$ decomposes the velocity into tangential and normal components via the tangent vectors:
+\begin{equation}
+  \mat{C}_{\text{rft}} = c_t\,\mat{P}_t + c_n\,(\mat{I} - \mat{P}_t),
+  \qquad
+  \mat{P}_t = \operatorname{blkdiag}\!\left(\vect{t}_i\,\vect{t}_i^T\right)_{i=1}^{N}
+  \label{eq:friction-matrix}
+\end{equation}
+
+\paragraph{Stage 2f: Accelerations.}
+\begin{equation}
+  \boxed{\;
+  \begin{aligned}
+    \ddot{\vect{x}} &\leftarrow \mat{M}^{-1}\,(\vect{F}^{\text{int}} + \vect{F}^{\text{ext}})
+      && [\text{diagonal inverse mass}] \\
+    \dot{\bm{\omega}} &\leftarrow \operatorname{diag}(\bm{\varepsilon})\;\mat{J}_{\text{blk}}^{-1}\,
+      (\vect{m}^{\text{int}} + \vect{m}^{\text{ext}})
+      && [\text{block-diagonal inverse inertia}]
+  \end{aligned}
+  \;}
+  \label{eq:mat-accelerations}
+\end{equation}
+\textit{Input:} $\vect{F}^{\text{int}} \in \Real^{21 \times 2}$, $\vect{F}^{\text{ext}} \in \Real^{21 \times 2}$, $\vect{m}^{\text{int}} \in \Real^{20}$, $\vect{m}^{\text{ext}} \in \Real^{20}$, $\bm{\varepsilon} \in \Real^{20}$. \\
+\textit{Output:} $\ddot{\vect{x}} \in \Real^{21 \times 2}$, $\dot{\bm{\omega}} \in \Real^{20}$\quad (62 scalars).
+
+\paragraph{Stage 2g: Velocity update.}
+\begin{equation}
+  \boxed{\;
+  \begin{aligned}
+    \dot{\vect{x}}^{n+1} &\leftarrow \dot{\vect{x}}^n + \Delta t\;\ddot{\vect{x}}
+      && [\text{linear, per component}] \\
+    \bm{\omega}^{n+1} &\leftarrow \bm{\omega}^n + \Delta t\;\dot{\bm{\omega}}
+      && [\text{linear, per element}]
+  \end{aligned}
+  \;}
+  \label{eq:mat-vel-update}
+\end{equation}
+\textit{Input:} $\dot{\vect{x}}^n \in \Real^{21 \times 2}$, $\bm{\omega}^n \in \Real^{20}$, $\ddot{\vect{x}} \in \Real^{21 \times 2}$, $\dot{\bm{\omega}} \in \Real^{20}$, $\Delta t \in \Real$. \\
+\textit{Output:} $\dot{\vect{x}}^{n+1} \in \Real^{21 \times 2}$, $\bm{\omega}^{n+1} \in \Real^{20}$\quad (62 scalars).
+
+\paragraph{Stage 3: Kinematic full-step.}
+\begin{equation}
+  \boxed{\;
+  \begin{aligned}
+    \vect{x}^{n+1} &\leftarrow \vect{x}^{n+\frac{1}{2}} + \tfrac{1}{2}\Delta t\;\dot{\vect{x}}^{n+1} \\
+    \bm{\psi}^{n+1} &\leftarrow \bm{\psi}^{n+\frac{1}{2}} + \tfrac{1}{2}\Delta t\;\bm{\omega}^{n+1}
+  \end{aligned}
+  \;}
+  \label{eq:mat-stage3}
+\end{equation}
+\textit{Input:} $\vect{x}^{n+1/2} \in \Real^{21 \times 2}$, $\bm{\psi}^{n+1/2} \in \Real^{20}$, $\dot{\vect{x}}^{n+1} \in \Real^{21 \times 2}$, $\bm{\omega}^{n+1} \in \Real^{20}$. \\
+\textit{Output:} $\vect{x}^{n+1} \in \Real^{21 \times 2}$, $\bm{\psi}^{n+1} \in \Real^{20}$\quad (62 scalars).
+
+% -------------------------------------------------------------------
+\subsection{Dataflow Summary}
+\label{sec:dataflow-summary}
+% -------------------------------------------------------------------
+
+The complete dependency graph for one substep is:
+
+\begin{equation}
+  \vect{s}^n
+  \;\xrightarrow{\text{Stage 1}}\;
+  \vect{q}^{n+\frac{1}{2}}
+  \;\xrightarrow[\text{Geometry}]{\mat{D},\;\|\cdot\|}\;
+  (\bm{\ell}, \bm{\varepsilon}, \vect{t})
+  \;\xrightarrow[\text{Rotation}]{\cos,\sin}\;
+  \mat{Q}_{\text{blk}}
+  \;\xrightarrow[\text{Constitutive}]{\mat{S}_{\text{blk}},\;\mat{B}_{\text{blk}}}\;
+  (\vect{n}^L, \bm{\tau}^L)
+  \;\xrightarrow[\text{Assembly}]{\mat{D}^T\!,\;\times\,,\;\odot}\;
+  (\vect{F}^{\text{int}}, \vect{m}^{\text{int}})
+\end{equation}
+\begin{equation}
+  (\vect{F}^{\text{int}} + \vect{F}^{\text{ext}},\;\, \vect{m}^{\text{int}} + \vect{m}^{\text{ext}})
+  \;\xrightarrow{\mat{M}^{-1}\!,\;\mat{J}_{\text{blk}}^{-1}}\;
+  (\ddot{\vect{x}}, \dot{\bm{\omega}})
+  \;\xrightarrow{+\Delta t}\;
+  (\dot{\vect{x}}^{n+1}, \bm{\omega}^{n+1})
+  \;\xrightarrow{\text{Stage 3}}\;
+  \vect{s}^{n+1}
+\end{equation}
+
+\noindent
+Every arrow is either a sparse matrix multiplication (constant or state-dependent) or an element-wise nonlinearity.
+The \textbf{only} nonlinearities are: $\|\cdot\|$ (norms), $(\cdot)^{-1}$ (reciprocals), $\cos/\sin$ (rotations), and $\times$ (cross products).
+All other operations are linear in their inputs.
+
+This structure is why the substep is amenable to neural network approximation: it is a sequence of linear maps interleaved with pointwise nonlinearities --- structurally identical to a deep network with sparse weight matrices and specialized activation functions.
+
+% -------------------------------------------------------------------
+\subsection{From Single Substep to the Full RL Step}
+\label{sec:full-rl-step}
+% -------------------------------------------------------------------
+
+The dataflow above describes a single Verlet substep $V_{\Delta t}$.
+One RL control step composes $n_{\text{sub}} = 500$ such substeps, but with an important detail: the rest curvature $\bm{\kappa}_v^{\text{rest}}$ is \emph{not constant} across substeps.
+It is a time-varying signal generated by the CPG from the RL action $\vect{a}$.
+
+\paragraph{Step 0: Action $\to$ CPG parameters.}
+The RL policy outputs $\vect{a} = (A, f, k, \phi_0, b) \in \Real^5$ once per control step.
+These five scalars parameterize the CPG traveling wave for the entire step duration $\Delta t_{\text{ctrl}} = 0.5$\,s.
+The action is held fixed; no new policy evaluation occurs until all 500 substeps complete.
+
+\paragraph{Substep loop.}
+For $n = 0, 1, \ldots, n_{\text{sub}} - 1$
+(superscripts on $t^n$, $\vect{s}^n$, and $\bm{\kappa}^{\text{rest},\,n}$ denote the substep \emph{index}, not exponentiation):
+
+\begin{equation}
+  \boxed{\;
+  \begin{aligned}
+    t^n &\leftarrow t_{\text{step}} + n \cdot \Delta t
+      && [\text{current substep time}] \\[4pt]
+    \kappa_v^{\text{rest},\,n} &\leftarrow A \sin\!\bigl(2\pi k \cdot s_v + 2\pi f \cdot t^n + \phi_0\bigr) + b,
+      \quad v = 1, \ldots, 19
+      && [\text{CPG evaluation at Voronoi nodes}] \\[4pt]
+    \vect{s}^{n+1} &\leftarrow V_{\Delta t}\!\bigl(\vect{s}^{n};\; \bm{\kappa}^{\text{rest},\,n}\bigr)
+      && [\text{one Verlet substep (Sections~\ref{sec:dataflow}--\ref{sec:dataflow-summary})}]
+  \end{aligned}
+  \;}
+  \label{eq:rl-step-loop}
+\end{equation}
+
+\noindent
+The rest curvature enters the substep at Stage~2d (Eq.~\ref{eq:mat-torque}), where it modulates the bending--twist couple $\bm{\tau}_v^L = \mat{B}_{\text{blk}}\,(\bm{\kappa}_v - \bm{\kappa}_v^{\text{rest},\,n})$.
+Because the CPG frequency $f$ produces a traveling wave, $\bm{\kappa}^{\text{rest},\,n}$ changes at every substep even though the action $\vect{a}$ is held fixed.
+The 500 substeps are therefore \emph{not identical}: each sees a different rest curvature configuration, and the snake body responds dynamically to the propagating wave.
+
+\paragraph{Transition operator dataflow.}
+The full RL step, combining action decoding, CPG evaluation, and substep composition, is:
+
+\begin{equation}
+  \vect{a}_t
+  \;\xrightarrow{\text{CPG decode}}\;
+  (A, f, k, \phi_0, b)
+  \;\xrightarrow[\text{per substep}]{\bm{\kappa}^{\text{rest}}(t^n)}\;
+  \underbrace{V_{\Delta t}\bigl(\,\cdot\,;\;\bm{\kappa}^{\text{rest},\,0}\bigr)
+    \;\circ\; \cdots \;\circ\;
+    V_{\Delta t}\bigl(\,\cdot\,;\;\bm{\kappa}^{\text{rest},\,499}\bigr)}_{500 \text{ substeps, each with distinct } \bm{\kappa}^{\text{rest}}}
+  \;\longrightarrow\;
+  \vect{s}_{t+1}
+  \label{eq:rl-step-dataflow}
+\end{equation}
+
+\noindent
+Note that the composition is ordered: substep 0 applies first (innermost), substep 499 last (outermost).
+This is not a simple power iteration $V_{\Delta t}^{500}$ because the rest curvature changes each time.
+
+\paragraph{Input and output of $T(\vect{s}_t, \vect{a}_t)$.}
+
+\begin{table}[H]
+  \centering
+  \renewcommand{\arraystretch}{1.3}
+  \begin{tabular}{lp{9cm}c}
+    \toprule
+    & \textbf{Quantity} & \textbf{Shape} \\
+    \midrule
+    \textbf{Input}
+      & State $\vect{s}_t$: positions, velocities, yaw angles, angular velocities & $\Real^{124}$ \\
+      & Action $\vect{a}_t$: CPG parameters $(A, f, k, \phi_0, b)$ & $\Real^{5}$ \\
+      & Step start time $t_{\text{step}}$ (for CPG phase) & $\Real$ \\
+    \midrule
+    \textbf{Output}
+      & Next state $\vect{s}_{t+1} = T(\vect{s}_t, \vect{a}_t)$ & $\Real^{124}$ \\
+    \midrule
+    \textbf{Internal}
+      & CPG rest curvatures (recomputed each substep) & $\Real^{19} \times 500$ \\
+      & All intermediate quantities from Sections~\ref{sec:dataflow}--\ref{sec:dataflow-summary} & --- \\
+    \bottomrule
+  \end{tabular}
+  \caption{Input/output interface of the transition operator $T$.
+    The neural surrogate $f_\theta\colon \Real^{129} \to \Real^{124}$ replaces
+    this entire pipeline --- 500 CPG evaluations and 500 Verlet substeps ---
+    with a single forward pass.}
+  \label{tab:transition-io}
+\end{table}
+
+\paragraph{Equation count (full RL step).}
+Table~\ref{tab:equation-count} counts $\sim$377{,}000 scalar operations for the 500 Verlet substeps.
+Adding the CPG evaluation ($19$ sine evaluations $\times$ $500$ substeps $= 9{,}500$ additional transcendental operations) brings the total to approximately $\mathbf{386{,}500}$ scalar operations per RL step.
+The CPG cost is small relative to the force assembly, but the time-varying nature of $\bm{\kappa}^{\text{rest}}$ means the substeps are not interchangeable --- each sees a different rest curvature.
+The surrogate must therefore learn the \emph{integrated effect} of the entire traveling wave over $\Delta t_{\text{ctrl}}$, not just the response to a single static curvature configuration.
+
+% ===================================================================
+\section{Control Input}
+\label{sec:control}
+% ===================================================================
+
+The rest curvature $\bm{\kappa}_0(s, t)$ is not a system parameter --- it is a \textbf{time-varying forcing} set by the RL policy at each control step via the CPG:
+
+\begin{equation}
+  \kappa_e^{\text{rest}}(t)
+    = A \sin\!\bigl(2\pi k \cdot s_e + 2\pi f \cdot t + \phi_0\bigr) + b
+  \label{eq:cpg}
+\end{equation}
+
+\begin{equation}
+  \vect{a} = (A,\; f,\; k,\; \phi_0,\; b) \in \Real^5
+  \label{eq:action}
+\end{equation}
+
+\begin{table}[H]
+  \centering
+  \begin{tabular}{clrl}
+    \toprule
+    Symbol & Name & Range & Units \\
+    \midrule
+    $A$ & Amplitude & $[0, 5]$ & rad\,m$^{-1}$ \\
+    $f$ & Frequency & $[0.5, 3.0]$ & Hz \\
+    $k$ & Wave number & $[0.5, 3.5]$ & wavelengths per body length \\
+    $\phi_0$ & Phase offset & $[0, 2\pi]$ & rad \\
+    $b$ & Turn bias & $[-2, 2]$ & rad\,m$^{-1}$ \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+% ===================================================================
+\section{Complete System Summary}
+\label{sec:summary}
+% ===================================================================
+
+\begin{table}[H]
+  \centering
+  \renewcommand{\arraystretch}{1.4}
+  \begin{tabular}{cp{11cm}}
+    \toprule
+    \textbf{Component} & \textbf{Specification} \\
+    \midrule
+    $\mathcal{L}$ &
+      \textbf{Continuous:} Cosserat rod PDEs (\ref{eq:cosserat-pdes}) with linear elastic constitutive law (\ref{eq:constitutive}). \newline
+      \textbf{Semi-discrete:} 124 coupled first-order ODEs (\ref{eq:ode-compact}). \\
+    \midrule
+    $\Omega$ &
+      $s \in [0, 1.0\,\text{m}] \times t \in [0, T]$. \newline
+      Discretized: $N = 21$ nodes, $N_e = 20$ elements, staggered grid. \\
+    \midrule
+    BC &
+      Free--free: $\vect{F} = \vect{M} = \vect{0}$ at both endpoints (\ref{eq:bc}). \\
+    \midrule
+    IC &
+      Straight rod at rest: $\vect{x}(s,0) = \vect{x}_0 + s\hat{\vect{e}}_x$, $\vect{v} = \bm{\kappa} = \bm{\omega} = \vect{0}$ (\ref{eq:ic}). \\
+    \midrule
+    $\bm{\theta}$ &
+      $\{E = 2{\times}10^6\,\text{Pa},\; \nu = 0.5,\; \rho = 1200\,\text{kg/m}^3,\; R = 0.001\,\text{m},\; L = 1.0\,\text{m}\}$ \newline
+      $\{c_t = 0.01,\; c_n = 0.1,\; \gamma = 0.1\}$ \newline
+      $\{\Delta t = 0.001\,\text{s},\; n_{\text{sub}} = 500,\; \text{Position Verlet}\}$ \\
+    \midrule
+    Control &
+      $\vect{a} = (A, f, k, \phi_0, b) \in \Real^5$ via CPG (\ref{eq:cpg}); enters as $\bm{\kappa}_0(s,t)$. \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+% ---------------------------------------------------------------------------
+\end{document}

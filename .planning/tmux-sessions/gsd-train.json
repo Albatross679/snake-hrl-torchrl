@@ -1,0 +1,11 @@
+{
+  "session_name": "gsd-train",
+  "command": "python3 -m aprx_model_elastica.sweep --data-dir data/surrogate --device auto",
+  "phase": "03",
+  "created_at": "2026-03-10T03:27:00Z",
+  "status": "running",
+  "panes": {
+    "0": "sweep training (5 configs, ~1-4 hrs)",
+    "1": "watch: sweep directories + metrics"
+  }
+}
