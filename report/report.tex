@@ -1,0 +1,1997 @@
+% Neural Surrogate Modeling for Snake Robot Locomotion
+% Research Report --- Graduation Project Deliverable
+
+\documentclass[11pt]{article}
+
+% ---------------------------------------------------------------------------
+% Font and encoding
+% ---------------------------------------------------------------------------
+\usepackage{palatino}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+
+% ---------------------------------------------------------------------------
+% Page layout
+% ---------------------------------------------------------------------------
+\usepackage[top=1in, bottom=1in, left=1.25in, right=1.25in]{geometry}
+\usepackage{setspace}
+\setstretch{1.1}
+\setlength{\parindent}{1em}
+\setlength{\parskip}{0.4em}
+
+% ---------------------------------------------------------------------------
+% Math
+% ---------------------------------------------------------------------------
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{mathtools}
+
+% ---------------------------------------------------------------------------
+% Figures and tables
+% ---------------------------------------------------------------------------
+\usepackage{graphicx}
+\usepackage{subcaption}
+\usepackage{float}
+\usepackage{array}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{longtable}
+\graphicspath{{../figures/}{../media/}}
+
+% ---------------------------------------------------------------------------
+% TikZ for diagrams
+% ---------------------------------------------------------------------------
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta, positioning, calc, fit, backgrounds}
+
+% ---------------------------------------------------------------------------
+% Bold math vectors and landscape tables
+% ---------------------------------------------------------------------------
+\usepackage{bm}
+\usepackage{pdflscape}
+
+% ---------------------------------------------------------------------------
+% Colors
+% ---------------------------------------------------------------------------
+\usepackage{xcolor}
+
+% ---------------------------------------------------------------------------
+% Lists
+% ---------------------------------------------------------------------------
+\usepackage{enumitem}
+\setlist[itemize]{nosep, topsep=0.3em, itemsep=0.2em}
+
+% ---------------------------------------------------------------------------
+% Algorithms
+% ---------------------------------------------------------------------------
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+
+% ---------------------------------------------------------------------------
+% Section spacing
+% ---------------------------------------------------------------------------
+\usepackage{titlesec}
+\titlespacing*{\section}{0pt}{1.2em}{0.6em}
+\titlespacing*{\subsection}{0pt}{0.9em}{0.3em}
+\titlespacing*{\subsubsection}{0pt}{0.7em}{0.2em}
+
+% ---------------------------------------------------------------------------
+% Header and footer
+% ---------------------------------------------------------------------------
+\usepackage{fancyhdr}
+\pagestyle{fancy}
+\fancyhf{}
+\lhead{\small Neural Surrogate for Snake Robot RL}
+\rfoot{\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+
+% ---------------------------------------------------------------------------
+% Table of contents and section depth
+% ---------------------------------------------------------------------------
+\setcounter{tocdepth}{3}
+\setcounter{secnumdepth}{3}
+
+% ---------------------------------------------------------------------------
+% Placeholder macros
+% ---------------------------------------------------------------------------
+\newcommand{\placeholder}[1]{\textcolor{gray}{\textit{[Placeholder: #1]}}}
+\newcommand{\mytodo}[1]{\textcolor{red}{\textbf{[TODO: #1]}}}
+
+% ---------------------------------------------------------------------------
+% PINN/DD-PINN notation
+% ---------------------------------------------------------------------------
+\newcommand{\xhat}{\hat{\mathbf{x}}}
+\newcommand{\avec}{\mathbf{a}_{\mathrm{ans}}}
+\newcommand{\fssm}{\mathbf{f}_{\mathrm{SSM}}}
+\newcommand{\fnn}{\mathbf{f}_{\mathrm{NN}}}
+\newcommand{\phig}{\phi_g}
+
+% ---------------------------------------------------------------------------
+% Bibliography (natbib --- before hyperref)
+% ---------------------------------------------------------------------------
+\usepackage[round, sort, authoryear]{natbib}
+
+% ---------------------------------------------------------------------------
+% Hyperref and microtype --- before cleveref
+% ---------------------------------------------------------------------------
+\usepackage[hidelinks]{hyperref}
+\usepackage{microtype}
+
+% ---------------------------------------------------------------------------
+% Cross-references (cleveref --- MUST be loaded after hyperref)
+% ---------------------------------------------------------------------------
+\usepackage{cleveref}
+
+% ---------------------------------------------------------------------------
+% Title
+% ---------------------------------------------------------------------------
+\title{%
+  \textbf{Neural Surrogate Modeling for Snake Robot Locomotion:}\\[0.3em]
+  \large Faster Reinforcement Learning via Learned Cosserat Rod Dynamics%
+}
+\author{%
+  Qifan Wen\\
+  \small Electrical and Computer Engineering\\
+  \small The Ohio State University\\
+  \small \texttt{wen.679@buckeyemail.osu.edu}\\[0.6em]
+  \small \textit{Advisor:} Prof.\ Abhishek Gupta\quad\small\texttt{gupta.706@osu.edu}%
+}
+\date{}
+
+% ===========================================================================
+\begin{document}
+% ===========================================================================
+
+\maketitle
+
+% ---------------------------------------------------------------------------
+\begin{abstract}
+\placeholder{Write abstract after all experimental results are available.}
+\end{abstract}
+
+\tableofcontents
+\newpage
+
+% ---------------------------------------------------------------------------
+% Notation table
+% ---------------------------------------------------------------------------
+\section*{Notation}
+\label{sec:notation}
+\addcontentsline{toc}{section}{Notation}
+
+\begin{table}[H]
+  \centering
+  \small
+  \begin{tabular}{lll}
+    \toprule
+    Symbol & Dimension & Meaning \\
+    \midrule
+    $\mathbf{s}_t$ & $\mathbb{R}^{124}$ & Rod state vector at time step $t$ \\
+    $\mathbf{a}_t$ & $[-1,1]^5$ & Normalized CPG action vector \\
+    $T$ & $\mathbb{R}^{124} \times \mathbb{R}^5 \to \mathbb{R}^{124}$ & Ground-truth transition operator (PyElastica) \\
+    $f_\theta$ & $\mathbb{R}^{189} \to \mathbb{R}^{124}$ & Neural surrogate model with parameters $\theta$ \\
+    $\mathbf{z}_t$ & $\mathbb{R}^{189}$ & Surrogate input (state $\|$ action $\|$ phase encoding) \\
+    $\boldsymbol{\phi}_e$ & $\mathbb{R}^3$ & Per-element CPG phase triplet for element $e$ \\
+    $\mathbf{x}(s,t)$ & $\mathbb{R}^3$ & Rod centerline position at arc length $s$ \\
+    $\mathbf{d}(s,t)$ & $\mathbb{R}^3$ & Material director frame (orientation) \\
+    $\mathbf{F}$ & $\mathbb{R}^3$ & Internal force (shear and tension) \\
+    $\mathbf{M}$ & $\mathbb{R}^3$ & Internal moment (bending and torsion) \\
+    $\kappa_e^{\text{target}}$ & $\mathbb{R}$ & Target curvature at element $e$ \\
+    $\mu_\Delta, \sigma_\Delta$ & $\mathbb{R}^{124}$ & Training-set mean and std of state deltas \\
+    $N$ & 21 & Number of discretization nodes \\
+    $N_e$ & 20 & Number of discretization elements \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+% ===========================================================================
+% CHAPTER 1: INTRODUCTION
+% ===========================================================================
+\section{Introduction}
+\label{sec:intro}
+
+Reinforcement learning for soft and continuum robots is bottlenecked by the cost of first-principles simulation.
+A snake robot modeled as a Cosserat rod requires resolving elastic body dynamics, anisotropic ground friction, and internally generated muscle moments at every simulation substep --- PyElastica \citep{Naughton2021} uses 500 Position Verlet substeps per control step, costing ${\sim}46$\,ms per environment step.
+This report presents a neural surrogate $f_\theta \approx T$ that replaces the transition operator with a single GPU forward pass (${\sim}0.001$\,ms), targeting a four-to-five order-of-magnitude speedup for RL training.
+
+The project has three pillars:
+\begin{enumerate}
+  \item \textbf{Neural surrogate} --- parallel data collection from 16 PyElastica workers, followed by MLP training on state-delta prediction with per-element CPG phase encoding (\Cref{sec:surrogate}).
+  \item \textbf{Direct RL} --- PPO on the Elastica backend (\Cref{sec:rl-elastica}) and SAC/PPO/MM-RKHS on the DisMech backend for the Choi2025 follow task (\Cref{sec:rl-dismech}).
+  \item \textbf{Physics-informed models} --- standard PINN, DD-PINN, and physics-regularized surrogate variants that embed the governing equations into training (\Cref{sec:pinn}).
+\end{enumerate}
+
+Two physics backends are investigated --- PyElastica (explicit symplectic) and DisMech (implicit backward Euler) --- providing complementary perspectives on surrogate fidelity and RL control.
+
+% ===========================================================================
+% CHAPTER 2: RELATED WORK
+% ===========================================================================
+\section{Related Work}
+\label{sec:related}
+
+\subsection{Neural Surrogates for ODE/PDE}
+\label{sec:related:surrogates}
+
+\Cref{tab:related-surrogates} summarizes neural surrogate methods directly relevant to the Cosserat rod setting.
+
+\begin{table}[H]
+  \centering
+  \footnotesize
+  \renewcommand{\arraystretch}{1.35}
+  \caption{Neural surrogates for soft robot / Cosserat rod dynamics.}
+  \label{tab:related-surrogates}
+  \begin{tabular}{@{}p{2.8cm}p{1.8cm}p{1.6cm}p{1.3cm}p{1.3cm}p{3.6cm}@{}}
+    \toprule
+    \textbf{Reference} & \textbf{Method} & \textbf{Architecture} & \textbf{Speedup} & \textbf{Accuracy} & \textbf{Key contribution} \\
+    \midrule
+    DD-PINN \newline \citep{Stolzle2025}
+      & Domain-decoupled PINN
+      & Feedforward NN
+      & $44{,}000\times$
+      & 3\,mm EE error (2.3\%)
+      & Time domain decoupled from network; closed-form gradients; MPC at 70\,Hz on GPU \\
+    \addlinespace
+    KNODE-Cosserat \newline \citep{Hsieh2024}
+      & Hybrid physics + Neural ODE
+      & Neural ODE residual
+      & ---
+      & 58.7\% vs.\ physics-only
+      & Coarse Cosserat backbone $+$ learned correction; trained on PyElastica data \\
+    \addlinespace
+    SoRoLEX \newline \citep{SoRoLEX2024}
+      & Learned simulator for RL
+      & LSTM
+      & $\sim\!10\times$
+      & Task-space obs.
+      & Full pipeline: sim data $\to$ surrogate $\to$ PPO; JAX GPU parallelization \\
+    \addlinespace
+    PINN Soft Robot \newline \citep{PINNSoftRobot2025}
+      & Physics-informed NN
+      & PINN
+      & $467\times$
+      & ---
+      & MPC at 47\,Hz; as little as 1 training dataset; articulated soft robot \\
+    \midrule
+    \textbf{This work}
+      & Data-driven MLP surrogate
+      & MLP (3$\times$512)
+      & ${\sim}46{,}000\times$ (proj.)
+      & \placeholder{---}
+      & Per-element CPG phase encoding; single-step MSE training; full 124-dim state \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\noindent
+The most closely related prior work is SoRoLEX, which shares the same pipeline structure (collect trajectories, train neural dynamics model, run RL in learned environment).
+This work differs in architecture (MLP vs.\ LSTM), prediction target (full 124-dimensional Cosserat rod state vs.\ task-space observation), and the explicit use of a multi-step rollout loss.
+
+\subsection{RL Control for Snake and Soft Robots}
+\label{sec:related:rl}
+
+\Cref{tab:related-rl-snake} consolidates RL approaches for snake and soft robot control.
+
+\begin{table}[H]
+  \centering
+  \footnotesize
+  \renewcommand{\arraystretch}{1.2}
+  \caption{RL methods for snake and soft robot control.}
+  \label{tab:related-rl-snake}
+  \begin{tabular*}{\textwidth}{@{\extracolsep{\fill}}p{2.8cm}p{2.1cm}p{2.0cm}lp{1.6cm}p{3.5cm}@{}}
+    \toprule
+    \textbf{Reference} & \textbf{Robot} & \textbf{Actions} & \textbf{Algo.} & \textbf{Simulator} & \textbf{Key contribution} \\
+    \midrule
+    \citet{Shi2020}      & 3-link kinem.    & Joint vel.\ (disc.)  & DQN       & Analytical  & SE(2) fiber bundle reduces state 5D$\to$3D \\
+    \citet{Liu2021}      & 4-link soft      & CPG + option (6)     & PPO       & Custom      & Multi-agent game for contact-aware nav. \\
+    \citet{Liu2022}      & 9-link wheeled   & Gait offset (1)      & PPO       & MuJoCo      & RL modulates undulation for path following \\
+    \citet{Liu2023}      & 4-link soft      & CPG tonic (4)        & PPO       & MuJoCo      & 12-level curriculum + domain randomization \\
+    \citet{Zheng2022}    & 7-link rigid     & CPG (5)              & PPO       & MuJoCo      & Two-phase curriculum; series elastic act. \\
+    \citet{Jiang2024}    & 11-joint COBRA   & Dual CPG (7)         & DDPG      & MuJoCo      & A*$\to$RL$\to$CPG$\to$PID hierarchy \\
+    \citet{Schaffer2024} & Biohybrid worm   & Muscle act.\ (42)    & PPO       & PyElastica  & Adaptive muscle force ceilings \\
+    \citet{Choi2025}     & Soft manip.      & $\Delta\kappa$ (5)   & SAC       & DisMech     & Implicit Euler for contact-rich tasks \\
+    \citet{Bing2019}     & Soft snake       & CPG (5)              & PPO       & PyElastica  & CPG reduces exploration vs.\ per-joint \\
+    \citet{Hong2026}     & Soft robot       & Joint torques        & PPO       & FEM         & FEM essential for sim-to-real fidelity \\
+    \citet{Janner2019}   & Rigid artic.     & Joint torques        & SAC+M     & MuJoCo      & Model-based short-horizon planning \\
+    \citet{SanchezGonzalez2020} & Particles  & Forces               & ---       & Custom      & Graph network learns mesh-based physics \\
+    \midrule
+    \textbf{This work}   & Soft snake       & CPG (5)              & PPO       & Elast./DM   & Surrogate for 4--5 OOM speedup \\
+    \bottomrule
+  \end{tabular*}
+\end{table}
+
+\noindent
+Key themes: CPG-based action spaces dominate snake robot RL, reducing exploration burden relative to per-joint torque control.
+Curriculum learning and domain randomization bridge the sim-to-real gap.
+All approaches share the simulation cost bottleneck motivating this work: MuJoCo costs ${\sim}1$\,ms/step, while Cosserat rod simulators cost $12$--$46$\,ms/step.
+
+\subsection{Physics Backend Comparison}
+\label{sec:related:backends}
+
+This work uses two Cosserat rod simulators with fundamentally different numerical strategies.
+\Cref{tab:comprehensive-comparison} summarizes the key differences.
+
+\begin{table}[H]
+  \centering
+  \footnotesize
+  \renewcommand{\arraystretch}{1.3}
+  \caption{Comprehensive comparison of PyElastica and DisMech.}
+  \label{tab:comprehensive-comparison}
+  \begin{tabular}{@{}p{3.5cm}p{4.5cm}p{5.5cm}@{}}
+    \toprule
+    \textbf{Property} & \textbf{PyElastica} & \textbf{DisMech} \\
+    \midrule
+    \multicolumn{3}{l}{\textit{Solver}} \\
+    Physics model           & Cosserat rod theory        & Discrete Elastic Rods (DER) \\
+    Integration scheme      & Explicit symplectic (Verlet)  & Implicit backward Euler (Newton) \\
+    Timestep per call       & $\Delta t_{\text{sub}} = 0.001$\,s    & $\Delta t = 0.05$\,s \\
+    Steps per RL action     & 500 substeps               & 1 step \\
+    Per-step cost            & ${\sim}46$\,ms (500 explicit evals)   & ${\sim}12$\,ms (1 Newton solve) \\
+    \midrule
+    \multicolumn{3}{l}{\textit{Supported forces}} \\
+    Shear--stretch / Bending / Torsion           & \checkmark                  & \checkmark \\
+    RFT (anisotropic drag)   & \checkmark                  & --- \\
+    Self-contact             & ---                         & \checkmark (FCL) \\
+    \midrule
+    \multicolumn{3}{l}{\textit{Control}} \\
+    Curvature mechanism      & Elastic rest shape ($\kappa_0$) & Hard constraint (natural strain) \\
+    CPG resolution           & 500 curvature updates/step  & 1 curvature snapshot/step \\
+    \midrule
+    \multicolumn{3}{l}{\textit{Metadata}} \\
+    Theory                   & Cosserat rod                            & 2008 DER \citep{Bergou2008}; 2010 \citep{Bergou2010} \\
+    Simulator                & 2021 PyElastica \citep{Naughton2021}    & 2024 DisMech \citep{Choi2024dismech} \\
+    Python framework         & (same)                                  & 2025 Py-DiSMech \citep{Lahoti2025pydismech} \\
+    Repository               & {\scriptsize\url{github.com/GazzolaLab/PyElastica}} & {\scriptsize\url{github.com/StructuresComp/dismech-rods}} \\
+    Language                 & Python (Numba JIT)                      & C++ (Python bindings) \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+The fundamental trade-off: PyElastica's 500 substeps capture continuous CPG evolution but cost $4\times$ more wall-clock time.
+DisMech's single implicit step is faster and unconditionally stable, but collapses intra-step dynamics.
+For surrogate modeling, Elastica presents a harder approximation target.
+
+The DisMech ecosystem has evolved significantly beyond the original DER formulation.
+\citet{Choi2024dismech} introduced DisMech as a full simulator with implicit contact handling and real2sim validation, achieving an order-of-magnitude speedup over prior DER implementations.
+\citet{Lahoti2025pydismech} subsequently released Py-DiSMech, a vectorized Python reimplementation that further improves computational efficiency while adding PI-based shape control and modular actuation interfaces.
+
+% ===========================================================================
+% CHAPTER 3: NEURAL NETWORK SURROGATE MODEL FOR ELASTICA
+% ===========================================================================
+\section{Neural Network Surrogate Model for Elastica}
+\label{sec:surrogate}
+
+% ---- 3.1 Motivation ----
+\subsection{Motivation}
+\label{sec:surrogate:motivation}
+
+Reinforcement learning for soft robots requires millions of environment interactions, yet first-principles Cosserat rod simulators are expensive: PyElastica costs ${\sim}46$\,ms per step (500 Verlet substeps), while DisMech costs ${\sim}12$\,ms (one Newton solve).
+At these rates, a $2 \times 10^6$-step training run takes ${\sim}9$\,hours on Elastica and ${\sim}36$\,hours with 16 parallel workers --- prohibitive for hyperparameter sweeps or curriculum learning.
+
+Neural surrogate models address this bottleneck by replacing the physics solver with a learned transition function $f_\theta$ that approximates the state-to-state mapping in a single GPU forward pass (${\sim}0.001$\,ms), targeting four-to-five orders-of-magnitude speedup.
+The approach is well-established for PDE systems: feedforward networks and neural ODEs have been used to learn dynamics for fluid simulation \citep{SanchezGonzalez2020}, articulated soft robots \citep{PINNSoftRobot2025}, and Cosserat rods specifically \citep{Hsieh2024, SoRoLEX2024}.
+The key challenge is \emph{fidelity}: the surrogate must be accurate enough over multi-step rollouts that RL policies trained in the surrogate environment transfer to the true simulator.
+
+This chapter presents our surrogate pipeline --- physics, data collection, and model training:
+Cosserat rod PDE $\to$ staggered-grid ODE $\to$ explicit integrator $\to$ data $\to$ neural surrogate.
+Detailed derivations are in \Cref{app:physics}.
+Data collection and surrogate training were performed on the hardware in \Cref{tab:hardware-surrogate}.
+
+\begin{table}[H]
+  \centering
+  \small
+  \renewcommand{\arraystretch}{1.3}
+  \caption{Hardware for data collection and surrogate training.}
+  \label{tab:hardware-surrogate}
+  \begin{tabular}{@{}ll@{}}
+    \toprule
+    \textbf{Component} & \textbf{Specification} \\
+    \midrule
+    GPU          & 1$\times$ Tesla V100-PCIE-16\,GB (Volta, 5120 CUDA cores) \\
+    CPU          & 24 cores / 48 threads \\
+    RAM          & 270\,GB \\
+    CUDA         & 12.8 \\
+    Python       & CPython 3.12 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+% ---- 3.2 Elastica Physics ----
+\subsection{Elastica Physics}
+\label{sec:surrogate:physics}
+
+\subsubsection{Cosserat Rod Formulation}
+\label{sec:surrogate:physics:cosserat}
+
+The system is fully specified by the tuple $\mathcal{S} = (\mathcal{L},\; \Omega,\; \text{BC},\; \text{IC},\; \boldsymbol{\theta})$:
+
+\begin{table}[H]
+  \centering
+  \small
+  \renewcommand{\arraystretch}{1.3}
+  \caption{Well-posedness tuple for the Elastica Cosserat rod system.}
+  \label{tab:system-tuple}
+  \begin{tabular}{clp{8.5cm}}
+    \toprule
+    Component & Name & Specification \\
+    \midrule
+    $\mathcal{L}$ & Governing equations &
+      Cosserat rod PDEs: conservation of linear and angular momentum with linear elastic constitutive law \\
+    $\Omega$ & Domain &
+      $s \in [0, L]$, $L = 0.5$\,m (arc length) $\times$ $t \in [0, T]$ (time) \\
+    BC & Boundary conditions &
+      Free--free: $\mathbf{F} = \mathbf{M} = \mathbf{0}$ at $s = 0$ and $s = L$ \\
+    IC & Initial conditions &
+      Straight rod at rest: $\mathbf{x}(s,0) = \mathbf{x}_0 + s\hat{\mathbf{e}}_x$,\; $\mathbf{v} = \boldsymbol{\kappa} = \boldsymbol{\omega} = \mathbf{0}$ \\
+    $\boldsymbol{\theta}$ & Parameters &
+      $E{=}10^5$\,Pa, $\nu{=}0.5$, $\rho{=}1200$\,kg/m$^3$, $R{=}0.02$\,m, $c_t{=}0.01$, $c_n{=}0.05$, $\gamma{=}0.002$ \\
+    Control & CPG forcing &
+      $\mathbf{a} = (A, f, k, \phi_0, b) \in \mathbb{R}^5$ enters as time-varying rest curvature $\boldsymbol{\kappa}_0(s,t)$ \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+The governing PDEs are:
+\begin{subequations}
+\label{eq:cosserat-pdes}
+\begin{alignat}{2}
+  \rho A \,\frac{\partial \mathbf{v}}{\partial t}
+    &= \frac{\partial \mathbf{F}}{\partial s} + \mathbf{f}_{\text{ext}}
+    &\qquad& \text{(linear momentum)}
+  \label{eq:pde-linear} \\[4pt]
+  \rho \mathbf{I} \,\frac{\partial \boldsymbol{\omega}}{\partial t}
+    &= \frac{\partial \mathbf{M}}{\partial s}
+      + \mathbf{m}_{\text{ext}}
+      + \frac{\partial \mathbf{x}}{\partial s} \times \mathbf{F}
+    &\qquad& \text{(angular momentum)}
+  \label{eq:pde-angular}
+\end{alignat}
+\end{subequations}
+with constitutive closure:
+\begin{equation}
+  \mathbf{F} = \mathbf{S}\,(\boldsymbol{\varepsilon} - \boldsymbol{\varepsilon}_0), \quad
+  \mathbf{M} = \mathbf{B}\,(\boldsymbol{\kappa} - \boldsymbol{\kappa}_0), \quad
+  \mathbf{S} = \operatorname{diag}(GA, GA, EA), \quad
+  \mathbf{B} = \operatorname{diag}(EI, EI, GJ)
+  \label{eq:constitutive}
+\end{equation}
+
+Spatial discretization on a staggered grid ($N{=}21$ nodes, $N_e{=}20$ elements) reduces the PDE to 124 coupled first-order ODEs:
+\begin{equation}
+  \dot{\mathbf{s}} = \mathbf{g}(\mathbf{s},\, \mathbf{a},\, t), \qquad
+  \mathbf{s} \in \mathbb{R}^{124},\;\; \mathbf{a} \in \mathbb{R}^{5}
+  \label{eq:ode-system}
+\end{equation}
+
+Position Verlet ($\Delta t = 0.001$\,s, $n_{\text{sub}} = 500$ substeps per RL step of $\Delta t_{\text{ctrl}} = 0.5$\,s) produces the transition operator:
+\begin{equation}
+  \mathbf{s}_{t+1} = T(\mathbf{s}_t,\, \mathbf{a}_t)
+    = \underbrace{V_{\Delta t}(\,\cdot\,;\, \boldsymbol{\kappa}^{\text{rest},499}) \circ \cdots \circ V_{\Delta t}(\,\cdot\,;\, \boldsymbol{\kappa}^{\text{rest},0})}_{500 \text{ substeps, each with distinct rest curvature}}(\mathbf{s}_t)
+  \label{eq:transition-operator}
+\end{equation}
+
+See \Cref{app:physics} for detailed PDE derivations, staggered grid operators, external force handling, and the DisMech formulation.
+
+\begin{table}[H]
+  \centering
+  \small
+  \caption{State vector $\mathbf{s}_t \in \mathbb{R}^{124}$ layout (Elastica).}
+  \label{tab:state-vector}
+  \begin{tabular}{llrll}
+    \toprule
+    Slice & Variable & Count & Meaning & Equation \\
+    \midrule
+    \texttt{[0:21]}    & $x_i$          & 21 & Node $x$-positions (m)                   & Position kinematics \\
+    \texttt{[21:42]}   & $y_i$          & 21 & Node $y$-positions (m)                   & Position kinematics \\
+    \texttt{[42:63]}   & $\dot{x}_i$    & 21 & Node $x$-velocities (m\,s$^{-1}$)       & Linear momentum ODE \\
+    \texttt{[63:84]}   & $\dot{y}_i$    & 21 & Node $y$-velocities (m\,s$^{-1}$)       & Linear momentum ODE \\
+    \texttt{[84:104]}  & $\psi_e$       & 20 & Element yaw angle (rad)                  & Orientation kinematics \\
+    \texttt{[104:124]} & $\omega_{z,e}$ & 20 & Element angular velocity (rad\,s$^{-1}$) & Angular momentum ODE \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\subsubsection{Elastica Transition Operator}
+\label{sec:surrogate:physics:algorithm}
+
+\Cref{alg:elastica-transition} expands the full transition operator.
+
+\begin{algorithm}[ht!]\small
+\caption{Elastica Transition Operator $T(\mathbf{s}_t,\, \mathbf{a}_t,\, t_{\text{step}}) \to \mathbf{s}_{t+1}$}\label{alg:elastica-transition}
+\begin{algorithmic}[1]
+\Require State $\mathbf{s}_t \in \mathbb{R}^{124}$, action $\mathbf{a}_t \in \mathbb{R}^5$, step time $t_{\text{step}}$
+\Ensure Next state $\mathbf{s}_{t+1} \in \mathbb{R}^{124}$
+\State $\mathbf{s} \gets \mathbf{s}_t$
+\For{$n = 0, 1, \ldots, 499$}
+  \State $t^n \gets t_{\text{step}} + n \cdot \Delta t$
+  \State Update rest curvature: $\kappa_v^{\text{rest}} \gets A \sin(2\pi k \cdot s_v + 2\pi f \cdot t^n + \phi_0) + b$ for $v = 1, \ldots, 19$
+  \State Verlet half-step: $\mathbf{q}^{1/2} \gets \mathbf{q} + \tfrac{1}{2}\Delta t\;\dot{\mathbf{q}}$
+  \State Compute geometry: edge vectors, tangents, strain, curvature
+  \State Compute internal forces (shear--stretch) and torques (bending)
+  \State Compute external forces: RFT friction + damping + gravity
+  \State Compute accelerations: $\ddot{\mathbf{x}} \gets (\mathbf{F}^{\text{int}} + \mathbf{F}^{\text{ext}}) / \mathbf{m}$
+  \State Verlet velocity update + full-step position update
+\EndFor
+\State \textbf{return} $\mathbf{s}_{t+1} = (\mathbf{q},\, \dot{\mathbf{q}})$
+\end{algorithmic}
+\end{algorithm}
+
+\noindent
+\textit{Cost:} ${\sim}377{,}000$ FLOPs/step (${\sim}46$\,ms on CPU).
+The CPG phase advances by $\Delta\phi = 2\pi f \Delta t$ per substep --- the surrogate must learn the \textit{integrated effect} of the traveling wave across 500 distinct curvature configurations.
+
+\subsubsection{CPG Control}
+\label{sec:surrogate:physics:cpg}
+
+The Central Pattern Generator drives locomotion by imposing time-varying rest curvature on the rod.
+When the rest curvature differs from the rod's current curvature, elastic bending moments drive the rod toward the target shape.
+As the CPG sweeps a sinusoidal curvature wave along the body, anisotropic ground friction (higher normal than tangential) converts the lateral undulation into net forward thrust---the same mechanism underlying biological serpentine locomotion.
+The RL agent selects five CPG wave parameters per control step:
+
+\begin{table}[H]
+  \centering
+  \small
+  \caption{Action vector $\mathbf{a}_t \in \mathbb{R}^{5}$: CPG wave parameters.}
+  \label{tab:action-vector}
+  \begin{tabular}{clrl}
+    \toprule
+    Symbol & Name & Range & Units \\
+    \midrule
+    $A$      & Amplitude    & $[0, 5]$      & rad\,m$^{-1}$ \\
+    $f$      & Frequency    & $[0.5, 3.0]$  & Hz \\
+    $k$      & Wave number  & $[0.5, 3.5]$  & wavelengths/body \\
+    $\phi_0$ & Phase offset & $[0, 2\pi]$   & rad \\
+    $b$      & Turn bias    & $[-2, 2]$     & rad\,m$^{-1}$ \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\noindent
+The serpenoid rest curvature at each Voronoi node:
+\begin{equation}
+  \kappa_v^{\text{rest}}(t) = A \sin(2\pi k \cdot s_v + 2\pi f \cdot t + \phi_0) + b, \qquad v = 1, \ldots, 19.
+  \label{eq:serpenoid}
+\end{equation}
+
+% Backend Comparison moved to Section 2.3
+
+% ---- 3.2 Data Collection ----
+\subsection{Data Collection}
+\label{sec:surrogate:data}
+
+Training data is generated by 16 independent PyElastica worker processes:
+
+\begin{enumerate}
+  \item Actions sampled from 5D CPG space using Sobol quasi-random sequences (50\% Sobol, 50\% uniform).
+  \item 30\% of episodes perturbed: random position offsets, angular velocity noise ($\sigma_\omega = 1.5$\,rad/s).
+  \item Each worker stores transitions $(\mathbf{s}_t, \mathbf{a}_t, \mathbf{s}_{t+1}, t_{\text{start}})$ to batch files.
+  \item Health monitor respawns stalled workers.
+\end{enumerate}
+
+\begin{table}[H]
+  \centering
+  \small
+  \renewcommand{\arraystretch}{1.3}
+  \caption{Data collection pipeline parameters.}
+  \label{tab:data-collection}
+  \begin{tabular}{@{}ll@{}}
+    \toprule
+    \textbf{Parameter} & \textbf{Value} \\
+    \midrule
+    Parallel workers & 16 \\
+    Transition size (with forces) & ${\sim}2055$\,bytes \\
+    Target dataset size & ${\sim}10$\,GB (${\sim}5$M transitions) \\
+    Per-worker throughput & ${\sim}22$ transitions/s \\
+    Aggregate throughput & ${\sim}350$ transitions/s \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\paragraph{Dataset quality.}
+The final dataset contains 4,336,600 single-step transitions.
+\Cref{tab:data-quality} summarizes automated validation.
+
+\begin{table}[H]
+  \centering
+  \small
+  \renewcommand{\arraystretch}{1.3}
+  \caption{Data quality validation results.}
+  \label{tab:data-quality}
+  \begin{tabular}{@{}llll@{}}
+    \toprule
+    \textbf{Metric} & \textbf{Value} & \textbf{Threshold} & \textbf{Status} \\
+    \midrule
+    NaN/Inf rate & 0.00\% & $<0.1\%$ & Pass \\
+    Duplicate transitions & 3.84\% & $<1\%$ & Fail \\
+    Constant features & 0 & 0 & Pass \\
+    Outlier rate ($>5\sigma$) & 0.096\% & $<0.5\%$ & Pass \\
+    Action 5D fill fraction & 74.5\% & $>5\%$ & Pass \\
+    Per-dim action fill & 100\% & $>90\%$ & Pass \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\noindent
+The 3.84\% duplicate rate arises from identical initial conditions under 1-step episodes and amounts to implicit oversampling --- retained without deduplication (4,170,082 unique transitions).
+
+% ---- 3.3 Model Architecture and Training ----
+\subsection{Model Architecture and Training}
+\label{sec:surrogate:model}
+
+\subsubsection{Input Representation}
+\label{sec:surrogate:model:input}
+
+The surrogate input concatenates three components:
+\begin{equation}
+  \mathbf{z}_t
+    = \bigl[\bar{\mathbf{s}}_t \;\|\; \mathbf{a}_t \;\|\;
+            \boldsymbol{\phi}_1, \ldots, \boldsymbol{\phi}_{N_e}\bigr]
+    \in \mathbb{R}^{189}
+  \label{eq:surrogate-input}
+\end{equation}
+
+\begin{table}[H]
+  \centering
+  \small
+  \caption{Surrogate input decomposition ($189 = 124 + 5 + 60$).}
+  \label{tab:surrogate-input}
+  \begin{tabular}{lrl}
+    \toprule
+    Component & Dim & Description \\
+    \midrule
+    $\bar{\mathbf{s}}_t$ & 124 & Z-score normalized rod state \\
+    $\mathbf{a}_t$ & 5 & Normalized CPG action $\in [-1,1]^5$ \\
+    $\boldsymbol{\phi}_1, \ldots, \boldsymbol{\phi}_{20}$ & 60 & Per-element phase triplets \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\subsubsection{Per-Element CPG Phase Encoding}
+\label{sec:surrogate:model:phase}
+
+For element $e$, the phase triplet is:
+\begin{equation}
+  \boldsymbol{\phi}_e
+    = \bigl(\sin(2\pi f \cdot t_e),\;
+            \cos(2\pi f \cdot t_e),\;
+            \kappa_e^{\text{actual}}\bigr), \qquad
+  t_e = \frac{k \cdot s_e}{f}
+  \label{eq:per-element-phase}
+\end{equation}
+
+This provides the exact phase of the serpenoid wave at each element's location, plus the instantaneous curvature $\kappa_e^{\text{actual}}$ for the control error.
+Phase features are computed on-the-fly from stored action and $t_{\text{start}}$.
+
+An earlier V1 global phase encoding ($\mathbb{R}^2$) achieved only $R^2 = 0.23$ for angular velocity; the V2 per-element encoding significantly improved prediction.
+
+\subsubsection{Architecture and Prediction}
+\label{sec:surrogate:model:arch}
+
+The surrogate predicts a normalized state delta:
+\begin{equation}
+  f_\theta(\mathbf{z}_t) \approx T(\mathbf{s}_t, \mathbf{a}_t) - \mathbf{s}_t, \qquad
+  \hat{\mathbf{s}}_{t+1}
+    = \mathbf{s}_t
+      + \boldsymbol{\sigma}_\Delta \odot f_\theta(\mathbf{z}_t)
+      + \boldsymbol{\mu}_\Delta
+  \label{eq:next-state-reconstruction}
+\end{equation}
+
+Network architecture:
+\begin{equation}
+  \mathbb{R}^{189}
+    \xrightarrow{\text{Linear}}
+    \bigl[\text{Linear}(512) \to \text{LayerNorm} \to \text{SiLU}\bigr]^{\times 3}
+    \xrightarrow{\text{Linear}}
+    \mathbb{R}^{124}
+  \label{eq:architecture}
+\end{equation}
+
+\begin{itemize}
+  \item Output layer initialized to zero (default prediction: mean empirical transition)
+  \item Total trainable parameters: ${\sim}659$K
+  \item Delta prediction concentrates the target distribution and provides an implicit residual connection
+\end{itemize}
+
+\placeholder{Surrogate architecture diagram showing input decomposition, MLP layers, and affine reconstruction.}
+
+\subsubsection{Training}
+\label{sec:surrogate:model:training}
+
+The surrogate is trained with a single-step MSE loss on normalized state deltas:
+\begin{equation}
+  \mathcal{L}_{\text{single}} = \frac{1}{N} \sum_{i=1}^{N} \bigl\| f_\theta(\mathbf{z}_t^{(i)}) - \overline{\Delta\mathbf{s}}_{\text{true}}^{(i)} \bigr\|^2
+  \label{eq:surrogate-loss}
+\end{equation}
+
+\paragraph{Density-weighted sampling.}
+Each training sample is weighted by inverse estimated local density:
+\begin{equation}
+  w^{(i)} = \frac{1}{\hat{p}(\mathbf{c}^{(i)})}, \qquad
+  \mathbf{c}^{(i)} = \bigl[\bar{x}_{\text{CoM}},\; \bar{y}_{\text{CoM}},\; \|\dot{\mathbf{x}}\|,\; |\bar{\omega}_z|\bigr]
+  \label{eq:density-weight}
+\end{equation}
+Weights are clipped at $10\times$ the mean to prevent rare samples from dominating.
+
+\subsubsection{Hyperparameters}
+\label{sec:surrogate:model:hyperparams}
+
+\begin{table}[H]
+  \centering
+  \small
+  \renewcommand{\arraystretch}{1.3}
+  \caption{Surrogate training hyperparameters.}
+  \label{tab:hyperparams-common}
+  \begin{tabular}{@{}ll@{}}
+    \toprule
+    \textbf{Hyperparameter} & \textbf{Value} \\
+    \midrule
+    Architecture & 4-layer MLP ($4 \times 1024$) \\
+    Activation / Normalization & SiLU / LayerNorm (pre-activation) \\
+    Optimizer & Adam ($\beta_1{=}0.9$, $\beta_2{=}0.999$) \\
+    Learning rate & $1 \times 10^{-4}$ (cosine, 5-epoch warmup) \\
+    Batch size & 4096 (auto-scaled to ${\sim}245$K effective) \\
+    Mixed precision & bfloat16 \\
+    Early stopping & Patience 30 (validation MSE) \\
+    Total parameters & ${\sim}3.43$M \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\begin{table}[H]
+  \centering
+  \small
+  \renewcommand{\arraystretch}{1.3}
+  \caption{Per-run configuration differences and results.}
+  \label{tab:hyperparams-runs}
+  \begin{tabular}{@{}lccc@{}}
+    \toprule
+    & \textbf{Run A} & \textbf{Run B (best)} & \textbf{Run C} \\
+    \midrule
+    State dim & 128 & 128 & 130 \\
+    Dropout & 0.0 & 0.1 & 0.1 \\
+    Weight decay & $10^{-5}$ & $10^{-4}$ & $10^{-4}$ \\
+    Epochs trained & 80 & 110 & 57 \\
+    Best val.\ loss & 0.712 & \textbf{0.601} & 0.733 \\
+    Overall $R^2$ & --- & \textbf{0.393} & 0.258 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+% ---- 3.4 Results ----
+\subsection{Results}
+\label{sec:surrogate:results}
+
+The best surrogate (Run~B) reached a validation loss of 0.601 and an overall $R^2$ of 0.393 after 110 epochs on 3.9M transitions.
+
+\begin{table}[H]
+  \centering
+  \small
+  \caption{Surrogate single-step prediction accuracy by state component (Run~B, epoch~110).}
+  \label{tab:surrogate-accuracy}
+  \begin{tabular}{lrr}
+    \toprule
+    State component & $R^2$ & MSE \\
+    \midrule
+    CoM position ($\bar{x}, \bar{y}$) & 0.852 & $2.81 \times 10^{-7}$ \\
+    Relative positions ($\Delta x_i, \Delta y_i$) & 0.773 & ${\sim}3.2 \times 10^{-5}$ \\
+    Angular velocity ($\omega_{z,e}$) & 0.320 & 1.442 \\
+    Heading ($\theta$) & 0.287 & $2.49 \times 10^{-3}$ \\
+    Yaw ($\psi_e$) & 0.173 & $4.78 \times 10^{-2}$ \\
+    Velocities ($\dot{x}_i, \dot{y}_i$) & 0.145 & $8.10 \times 10^{-2}$ / $2.13 \times 10^{-1}$ \\
+    \midrule
+    Overall & \textbf{0.393} & 0.601 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\noindent
+Geometric quantities (CoM, relative positions) converge within 20 epochs.
+Velocity and angular components improve gradually and have not plateaued by epoch 110, suggesting longer training or architectural changes could help.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\textwidth]{surrogate_training_curves.pdf}
+  \caption{Training and validation MSE loss (left) and overall $R^2$ (right) over 110 epochs for Run~B. The persistent train--validation gap indicates mild overfitting despite dropout and weight decay.}
+  \label{fig:training-loss}
+\end{figure}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.75\textwidth]{surrogate_component_r2.pdf}
+  \caption{Per-component $R^2$ at epoch~110 (Run~B). Geometric quantities are well predicted; velocity components remain challenging.}
+  \label{fig:component-r2}
+\end{figure}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.85\textwidth]{surrogate_r2_evolution.pdf}
+  \caption{Per-component $R^2$ evolution during training. Position components converge within 20 epochs; angular and velocity components improve gradually.}
+  \label{fig:r2-evolution}
+\end{figure}
+
+\subsection{Challenges}
+\label{sec:surrogate:challenges}
+
+\paragraph{Angular velocity prediction.}
+Angular velocity $\omega_{z,e}$ is the weakest predicted component ($R^2 = 0.320$).
+The control step $\Delta t = 0.5\,\text{s}$ spans approximately 1.5 CPG cycles at typical frequencies, during which $\omega_z$ reverses sign multiple times.
+A single-step MLP must therefore predict the \textit{net} angular velocity after integrating through these oscillations---a many-to-one mapping that averages away the within-step dynamics.
+Per-element CPG phase encoding (Section~\ref{sec:surrogate:arch:phase}) partially mitigates this by informing the model where in the oscillation cycle each element begins, but the fundamental aliasing remains.
+
+\paragraph{Training data distribution bias.}
+Data collected from policy rollouts clusters around learned behaviors, leaving large regions of state-action space unrepresented.
+The rod always starts from a straight (zero curvature) configuration, so the surrogate rarely observes transitions from highly bent states encountered during locomotion.
+Sobol quasi-random action sampling, initial state perturbation, and curvature noise injection (Section~\ref{sec:surrogate:data}) address this, but full coverage of the 189-dimensional input space remains intractable.
+
+\paragraph{Curvature update granularity.}
+The serpenoid rest curvature was initially applied once per control step (every 0.5\,s), while the physics integrator advances in 1\,ms substeps.
+This created a discontinuous forcing signal: the rod experienced a step change in target curvature at the start of each control interval, then evolved under constant curvature for 500 substeps.
+Moving the curvature update into the substep loop produces a near-continuous traveling wave, improving both the physical realism of the training data and surrogate prediction accuracy.
+
+\paragraph{Persistent overfitting.}
+Despite dropout ($p=0.1$) and weight decay ($\lambda = 10^{-4}$), a train--validation gap persists throughout training (Figure~\ref{fig:loss-curves}).
+The gap suggests that the 4.3M-transition dataset, while large, does not fully cover the state-action manifold---the model memorizes training trajectories rather than learning generalizable dynamics.
+Increasing dataset diversity (more perturbation variance, longer episodes) or architectural changes (e.g., attention over spatial elements) may help close this gap.
+
+% ===========================================================================
+% CHAPTER 4: REINFORCEMENT LEARNING ON ELASTICA
+% ===========================================================================
+\section{Reinforcement Learning on Elastica}
+\label{sec:rl-elastica}
+
+\subsection{Environment and Training Setup}
+\label{sec:rl-elastica:setup}
+
+Direct RL training uses the Elastica physics simulator as the environment, running on 1$\times$ Tesla V100-PCIE-16\,GB (24 cores, 270\,GB RAM, CUDA 12.8).
+At each step, the agent selects CPG parameters $\mathbf{a}_t \in [-1,1]^5$, the simulator advances via 500 substeps, and a displacement-based reward is computed:
+\begin{equation}
+  r_t = x_{\text{CoM}}(t+1) - x_{\text{CoM}}(t)
+  \label{eq:reward}
+\end{equation}
+
+PPO is used as the policy optimization algorithm with TorchRL.
+
+\begin{table}[H]
+  \centering
+  \small
+  \renewcommand{\arraystretch}{1.3}
+  \caption{PPO training hyperparameters (Session~10, best).}
+  \label{tab:ppo-hyperparams}
+  \begin{tabular}{@{}ll@{}}
+    \toprule
+    \textbf{Hyperparameter} & \textbf{Value} \\
+    \midrule
+    Parallel environments & 16 \\
+    Total frames & $2 \times 10^6$ \\
+    Frames per batch & 8192 \\
+    Mini-batch size & 256 \\
+    PPO clip $\epsilon$ / PPO epochs & 0.2 / 4 \\
+    Learning rate & $1 \times 10^{-4}$ (linear decay to $10^{-5}$) \\
+    Discount $\gamma$ / GAE $\lambda$ & 0.99 / 0.95 \\
+    Entropy coefficient / Value coefficient & 0.02 / 0.5 \\
+    Max gradient norm / Target KL & 0.5 / 0.01 \\
+    Max episode steps & 500 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\subsection{Direct Simulation Results}
+\label{sec:rl-elastica:results}
+
+Training exhibits three phases: (1) \emph{learning} (0--164k steps, peak rolling average 140.0), (2) \emph{decline} (164k--574k, policy overshooting in CPG space), (3) \emph{steady state} (574k--2M, stabilized ${\sim}102$).
+Best checkpoint reward: 156.66 at step 155,648.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.9\textwidth]{rl_training_curves.pdf}
+  \caption{PPO training curves. Session~10 (conservative hyperparameters) achieves higher peak reward and more stable behavior than Session~9 (aggressive hyperparameters).}
+  \label{fig:rl-training}
+\end{figure}
+
+\paragraph{Evaluation.}
+20 deterministic-action episodes with randomized initial headings:
+
+\begin{table}[H]
+  \centering
+  \small
+  \caption{Direct Elastica RL training and evaluation summary.}
+  \label{tab:rl-direct-results}
+  \begin{tabular}{@{}lr@{}}
+    \toprule
+    \textbf{Metric} & \textbf{Value} \\
+    \midrule
+    Training time & ${\sim}9$\,h \\
+    Throughput & ${\sim}55$--60\,FPS \\
+    Peak rolling reward & 140.0 \\
+    Best checkpoint reward & 156.66 \\
+    Eval mean displacement & $1.495 \pm 0.13$\,m \\
+    Eval mean reward & $64.90 \pm 1.44$ \\
+    Goal success rate & 0/20 (0\%) \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\textwidth]{rl_evaluation.pdf}
+  \caption{Evaluation of best Session~10 checkpoint. Left: displacement per episode. Right: training vs.\ evaluation reward gap.}
+  \label{fig:rl-eval}
+\end{figure}
+
+\noindent
+The 2.4$\times$ gap between training (156.66) and evaluation (64.90) rewards is attributed to stochastic actions during training, favorable heading distributions, and goal-reaching bonuses.
+
+\subsection{Surrogate Environment Results}
+\label{sec:rl-elastica:surrogate}
+
+Surrogate-based RL training has not yet been conducted.
+The moderate overall $R^2 = 0.393$ and poor velocity prediction ($R^2 = 0.145$) raise concerns about multi-step rollout fidelity.
+The key risk is that the policy may exploit surrogate artifacts rather than learning physically grounded gaits that transfer to the Elastica simulator.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.7\textwidth]{sampling_comparison.png}
+  \caption{Action-space sampling comparison: Sobol quasi-random vs.\ pseudo-random coverage for surrogate data collection.}
+  \label{fig:sampling-comparison}
+\end{figure}
+
+\subsection{Challenges}
+\label{sec:rl-elastica:challenges}
+
+\begin{itemize}
+  \item \textbf{Computational cost:} ${\sim}46$\,ms/step $\times$ 16 workers $= {\sim}350$ steps/s; $2 \times 10^6$ steps requires ${\sim}36$\,h. DisMech is ${\sim}4\times$ faster but still CPU-bound.
+  \item \textbf{Exploration in CPG space:} Large regions produce no locomotion (zero amplitude, extreme frequencies). Curriculum learning over parameter subsets improves efficiency.
+  \item \textbf{Reward sparsity:} Distance-based rewards require discovering forward-moving gaits before receiving signal.
+  \item \textbf{Backend discrepancy:} DisMech-trained policies do not transfer to Elastica due to friction, curvature mechanism, and temporal resolution differences.
+\end{itemize}
+
+% ===========================================================================
+% CHAPTER 5: REINFORCEMENT LEARNING ON DISMECH (CHOI2025 FOLLOW TASK)
+% ===========================================================================
+\section{Reinforcement Learning on DisMech (Choi2025 Follow Task)}
+\label{sec:rl-dismech}
+
+This chapter presents PPO experiments on the DisMech physics backend for the \texttt{follow\_target} task from \citet{Choi2025}.
+While the original paper uses a Gymnasium-based environment with a custom training framework, our implementation uses TorchRL for both the environment wrapper (\texttt{EnvBase}) and the training loop (\texttt{SyncDataCollector}, \texttt{ParallelEnv}).
+We conduct a controlled ablation study over four reward-shaping configurations, using per-component reward logging and a common fair metric to enable valid cross-run comparisons.
+All experiments ran on 2$\times$ RTX A4000 16\,GB (Ampere, 6144 CUDA cores each), 16 cores / 32 threads, 270\,GB RAM, CUDA 12.8.
+
+\subsection{Task Description}
+\label{sec:rl-dismech:task}
+
+The \texttt{follow\_target} task requires a clamped soft manipulator (Cosserat rod, 21 nodes, 1\,m length) to track a moving target in 3D.
+The target moves at 0.05\,m/s within a workspace of radius 0.3--0.9\,m.
+At each control step, the agent selects 5 curvature increments $\Delta\kappa \in [-1, 1]$, applied as natural strain through DisMech's bend springs.
+
+\begin{table}[H]
+  \centering
+  \small
+  \renewcommand{\arraystretch}{1.3}
+  \caption{Environment configuration (common to all runs).}
+  \label{tab:choi2025-env}
+  \begin{tabular}{@{}ll@{}}
+    \toprule
+    \textbf{Parameter} & \textbf{Value} \\
+    \midrule
+    Physics backend & DisMech (C++ implicit Euler) \\
+    Rod discretization & 21 nodes, 20 elements \\
+    Observation dim & 34 (positions, curvatures, target) \\
+    Action dim & 5 ($\Delta\kappa$ curvature increments) \\
+    Max episode steps & 200 \\
+    Control timestep & 0.05\,s (2 substeps at dt=0.05\,s) \\
+    Target speed & 0.05\,m/s \\
+    Workspace radius & 0.3--0.9\,m \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\subsection{Reward Design}
+\label{sec:rl-dismech:reward}
+
+\citet{Choi2025} define the follow-target reward with two terms:
+\begin{equation}
+  r(s, s') = \underbrace{\exp\!\bigl(-5\,d(s')\bigr)}_{r_{\text{dist}}} + \underbrace{10\,\bigl(d(s) - d(s')\bigr)}_{r_{\text{improve}}}, \qquad d(s) = \lVert \mathbf{x}_{\text{tip}} - \mathbf{x}_{\text{target}} \rVert.
+  \label{eq:reward-original}
+\end{equation}
+The first term is a bounded distance reward in $[0, 1]$, approaching 1 as the tip reaches the target.
+The second is an improvement bonus proportional to the step-wise distance reduction.
+The scaling factor of 5 was chosen to match the workspace radius; the improvement multiplier of 10 amplifies the approach signal.
+
+\paragraph{Simplification for PPO.}
+The original reward was designed for SAC, which averages over a replay buffer and tolerates high reward variance.
+For on-policy PPO, the improvement bonus with its $10{\times}$ multiplier creates a reward SNR of only 0.08 (the signal is 8\% of the noise), causing the value function to fail.
+We therefore use only the distance component as the base reward:
+\begin{equation}
+  r_{\text{dist}}(s) = \exp\!\bigl(-5\,d(s)\bigr).
+  \label{eq:reward-dist}
+\end{equation}
+This raised the SNR from 0.08 to 1.02 (a $13{\times}$ improvement) and stabilized explained variance from 0.24 to 0.65.
+We then investigate three augmentations to this simplified base reward, described below.
+
+\paragraph{Heading reward.}
+A cosine-similarity bonus for pointing the tip toward the target:
+\begin{equation}
+  r_{\text{heading}}(s) = \frac{1 + \cos\theta}{2}, \qquad
+  r_{\text{total}} = (1-w)\,r_{\text{dist}} + w\,r_{\text{heading}},
+  \label{eq:reward-heading}
+\end{equation}
+where $\theta$ is the angle between the tip tangent and the tip-to-target direction, and $w \in [0,1]$ is a mixing weight.
+Both components lie in $[0,1]$, so the total reward is bounded.
+
+\paragraph{Potential-Based Reward Shaping (PBRS).}
+Following \citet{Ng1999}, we define a potential $\Phi(s) = -d(s)$ and add the shaping reward:
+\begin{equation}
+  F(s, s') = \gamma_{\text{pbrs}}\,\Phi(s') - \Phi(s) = d(s) - \gamma_{\text{pbrs}}\,d(s'),
+  \label{eq:pbrs}
+\end{equation}
+where $\gamma_{\text{pbrs}}$ is a discount factor (we use 0.99).
+This is guaranteed not to change the optimal policy.
+When combined with the base reward: $r_{\text{total}} = r_{\text{dist}} + F(s,s')$.
+
+\paragraph{PBRS-only.}
+An ablation where the base reward is removed entirely, using only the shaping signal: $r_{\text{total}} = F(s,s')$.
+
+\paragraph{Curriculum learning.}
+All runs use curriculum learning: target speed ramps from 20\% to 100\% over the first 100 episodes per worker, avoiding reward-scale shock at initialization.
+
+\paragraph{Fair comparison metric.}
+Different reward functions produce incomparable total rewards (e.g., heading inflates the total by up to 72\%).
+We log per-component rewards and use $r_{\text{dist}} = \exp(-5d)$ as the \emph{fair metric} for cross-run comparison, since it depends only on the physical outcome (distance to target) and is independent of the reward function.
+
+\subsection{Experimental Setup}
+\label{sec:rl-dismech:setup}
+
+All five runs use identical PPO hyperparameters, differing only in the reward function.
+\Cref{tab:choi2025-run-configs} shows the configuration of each run.
+
+\begin{table}[H]
+  \centering
+  \small
+  \renewcommand{\arraystretch}{1.3}
+  \caption{Run configurations for the reward-shaping ablation study.}
+  \label{tab:choi2025-run-configs}
+  \begin{tabular}{@{}lccccc@{}}
+    \toprule
+    & \textbf{Original} & \textbf{Baseline} & \textbf{Heading} & \textbf{PBRS+Base} & \textbf{PBRS-Only} \\
+    \midrule
+    Algorithm & PPO & PPO & PPO & PPO & PPO \\
+    Network & 4$\times$512 ReLU & 4$\times$512 ReLU & 4$\times$512 ReLU & 4$\times$512 ReLU & 4$\times$512 ReLU \\
+    Learning rate & $10^{-4}$ & $10^{-4}$ & $10^{-4}$ & $10^{-4}$ & $10^{-4}$ \\
+    Clip $\epsilon$ & 0.2 & 0.2 & 0.2 & 0.2 & 0.2 \\
+    Epochs per batch & 10 & 10 & 10 & 10 & 10 \\
+    Mini-batch size & 1024 & 1024 & 1024 & 1024 & 1024 \\
+    Frames per batch & 8192 & 8192 & 8192 & 8192 & 8192 \\
+    Entropy coeff & 0.1 & 0.1 & 0.1 & 0.1 & 0.1 \\
+    Parallel envs & 100 & 100 & 100 & 100 & 100 \\
+    Total frames & 5M & 5M & 5M & 5M & 5M \\
+    Seed & 42 & 42 & 42 & 42 & 42 \\
+    Curriculum & Yes & Yes & Yes & Yes & Yes \\
+    \midrule
+    \multicolumn{6}{@{}l}{\textit{Reward-specific parameters}} \\
+    \midrule
+    Base reward $r_{\text{dist}}$ & Yes & Yes & Yes & Yes & No \\
+    Improvement $w_{\text{imp}}$ & 10.0 & 0.0 & 0.0 & 0.0 & 0.0 \\
+    Heading weight $w$ & 0.0 & 0.0 & 0.3 & 0.0 & 0.0 \\
+    PBRS $\gamma$ & 0.0 & 0.0 & 0.0 & 0.99 & 0.99 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\subsection{Results}
+\label{sec:rl-dismech:results}
+
+\Cref{tab:choi2025-results} summarizes the training outcomes.
+All metrics in the ``fair metric'' column use $r_{\text{dist}} = \exp(-5d)$ averaged over the final 20\% of training, enabling direct comparison regardless of the reward function.
+The signal-to-noise ratio (SNR) is computed as $|\bar{r}| / \sigma_r$ over all training batches.
+
+\begin{table}[H]
+  \centering
+  \small
+  \renewcommand{\arraystretch}{1.3}
+  \caption{Training results on follow\_target (5M frames each). Fair metric is $r_{\text{dist}} = \exp(-5d)$ averaged over the final 20\% of episode entries.}
+  \label{tab:choi2025-results}
+  \begin{tabular}{@{}lccccc@{}}
+    \toprule
+    \textbf{Run} & $\boldsymbol{r_{\textbf{dist}}}$ \textbf{(fair)} & \textbf{vs.\ Baseline} & \textbf{SNR} & \textbf{Episode Reward} & \textbf{Best Episode} \\
+    \midrule
+    Original ($w_{\text{imp}}$=10) & \textbf{0.143} & $+$52.1\% & 1.72 & 28.2 & 90.2 \\
+    PBRS+Base       & 0.109 & $+$16.9\% & 1.00 & 27.4 & 77.9 \\
+    Baseline        & 0.094 & ---      & 1.20 & 18.7 & 61.3 \\
+    Heading ($w$=0.3) & 0.072 & $-$23.3\% & 1.82 & 39.1 & 63.0 \\
+    PBRS-Only       & 0.067 & $-$28.7\% & 0.10 & 1.8  & 2.9  \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\noindent
+Key observations:
+
+\begin{itemize}
+  \item \textbf{The original two-term reward is the best performer} at $+$52.1\% over baseline on the fair metric, with the highest best-episode reward (90.2).
+  Despite our earlier SNR analysis suggesting the $10{\times}$ improvement bonus would destabilize PPO, curriculum learning appears to mitigate this: during the warmup phase the slow-moving target produces small, consistent distance improvements, keeping the bonus well-scaled until the policy matures.
+  \item \textbf{PBRS+Base is the second best} at $+$16.9\% over baseline.
+  The shaping signal $F = d(s) - 0.99\,d(s')$ provides a per-step gradient toward the target, accelerating learning without distorting the optimal policy.
+  \item \textbf{Heading reward hurts by 23.3\%.}
+  Although the heading run achieves inflated episode rewards (39.1 vs.\ 18.7), this reflects the heading component contributing ${\sim}$72\% of the total reward.
+  On the fair metric, heading reduces distance-tracking performance---a case of reward hacking where the agent optimizes alignment at the expense of proximity.
+  \item \textbf{PBRS-only is insufficient} ($-$28.7\%).
+  Removing the base reward leaves only the shaping signal, which has critically low SNR (0.10, vs.\ the 0.5 threshold for reliable learning).
+  \item \textbf{Curriculum rescues high-variance rewards.}
+  The original reward's SNR without curriculum was 0.08 (\Cref{sec:rl-dismech:reward}); with curriculum it reaches 1.72.
+  The slow ramp prevents the large improvement bonus from overwhelming the value function during early training.
+\end{itemize}
+
+\paragraph{Reward curves.}
+\Cref{fig:ppo-reward-shaping} shows the fair metric and distance to target over training.
+The original reward (purple) separates from all other runs after ${\sim}$1.5M frames, reaching the highest fair metric.
+PBRS+Base (green) is the second-best, separating after ${\sim}$2M frames.
+The baseline (blue) and heading (orange) both improve slowly; PBRS-Only (red, dashed) remains flat near the bottom.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\linewidth]{ppo_reward_shaping_curves.pdf}
+  \caption{PPO reward-shaping ablation on follow\_target (5M frames, 100 envs, seed 42). (a)~Fair metric $r_{\text{dist}} = \exp(-5d)$ per step, EMA-smoothed ($\alpha = 2/41$). (b)~Mean tip-to-target distance. The original two-term reward (purple) outperforms all variants; PBRS+Base (green) is second; heading (orange) and PBRS-Only (red) underperform baseline.}
+  \label{fig:ppo-reward-shaping}
+\end{figure}
+
+\subsection{SAC Gradient Instability}
+\label{sec:rl-dismech:sac}
+
+In separate experiments, we trained SAC (20M frames, 100 envs) and PPO (50M frames, 100 envs) on the same task using the paper-matching 3$\times$256 ReLU network.
+SAC reached a best reward of 73.84 early (${\sim}$2M frames) but was unable to sustain performance, while PPO plateaued at ${\sim}$17 average reward.
+\Cref{fig:choi2025-grad-norms} reveals the root cause: without entropy regularization ($\alpha=0$) and without gradient clipping, SAC's actor gradient norm grows from ${\sim}$0.04 to ${\sim}1.5 \times 10^{10}$ over 20M frames, while the critic gradient norm remains bounded at ${\sim}$1--40.
+PPO gradient norms stay bounded at 2--28 throughout, consistent with its clipped surrogate objective.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\linewidth]{choi2025_grad_norms.pdf}
+  \caption{Gradient norms for SAC (left, log scale) and PPO (right, linear scale). SAC actor gradients explode by 10 orders of magnitude; PPO gradients remain stable.}
+  \label{fig:choi2025-grad-norms}
+\end{figure}
+
+\noindent
+The paper's 5M frame budget may mask this instability, as the collapse onset occurs at ${\sim}$3--5M frames.
+Possible mitigations include mild entropy regularization ($\alpha > 0$), actor-specific gradient clipping, or learning rate scheduling.
+
+\subsection{Discussion}
+\label{sec:rl-dismech:discussion}
+
+The ablation study demonstrates that reward design has a larger effect on learning than hyperparameter tuning in this task.
+The original paper reward---dismissed in our initial analysis for its low SNR---proves most effective when paired with curriculum learning, which controls reward variance during early training.
+This highlights a key interaction: reward function and curriculum are not independent design choices.
+
+PBRS provides a principled mechanism for accelerating learning without changing the optimal policy, but the non-theoretic improvement bonus ($+$52.1\%) outperforms the policy-invariant PBRS ($+$16.9\%).
+The improvement bonus is not policy-invariant, yet its direct ``closer is better'' signal aligns well with the task objective.
+
+The heading reward, despite intuitive appeal, exemplifies a common RL pitfall: auxiliary objectives can dominate the total reward and redirect optimization away from the true task metric.
+Per-component logging is essential for diagnosing such issues, since the aggregate episode reward (39.1 for heading vs.\ 18.7 for baseline) misleadingly suggests heading is superior.
+
+A natural next step is combining the improvement bonus with PBRS, or testing without curriculum to isolate the curriculum--reward interaction.
+
+% ===========================================================================
+% CHAPTER 6: PHYSICS-INFORMED NEURAL NETWORK
+% ===========================================================================
+\section{Physics-Informed Neural Network}
+\label{sec:pinn}
+
+All PINN experiments ran on the same hardware as \Cref{sec:rl-dismech}: 2$\times$ RTX A4000 16\,GB (Ampere), 16 cores, 270\,GB RAM, CUDA 12.8.
+
+\subsection{Mathematical Formulation}
+\label{sec:pinn:formulation}
+
+\subsubsection{Standard PINN}
+\label{sec:pinn:standard}
+
+Physics-informed neural networks \citep{Raissi2019} augment the data-driven loss with a physics residual derived from the governing equations.
+Given the state-space model $\dot{\mathbf{x}}(t) = \fssm(\mathbf{x}(t), \mathbf{u}(t))$, a network $\mathbf{h}_\theta$ predicts $\xhat_t = \mathbf{h}_\theta(\mathbf{x}_0, \mathbf{u}, t)$.
+The PINN loss:
+\begin{multline}
+  \mathcal{L}(\theta)
+    = \underbrace{\lambda_{\mathrm{IC}} \bigl\| \xhat_0 - \mathbf{x}_0 \bigr\|^2}_{\mathcal{L}_{\mathrm{IC}}}
+    + \underbrace{\lambda_{\mathrm{phys}} \frac{1}{N_c}\sum_{k=1}^{N_c}
+      \left\| \frac{\partial \xhat_{t_k}}{\partial t} - \fssm(\xhat_{t_k}, \mathbf{u}_{t_k}) \right\|^2}_{\mathcal{L}_{\mathrm{phys}}}
+    + \underbrace{\lambda_{\mathrm{data}} \frac{1}{N_d}\sum_{k=1}^{N_d}
+      \left\| \xhat_{t_k} - \mathbf{x}_{\mathrm{data},k} \right\|^2}_{\mathcal{L}_{\mathrm{data}}}
+  \label{eq:pinn:loss}
+\end{multline}
+
+The time derivative $\partial \xhat_t / \partial t$ is obtained via autodiff through the network, doubling the computational cost per collocation point.
+
+\paragraph{Practical bottlenecks:}
+\begin{itemize}
+  \item \textbf{Expensive autodiff} --- additional backward pass per collocation point
+  \item \textbf{Loss balancing} --- three competing objectives require careful weighting
+  \item \textbf{Training instability} --- can diverge for systems with $m \gg 1$ coupled states
+\end{itemize}
+
+\subsubsection{Physics Regularizer}
+\label{sec:pinn:regularizer}
+
+The simplest physics-informed approach adds algebraic constraints as soft regularizers.
+Four constraints are enforced via trapezoidal integration on the 124-dimensional state delta $\Delta\mathbf{x} = \mathbf{x}_{t+1} - \mathbf{x}_t$:
+
+\begin{table}[H]
+  \centering
+  \small
+  \renewcommand{\arraystretch}{1.3}
+  \caption{Physics regularizer constraints.}
+  \label{tab:pinn-constraints}
+  \begin{tabular}{@{}clp{7.5cm}@{}}
+    \toprule
+    \textbf{ID} & \textbf{Constraint} & \textbf{Formulation} \\
+    \midrule
+    C1 & Translational kinematics & $\Delta x_i \approx (v_{x,i} + \tfrac{1}{2}\Delta v_{x,i})\Delta t$ \\
+    C2 & Angular kinematics & $\Delta\psi_e \approx (\omega_{z,e} + \tfrac{1}{2}\Delta\omega_{z,e})\Delta t$ \\
+    C3 & Curvature--moment & Spatial gradient consistency ($0.1\times$ weight) \\
+    C4 & Bounded kinetic energy & $\text{ReLU}(|\Delta\text{KE}| - E_{\text{thr}})^2$ \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+Total regularization: $\mathcal{L}_{\mathrm{reg}} = \mathcal{L}_{\mathrm{kin},x} + \mathcal{L}_{\mathrm{kin},y} + \mathcal{L}_{\mathrm{ang}} + \mathcal{L}_{\mathrm{curv}} + \mathcal{L}_{\mathrm{energy}}$.
+
+\subsubsection{DD-PINN Method}
+\label{sec:pinn:ddpinn}
+
+The domain-decoupled PINN \citep{Krauss2024,Licher2025} resolves all three PINN bottlenecks: \textbf{remove time as a network input} and output parameters of an analytically differentiable ansatz.
+
+\begin{equation}
+  \boxed{\xhat_t = \mathbf{g}(\avec, t) + \mathbf{x}_0, \qquad \avec = \fnn(\mathbf{x}_0, \mathbf{u}_0;\, \theta)}
+  \label{eq:pinn:ddpinn-core}
+\end{equation}
+
+The ansatz for each state variable $j$:
+\begin{equation}
+  g_j(t) = \sum_{i=1}^{n_g} \alpha_{ij}\, e^{-\delta_{ij} t}
+    \bigl[\phig(\beta_{ij}\, t + \gamma_{ij}) - \phig(\gamma_{ij})\bigr]
+  \label{eq:pinn:ansatz}
+\end{equation}
+where $\phig(x) = \sin(x)$ and the subtraction ensures $g_j(0) = 0$ exactly.
+
+\paragraph{Key advantages over standard PINN:}
+\begin{itemize}
+  \item \textbf{Exact IC:} $\mathbf{g}(\avec, 0) \equiv \mathbf{0}$ by construction
+  \item \textbf{Closed-form gradients:} $\dot{\mathbf{g}}$ computed analytically --- no autodiff cost
+  \item \textbf{Simplified loss:} only 2 terms ($\mathcal{L}_{\mathrm{phys}} + \mathcal{L}_{\mathrm{data}}$)
+  \item \textbf{More collocation points:} $10$--$25\times$ more than standard PINNs due to cheap evaluation
+\end{itemize}
+
+\begin{figure}[H]
+\centering
+\resizebox{\textwidth}{!}{%
+\begin{tikzpicture}[
+    >=Stealth,
+    block/.style={draw, rounded corners=3pt, minimum height=1cm, minimum width=2cm,
+                  align=center, font=\footnotesize},
+    arrow/.style={->, thick},
+    lbl/.style={font=\scriptsize, text=gray!70!black}
+]
+    \node[block, fill=blue!8] (input) {$\mathbf{x}_0,\; \mathbf{u}_0$};
+    \node[block, fill=orange!12, right=1.2cm of input] (nn) {Feedforward NN\\$\fnn(\cdot;\, \theta)$};
+    \node[block, fill=green!10, right=1.2cm of nn] (params) {$\avec = (\bm{\alpha}, \bm{\beta}, \bm{\gamma}, \bm{\delta})$};
+    \node[block, fill=red!8, right=1.2cm of params] (ansatz) {Ansatz\\$\mathbf{g}(\avec, t)$};
+    \node[block, fill=blue!8, right=1.2cm of ansatz] (output) {$\xhat_t = \mathbf{g} + \mathbf{x}_0$};
+    \node[below=0.6cm of ansatz, font=\small] (time) {$t \in [0, T_s]$};
+    \draw[arrow] (input) -- (nn);
+    \draw[arrow] (nn) -- (params);
+    \draw[arrow] (params) -- (ansatz);
+    \draw[arrow] (ansatz) -- (output);
+    \draw[arrow] (time) -- (ansatz);
+    \node[lbl, above=0.15cm of nn] {called once};
+    \node[lbl, above=0.15cm of ansatz] {evaluated at $N_c$ points};
+\end{tikzpicture}}
+\caption{DD-PINN inference pipeline. The network is evaluated once to produce ansatz parameters; the ansatz is then evaluated at arbitrarily many time points.}
+\label{fig:pinn:architecture}
+\end{figure}
+
+\subsubsection{Limitations of PINNs}
+\label{sec:pinn:limitations}
+
+PINNs face fundamental limitations for complex dynamical systems:
+\begin{itemize}
+  \item \textbf{Spectral bias:} Networks learn low-frequency components first, making high-frequency CPG dynamics difficult.
+  \item \textbf{Scaling to high dimensions:} Standard PINNs struggle for $m \gg 1$ (the snake robot has $m = 124$).
+  \item \textbf{Discontinuous physics:} Contact and friction forces create non-smooth dynamics that PINNs cannot easily enforce.
+  \item \textbf{Ansatz design:} DD-PINNs require an appropriate ansatz function designed a priori for the dynamics class.
+\end{itemize}
+
+% ---- 6.2 PDE System for Snake Robot ----
+\subsection{PDE System for Snake Robot}
+\label{sec:pinn:system}
+
+\subsubsection{Differentiable Cosserat Rod Right-Hand Side}
+\label{sec:pinn:cosserat-rhs}
+
+A differentiable implementation of $\fssm$ computes $\dot{\mathbf{x}} = \fssm(\mathbf{x})$ for the 124-dimensional state vector using an inextensible rod approximation (bending + RFT friction, no stretching).
+The right-hand side assembles six blocks:
+\begin{equation}
+  \fssm(\mathbf{x}) = \bigl(\dot{x}_i,\; \dot{y}_i,\; \dot{v}_{x,i},\; \dot{v}_{y,i},\; \dot{\psi}_e,\; \dot{\omega}_{z,e}\bigr) \in \mathbb{R}^{124}
+  \label{eq:pinn:rhs-full}
+\end{equation}
+
+Key components:
+\begin{itemize}
+  \item \textbf{Kinematics:} $\dot{x}_i = v_{x,i}$, $\dot{\psi}_e = \omega_{z,e}$
+  \item \textbf{Bending moments:} $M_j = EI(\psi_{j+1} - \psi_j)/\Delta\ell$
+  \item \textbf{RFT friction:} $\mathbf{F}_i^{\text{fric}} = -c_t\mathbf{v}_{\text{tan},i} - c_n\mathbf{v}_{\text{norm},i}$ with $\varepsilon$-regularized tangents
+  \item \textbf{Newton's 2nd law:} $\dot{v}_{x,i} = (F_{x,i}^{\text{fric}} + F_{x,i}^{\text{elastic}})/m_i$
+\end{itemize}
+
+\begin{table}[H]
+\centering
+\footnotesize
+\renewcommand{\arraystretch}{1.25}
+\caption{Physics fidelity: Elastica simulator vs.\ DD-PINN RHS vs.\ regularizer.}
+\label{tab:pinn:physics-comparison}
+\begin{tabular}{@{} p{2.8cm} p{3.4cm} p{3.4cm} p{3.4cm} @{}}
+\toprule
+\textbf{Physics term} &
+  \textbf{Elastica} &
+  \textbf{DD-PINN RHS} &
+  \textbf{Regularizer} \\
+\midrule
+Kinematics & Exact (Verlet) & Exact & Soft penalty (C1, C2) \\
+Shear--stretch & Full & Omitted (inextensible) & Omitted \\
+Bending moments & Full 3D, director-based & 2D simplified FD & Approximate (C3) \\
+RFT friction & Anisotropic + damping & Anisotropic, no damping & Not modelled \\
+Differentiable? & In principle (gradient explosion at 500 steps) & Yes & Yes \\
+Cost & ${\sim}46$\,ms (CPU) & ${\sim}0.3$\,ms (GPU) & ${\sim}0.1$\,ms (GPU) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsubsection{Physics-Regularized Loss}
+\label{sec:pinn:reg-loss}
+
+For the regularized surrogate:
+\begin{equation}
+  \mathcal{L}^{(n)}(\theta) = \mathcal{L}_{\mathrm{data}}(\theta) + \lambda\,\sigma_{\mathrm{reg}}(n)\,\mathcal{L}_{\mathrm{reg}}(\theta)
+  \label{eq:pinn:reg-total-loss}
+\end{equation}
+with piecewise-linear warmup (20\% data-only).
+
+\subsubsection{DD-PINN Loss and Training}
+\label{sec:pinn:ddpinn-training}
+
+The DD-PINN training loss at epoch $n$:
+\begin{equation}
+  \boxed{%
+    \mathcal{L}^{(n)}(\theta) = w_{\mathrm{data}}^{(n)}\,\mathcal{L}_{\mathrm{data}}(\theta)
+    + w_{\mathrm{phys}}^{(n)}\,\lambda\,\sigma(n)\,\mathcal{L}_{\mathrm{phys}}(\theta)
+  }
+  \label{eq:pinn:ddpinn-total}
+\end{equation}
+where $w_{\mathrm{data}}^{(n)}, w_{\mathrm{phys}}^{(n)}$ are ReLoBRaLo \citep{Bischof2022} adaptive weights, $\lambda$ is fixed physics strength, and $\sigma(n)$ is a curriculum schedule (15\% warmup, 30\% ramp, full physics at 45\%).
+
+\subsubsection{Nondimensionalization}
+\label{sec:pinn:nondim}
+
+Physics-based reference scales keep the residual at $\mathcal{O}(1)$:
+
+\begin{table}[H]
+  \centering
+  \small
+  \caption{Nondimensionalization scales.}
+  \label{tab:pinn-nondim}
+  \begin{tabular}{@{}lll@{}}
+    \toprule
+    \textbf{Scale} & \textbf{Value} & \textbf{Source} \\
+    \midrule
+    $L_{\mathrm{ref}}$ & 1.0\,m & Rod length \\
+    $t_{\mathrm{ref}}$ & 0.5\,s & Control timestep \\
+    $V_{\mathrm{ref}}$ & 2.0\,m/s & $L/t$ \\
+    $\omega_{\mathrm{ref}}$ & 2.0\,rad/s & $1/t$ \\
+    $F_{\mathrm{ref}}$ & $EI/L^2$ & Elastic force \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\subsubsection{DD-PINN Configuration}
+\label{sec:pinn:config}
+
+\begin{table}[H]
+\centering
+\small
+\renewcommand{\arraystretch}{1.15}
+\caption{DD-PINN training configuration.}
+\label{tab:pinn:config}
+\begin{tabular}{@{} l l @{}}
+\toprule
+\textbf{Parameter} & \textbf{Value} \\
+\midrule
+State dimension       & 124 \\
+Ansatz basis functions & sweep $\{5, 7, 10\}$ \\
+Hidden layers         & $4 \times 512$ \\
+Fourier features      & 128, $\sigma = 10.0$ \\
+Collocation points    & 100\,000 (Sobol) \\
+Physics weight $\lambda$ & 1.0 \\
+Batch size / Learning rate & 4\,096 / $10^{-3}$ (cosine) \\
+Curriculum warmup     & 15\% data-only \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% ---- 6.3 Results ----
+\subsection{Results and Comparison}
+\label{sec:pinn:results}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\textwidth]{pinn/final_comparison.png}
+  \caption{Per-component RMSE comparison across surrogate approaches. Physics-regularized training ($\lambda = 0.01$) converged in 138 epochs (${\sim}8$\,h on RTX~A4000).}
+  \label{fig:pinn:comparison}
+\end{figure}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.85\textwidth]{pinn/physics_residual_convergence.png}
+  \caption{Physics residual loss convergence. DD-PINN converges faster due to cheap closed-form gradient evaluation enabling more collocation points.}
+  \label{fig:pinn:residual}
+\end{figure}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.85\textwidth]{pinn/predicted_vs_actual.png}
+  \caption{Physics-regularized surrogate ($\lambda{=}0.01$): overall $R^2{=}0.714$; per-component: pos=0.978, vel$\approx$0.52, yaw=0.862, $\omega_z$=0.422.}
+  \label{fig:pinn:r2}
+\end{figure}
+
+\placeholder{PINN loss curves showing training dynamics for standard PINN, DD-PINN, and regularized surrogate.}
+
+\paragraph{Four-way comparison.}
+
+\begin{landscape}
+
+\begin{table}[H]
+\centering
+\caption{Comparison of four approaches --- formulation and training.}
+\label{tab:pinn:four-way-a}
+\scriptsize
+\renewcommand{\arraystretch}{1.2}
+\begin{tabular}{@{} p{2.4cm} p{3.8cm} p{3.8cm} p{3.8cm} p{3.8cm} @{}}
+\toprule
+\textbf{Aspect}
+    & \textbf{PDE Solver}
+    & \textbf{Data-Driven NN}
+    & \textbf{PINN}
+    & \textbf{DD-PINN} \\
+\midrule
+
+\textbf{Core idea}
+    & Numerically integrate governing PDEs
+    & Learn input$\to$output from data only
+    & Embed PDE residual in training loss
+    & Learn ansatz parameters; time enters analytically \\
+
+\textbf{Physics knowledge}
+    & Full (equations solved exactly)
+    & None
+    & Embedded in loss ($\mathcal{L}_{\mathrm{phys}}$)
+    & Embedded in loss ($\mathcal{L}_{\mathrm{phys}}$) \\
+
+\textbf{Time derivative}
+    & Finite differences / implicit solve
+    & Not computed
+    & Autodiff w.r.t.\ $t$ (expensive)
+    & Closed-form $\dot{\mathbf{g}}(\avec, t)$ (cheap) \\
+
+\textbf{Loss function}
+    & N/A
+    & $\mathcal{L}_{\mathrm{data}}$
+    & $\mathcal{L}_{\mathrm{IC}} + \mathcal{L}_{\mathrm{phys}} + \mathcal{L}_{\mathrm{data}}$
+    & $\mathcal{L}_{\mathrm{phys}} + \mathcal{L}_{\mathrm{data}}$ \\
+
+\textbf{Initial condition}
+    & Exact (boundary condition)
+    & Not enforced
+    & Via loss penalty (approximate)
+    & Exact by construction \\
+
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[H]
+\centering
+\caption{Comparison of four approaches --- performance and practical aspects.}
+\label{tab:pinn:four-way-b}
+\scriptsize
+\renewcommand{\arraystretch}{1.2}
+\begin{tabular}{@{} p{2.4cm} p{3.8cm} p{3.8cm} p{3.8cm} p{3.8cm} @{}}
+\toprule
+\textbf{Aspect}
+    & \textbf{PDE Solver}
+    & \textbf{Data-Driven NN}
+    & \textbf{PINN}
+    & \textbf{DD-PINN} \\
+\midrule
+
+\textbf{Inference speed}
+    & Slow ($\sim$seconds)
+    & Fast ($\sim\!\mu$s)
+    & Fast ($\sim\!\mu$s)
+    & Fast ($\sim\!\mu$s) \\
+
+\textbf{Training cost}
+    & N/A
+    & Low
+    & High (autodiff overhead)
+    & Medium ($5$--$38\times$ faster than PINN) \\
+
+\textbf{Collocation points}
+    & N/A
+    & N/A
+    & $\sim$20k--40k
+    & $\sim$250k--1M (cheap) \\
+
+\textbf{Speedup vs.\ solver}
+    & $1\times$
+    & $\sim$10k--100k$\times$
+    & $\sim$10k--100k$\times$
+    & $\sim$44,000$\times$ (demonstrated) \\
+
+\textbf{Key limitation}
+    & Computational cost
+    & Needs large data; no physics guarantees
+    & Autodiff cost; loss balancing; IC approximate
+    & Ansatz must be designed a priori \\
+
+\bottomrule
+\end{tabular}
+\end{table}
+
+\end{landscape}
+
+\paragraph{Summary.}
+The data-driven surrogate achieves highest throughput and simplest training but provides no physics guarantees.
+The physics-regularized variant adds soft constraints at minimal overhead.
+The DD-PINN satisfies initial conditions exactly, eliminates autodiff cost, and enforces governing equations at collocation points --- at the cost of ansatz design.
+
+% ===========================================================================
+% CONCLUSION
+% ===========================================================================
+\section{Conclusion}
+\label{sec:conclusion}
+
+This report presented a multi-pronged approach to accelerating RL for snake robot locomotion:
+
+\begin{enumerate}
+  \item \textbf{Neural surrogate} (\Cref{sec:surrogate}): An MLP surrogate trained on 4.3M Elastica transitions achieves $R^2 = 0.852$ for CoM position and an overall $R^2 = 0.393$, with per-element CPG phase encoding being critical for angular velocity prediction.
+
+  \item \textbf{RL on Elastica} (\Cref{sec:rl-elastica}): PPO training on the direct simulator achieves reliable serpentine locomotion ($1.495 \pm 0.13$\,m displacement per episode) at the cost of ${\sim}9$\,h wall-clock time for 2M frames.
+
+  \item \textbf{RL on DisMech} (\Cref{sec:rl-dismech}): SAC shows learning signal across all 4 Choi2025 tasks; MM-RKHS confirms viability as an alternative policy gradient method with reward improvement from 9 to 17 on follow\_target.
+
+  \item \textbf{Physics-informed models} (\Cref{sec:pinn}): DD-PINN eliminates the autodiff bottleneck of standard PINNs through closed-form ansatz gradients, achieving comparable accuracy at $5$--$38\times$ lower training cost.
+\end{enumerate}
+
+\placeholder{Write full conclusion after all experimental results are available.}
+
+% ===========================================================================
+% APPENDICES
+% ===========================================================================
+\appendix
+
+% ---------------------------------------------------------------------------
+% APPENDIX A: DETAILED PHYSICS DERIVATIONS
+% ---------------------------------------------------------------------------
+\section{Detailed Physics Derivations}
+\label{app:physics}
+
+This appendix provides the full mathematical derivations for the physics simulation backends summarized in \Cref{sec:surrogate:physics}.
+
+\subsection{Staggered Grid Discretization}
+\label{app:physics:grid}
+
+The continuous Cosserat rod is discretized on a staggered grid with three interleaved layers.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\textwidth]{staggered_grid.pdf}
+  \caption{The three-layer staggered grid. Nodes (blue) at rod vertices; elements (red) span between adjacent nodes; Voronoi nodes (green) between adjacent elements.}
+  \label{fig:staggered-grid}
+\end{figure}
+
+\begin{table}[H]
+  \centering
+  \small
+  \renewcommand{\arraystretch}{1.3}
+  \caption{The three staggered-grid layers and their stored degrees of freedom.}
+  \label{tab:grid-layers}
+  \begin{tabular}{lllrl}
+    \toprule
+    Layer & Index & DOF & Variables & Total \\
+    \midrule
+    Nodes    & $i = 1, \ldots, 21$ & Translational
+      & $x_i, y_i, \dot{x}_i, \dot{y}_i$ & 84 \\
+    Elements & $e = 1, \ldots, 20$ & Rotational
+      & $\psi_e, \omega_{z,e}$ & 40 \\
+    Voronoi  & $v = 1, \ldots, 19$ & Derived
+      & $\kappa_v, \kappa_v^{\text{rest}}$ & 0 \\
+    \midrule
+    \multicolumn{4}{l}{\textbf{Total independent state variables}} & \textbf{124} \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+Four sparse matrix operators move information between layers:
+
+\begin{table}[H]
+  \centering
+  \small
+  \renewcommand{\arraystretch}{1.2}
+  \caption{Sparse operators connecting the three staggered-grid layers.}
+  \label{tab:grid-operators}
+  \begin{tabular}{cllll}
+    \toprule
+    Operator & Direction & Size & Structure & Physical role \\
+    \midrule
+    $\mathbf{D}$ & Node $\to$ Element & $20 \times 21$ & Bidiagonal & Position differences $\to$ strain \\
+    $\mathbf{D}^T$ & Element $\to$ Node & $21 \times 20$ & Bidiagonal & Internal stress $\to$ nodal forces \\
+    $\mathbf{A}_v$ & Element $\to$ Voronoi & $19 \times 20$ & Tridiagonal & Element averages $\to$ curvature \\
+    $\mathbf{D}_v$ & Voronoi $\to$ Element & $20 \times 19$ & Bidiagonal & Bending couple gradient $\to$ torques \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\subsection{Method of Lines and Explicit Integration}
+\label{app:physics:mol}
+
+The PDE-to-ODE reduction follows two stages:
+
+\paragraph{Stage 1 --- Spatial discretization (method of lines).}
+All spatial derivatives $\partial/\partial s$ are replaced by sparse matrix--vector products:
+\begin{itemize}
+  \item Force gradient: $\partial \mathbf{F}/\partial s \to \mathbf{D}^T \mathbf{F}_e$ (bidiagonal, $O(N)$)
+  \item Strain from geometry: $\boldsymbol{\varepsilon}_e = \mathbf{Q}_e^T (\mathbf{x}_{e+1} - \mathbf{x}_e)/\ell_e^{\text{rest}}$
+  \item Constitutive law: $\mathbf{F}_e = \mathbf{S}(\boldsymbol{\varepsilon}_e - \boldsymbol{\varepsilon}_e^{\text{rest}})$ (pointwise)
+\end{itemize}
+After replacement, the PDE becomes the ODE $\dot{\mathbf{s}} = \mathbf{g}(\mathbf{s}, \mathbf{a}, t)$ with $\mathbf{g}$ a closed-form function.
+
+\paragraph{Stage 2 --- Explicit time integration.}
+An explicit integrator evaluates $\mathbf{g}$ at the current state and writes the result directly:
+$\mathbf{s}^{n+1} = \Phi(\mathbf{s}^n, \Delta t)$.
+The unknown appears only on the left-hand side --- no equation to solve.
+
+\paragraph{CFL stability constraint.}
+$\Delta t < C\sqrt{\rho A \Delta s^4 / (EI)}$, giving $\Delta t_{\max} \approx 1.7 \times 10^{-3}$\,s.
+PyElastica uses $\Delta t = 10^{-3}$\,s (safely below), forcing $n_{\text{sub}} = 500$.
+
+\begin{table}[H]
+  \centering
+  \small
+  \renewcommand{\arraystretch}{1.3}
+  \caption{Explicit vs.\ implicit update rules.}
+  \label{tab:explicit-implicit-def}
+  \begin{tabular}{@{}lll@{}}
+    \toprule
+    \textbf{Method} & \textbf{Update rule} & \textbf{Type} \\
+    \midrule
+    Forward Euler & $\mathbf{s}^{n+1} = \mathbf{s}^n + \Delta t\,\mathbf{g}(\mathbf{s}^n)$ & Explicit \\
+    Backward Euler & $\mathbf{s}^{n+1} = \mathbf{s}^n + \Delta t\,\mathbf{g}(\mathbf{s}^{n+1})$ & Implicit \\
+    Position Verlet & \Cref{alg:elastica-transition} & Explicit \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\subsection{How Spatial Discretization Converts PDEs to ODEs}
+\label{app:physics:discretization-intuition}
+
+This section provides an intuitive explanation of the two-stage PDE-to-ODE reduction summarized in \Cref{app:physics:mol}.
+
+\subsubsection{The Staggered Grid Layout}
+
+Recall that nodes and elements live at \emph{different} locations on the rod:
+\begin{center}
+\begin{tikzpicture}[>=Stealth, font=\small]
+  % Nodes
+  \foreach \i/\lbl in {0/n_0, 1/n_1, 2/n_2, 3/n_3, 4/n_4} {
+    \node[circle, draw, fill=blue!20, minimum size=0.55cm, inner sep=0pt]
+      (n\i) at (\i*2.2, 0) {$\lbl$};
+  }
+  % Elements
+  \foreach \i [evaluate=\i as \j using int(\i+1)] in {0,...,3} {
+    \draw[thick] (n\i) -- (n\j);
+    \node[fill=red!15, rounded corners=2pt, inner sep=2pt]
+      at ($(n\i)!0.5!(n\j) + (0,-0.55)$) {$e_{\i}$};
+  }
+  % Dots for continuation
+  \node at (9.7, 0) {$\cdots$};
+  \node at (9.7, -0.55) {$\cdots$};
+  % Labels
+  \node[blue!60!black, anchor=south] at (4.4, 0.55) {Nodes: positions, velocities};
+  \node[red!60!black, anchor=north] at (4.4, -1.1) {Elements: orientation, angular velocity};
+\end{tikzpicture}
+\end{center}
+
+\noindent
+\textbf{Nodes} ($N{=}21$) are at the physical vertices; they store translational DOFs $(x_i, y_i, \dot{x}_i, \dot{y}_i)$.
+\textbf{Elements} ($N_e{=}20$) are the segments between adjacent nodes; they store rotational DOFs $(\psi_e, \omega_{z,e})$.
+The difference operators $\mathbf{D}$ and $\mathbf{D}^T$ transfer information between these two layers.
+
+\subsubsection{The Difference Matrix $\mathbf{D}$ (Node $\to$ Element)}
+
+$\mathbf{D}$ is a $20 \times 21$ bidiagonal matrix that computes differences between adjacent nodes.
+For element~$e$:
+\begin{equation}
+  (\mathbf{D}\,\mathbf{x})_e = x_{e+1} - x_e
+  \label{eq:D-operator}
+\end{equation}
+Explicitly:
+\begin{equation}
+  \mathbf{D} =
+  \begin{pmatrix}
+    -1 & +1 &  0 &  0 & \cdots \\
+     0 & -1 & +1 &  0 & \cdots \\
+     0 &  0 & -1 & +1 & \cdots \\
+       &    &    & \ddots & \ddots
+  \end{pmatrix}
+  \in \mathbb{R}^{20 \times 21}
+  \label{eq:D-matrix}
+\end{equation}
+This approximates $\partial \mathbf{x}/\partial s$: the spatial derivative of position along the rod becomes a finite difference between adjacent nodes.
+Dividing by segment rest length $\ell_e^{\text{rest}}$ yields the actual derivative; the matrix itself performs only the differencing.
+
+\paragraph{Physical meaning.}
+$\mathbf{D}\,\mathbf{x}$ gives the \emph{tangent vector} of each element---the direction and length of each segment.
+This is required for the cross-product term $(\partial\mathbf{x}/\partial s) \times \mathbf{F}$ in the angular momentum equation~\eqref{eq:angular-momentum}.
+
+\subsubsection{The Transpose $\mathbf{D}^T$ (Element $\to$ Node)}
+
+$\mathbf{D}^T$ is the transpose---a $21 \times 20$ matrix that maps element quantities back to nodes.
+For node~$i$:
+\begin{equation}
+  (\mathbf{D}^T \mathbf{F})_i = F_i - F_{i-1}
+  \label{eq:DT-operator}
+\end{equation}
+with $F_{-1} = F_{20} = 0$ at the free boundaries.
+Explicitly:
+\begin{equation}
+  \mathbf{D}^T =
+  \begin{pmatrix}
+    -1 &  0 &  0 & \cdots \\
+    +1 & -1 &  0 & \cdots \\
+     0 & +1 & -1 & \cdots \\
+     0 &  0 & +1 & \cdots \\
+       &    &    & \ddots
+  \end{pmatrix}
+  \in \mathbb{R}^{21 \times 20}
+  \label{eq:DT-matrix}
+\end{equation}
+
+\paragraph{Physical meaning.}
+$\mathbf{D}^T \mathbf{F}$ computes the \emph{net force on each node} from its two neighboring elements.
+In the continuous PDE, $\partial \mathbf{F}/\partial s$ gives the net force per unit length at a point.
+In the discrete version, $\mathbf{D}^T \mathbf{F}_e$ gives the net force on each node:
+interior node~$i$ receives $F_i - F_{i-1}$ (force from the element ahead minus the element behind),
+while boundary nodes have only one adjacent element.
+
+\paragraph{Concrete example.}
+Consider 4 nodes with $x$-positions $[0.0,\; 0.25,\; 0.55,\; 1.0]$:
+\begin{align}
+  \mathbf{D}\,\mathbf{x} &= [0.25,\; 0.30,\; 0.45] && \text{(element tangent lengths)} \\
+  \intertext{If internal forces on those 3 elements are $\mathbf{F}_e = [10,\; 8,\; 12]$:}
+  \mathbf{D}^T \mathbf{F} &= [-10,\; 10{-}8,\; 8{-}12,\; 12] = [-10,\; 2,\; -4,\; 12] && \text{(net force per node)}
+\end{align}
+Node~0 has only element~0 pulling on it; node~1 has elements~0 and~1 pulling in opposite directions.
+
+\subsubsection{Adjoint Structure and Energy Conservation}
+
+The transpose relationship is not coincidental.
+$\mathbf{D}$ and $\mathbf{D}^T$ are \emph{adjoint} operators---the discrete analogue of the continuous identity where the gradient and divergence operators are adjoints:
+\begin{equation}
+  \langle \mathbf{D}\,\mathbf{x},\; \mathbf{F} \rangle_{\text{elements}}
+  = \langle \mathbf{x},\; \mathbf{D}^T \mathbf{F} \rangle_{\text{nodes}}
+  \label{eq:adjoint}
+\end{equation}
+This duality ensures \emph{discrete energy conservation}: the work done by forces on nodes is consistent with the strain energy stored in elements, preventing artificial energy gain or loss from the discretization.
+
+\subsubsection{Stage 1: Eliminating Spatial Derivatives}
+
+With these operators, every $\partial/\partial s$ in the governing PDEs is replaced by a matrix--vector product.
+For example, the linear momentum PDE
+\begin{equation}
+  \rho A \frac{\partial \mathbf{v}}{\partial t}
+  = \frac{\partial \mathbf{F}}{\partial s} + \mathbf{f}_{\text{ext}}
+\end{equation}
+becomes, at each node~$i$:
+\begin{equation}
+  \rho A \frac{d \mathbf{v}_i}{d t}
+  = (\mathbf{D}^T \mathbf{F}_e)_i + \mathbf{f}_{\text{ext},i}
+  \label{eq:node-ode}
+\end{equation}
+No spatial derivatives remain---only time derivatives and algebraic dependence on the discrete state.
+
+\subsubsection{Stage 2: Reduction to First-Order Form}
+
+The original PDEs are \emph{second-order} in time (they involve accelerations $\partial \mathbf{v}/\partial t$ and $\partial \boldsymbol{\omega}/\partial t$).
+To obtain first-order ODEs, velocities are introduced as independent state variables:
+\begin{alignat}{2}
+  \dot{x}_i &= v_{x,i}       &\qquad& \text{(definition of velocity)} \label{eq:first-order-pos}\\
+  \dot{v}_{x,i} &= \frac{1}{\rho A}\bigl[(\mathbf{D}^T \mathbf{F}_e)_i + f_{\text{ext},i}\bigr]
+    &\qquad& \text{(from linear momentum PDE)} \label{eq:first-order-vel}\\[4pt]
+  \dot{\psi}_e &= \omega_{z,e} &\qquad& \text{(definition of angular velocity)} \label{eq:first-order-angle}\\
+  \dot{\omega}_{z,e} &= \frac{1}{\rho I}\bigl[(\mathbf{D}_v \boldsymbol{\tau}_v)_e + m_{\text{ext},e} + \ldots\bigr]
+    &\qquad& \text{(from angular momentum PDE)} \label{eq:first-order-omega}
+\end{alignat}
+This doubles the number of variables (positions $+$ angles $\to$ positions $+$ angles $+$ velocities $+$ angular velocities) but makes every equation first-order.
+The result is the 124-dimensional system $\dot{\mathbf{s}} = \mathbf{g}(\mathbf{s}, \mathbf{a}, t)$ from \Cref{eq:ode-system}, ready for explicit time integration.
+
+\subsection{External Force Handling}
+\label{app:physics:forces}
+
+\begin{table}[H]
+  \centering
+  \footnotesize
+  \renewcommand{\arraystretch}{1.3}
+  \caption{External forces and torques in PyElastica.}
+  \label{tab:elastica-forces}
+  \begin{tabular}{@{}llp{3.5cm}p{2.5cm}p{2.8cm}@{}}
+    \toprule
+    Force type & Acts on & Formula & Parameters & Notes \\
+    \midrule
+    Gravity & Nodes & $\mathbf{f}_i^{\text{grav}} = m_i \mathbf{g}$ & $\mathbf{g} = (0, 0, -9.81)$ & Zero in 2D \\
+    RFT friction & Nodes & $\mathbf{f}_i^{\text{rft}} = -c_t \mathbf{v}_{t,i} - c_n \mathbf{v}_{n,i}$ & $c_t{=}0.01$, $c_n{=}0.05$ & Enables propulsion \\
+    Damping & Nodes & $\mathbf{f}_i^{\text{damp}} = -\gamma \dot{\mathbf{x}}_i$ & $\gamma = 0.002$ & Numerical stability \\
+    Bending act. & Voronoi & $\boldsymbol{\kappa}_v^{\text{rest}}(t)$ & CPG $\mathbf{a}_t$ & Internal torque \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.8\textwidth]{coupling_pattern.pdf}
+  \caption{Coupling pattern between state variables in the Cosserat rod ODE system.}
+  \label{fig:coupling-pattern}
+\end{figure}
+
+\subsection{DisMech Formulation}
+\label{app:physics:dismech}
+
+DisMech uses Discrete Elastic Rods (DER) with implicit backward Euler integration.
+
+\paragraph{Backward Euler formulation.}
+\begin{subequations}
+\label{eq:dismech-backward-euler}
+\begin{align}
+  \mathbf{v}_{n+1} &= \mathbf{v}_n + \Delta t\,\mathbf{M}^{-1}\mathbf{F}(\mathbf{q}_{n+1},\, \mathbf{v}_{n+1}), \\
+  \mathbf{q}_{n+1} &= \mathbf{q}_n + \Delta t\,\mathbf{v}_{n+1},
+\end{align}
+\end{subequations}
+
+\paragraph{Nonlinear residual and Newton solver.}
+\begin{equation}
+  \mathbf{g}(\mathbf{q}_{n+1})
+    \coloneqq \mathbf{M}\bigl(\mathbf{q}_{n+1} - 2\mathbf{q}_n + \mathbf{q}_{n-1}\bigr)
+    - \Delta t^2\,\mathbf{F}(\mathbf{q}_{n+1})
+    = \mathbf{0}
+  \label{eq:dismech-residual}
+\end{equation}
+solved iteratively: $\mathbf{q}^{(k+1)} = \mathbf{q}^{(k)} - \mathbf{J}^{-1}\mathbf{g}(\mathbf{q}^{(k)})$ with convergence criteria $\|\mathbf{g}\| < 10^{-4}$ or $\|\delta\mathbf{q}\| < 10^{-2}$, max 25 iterations.
+
+\paragraph{Discrete curvature.}
+\begin{equation}
+  \boldsymbol{\kappa}_i
+    = \frac{2\,\mathbf{e}_{i-1} \times \mathbf{e}_i}
+           {|\mathbf{e}_{i-1}|\,|\mathbf{e}_i| + \mathbf{e}_{i-1} \cdot \mathbf{e}_i}
+  \label{eq:dismech-curvature-binormal}
+\end{equation}
+
+\paragraph{State extraction.}
+The 124-dimensional state is extracted from DisMech's 3D representation:
+
+\begin{table}[H]
+  \centering
+  \small
+  \renewcommand{\arraystretch}{1.3}
+  \caption{State extraction: DisMech 3D $\to$ shared 124-dim representation.}
+  \label{tab:dismech-state-extraction}
+  \begin{tabular}{llll}
+    \toprule
+    Component & Source & Extraction & Count \\
+    \midrule
+    $x_i, y_i$          & $\mathbf{q} \in \mathbb{R}^{63}$ & $(x, y)$ of each node; $z \equiv 0$ & 42 \\
+    $\dot{x}_i, \dot{y}_i$ & $\mathbf{u} \in \mathbb{R}^{63}$ & $(x, y)$ of each node velocity & 42 \\
+    $\psi_e$             & Derived & $\text{atan2}(\Delta y_e,\, \Delta x_e)$ & 20 \\
+    $\omega_{z,e}$       & Derived & cross-product formula & 20 \\
+    \midrule
+    \multicolumn{3}{l}{\textbf{Total}} & \textbf{124} \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\paragraph{CPG control in DisMech.}
+Curvature is applied once per RL step via natural strain:
+\begin{equation}
+  \texttt{bend\_springs.nat\_strain}[j, 0] \;\gets\; \kappa_j^{\text{rest}},
+  \quad j = 1, \ldots, 19.
+  \label{eq:dismech-control-cpg}
+\end{equation}
+
+% ---------------------------------------------------------------------------
+% APPENDIX B: ISSUE TRACKER
+% ---------------------------------------------------------------------------
+\section{Issue Tracker}
+\label{sec:appendix:issues}
+
+This appendix documents all 28 technical issues encountered during the project.
+Of these, 23 have been resolved and 5 remain open.
+
+\begin{longtable}{@{}clp{4.5cm}lp{5.0cm}@{}}
+\caption{Complete issue tracker (28 issues across 4 categories).}
+\label{tab:issues-all}\\
+\toprule
+\textbf{ID} & \textbf{Cat.} & \textbf{Issue} & \textbf{Status} & \textbf{Resolution} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{ID} & \textbf{Cat.} & \textbf{Issue} & \textbf{Status} & \textbf{Resolution} \\
+\midrule
+\endhead
+\midrule
+\multicolumn{5}{r}{\textit{Continued on next page}} \\
+\bottomrule
+\endfoot
+\bottomrule
+\endlastfoot
+P1 & Phys & Rod radius too small ($r{=}0.001$\,m, tiny $I \propto r^4$) & Resolved & Grid search: $r{=}0.02$\,m, $E{=}10^5$\,Pa \\
+P2 & Phys & RFT friction never added to simulator & Resolved & Added \texttt{AnisotropicRFTForce} \\
+P3 & Phys & Damping too high ($\gamma{=}0.1$) & Resolved & Reduced to $\gamma{=}0.002$ \\
+P4 & Phys & Serpenoid wave sign error ($-\omega t$) & Resolved & Fixed to $+\omega t$ \\
+P5 & Phys & Curvature not updated per substep & Resolved & Moved inside substep loop \\
+P6 & Phys & Phantom physics time-stepping layer & Resolved & Clean two-level hierarchy \\
+P7 & Phys & Amplitude range too small ($[0, 0.15]$) & Resolved & Increased to $[0, 5.0]$ \\
+P8 & Phys & RFT ratio too extreme (10:1) & Resolved & Tuned to 5:1 \\
+P9 & Phys & Spatial structure analysis & Resolved & Confirmed: 500 substeps mix info \\
+\addlinespace
+T1 & Train & A3/A5 arch sweep format mismatch & Resolved & Fixed dataset/loader consistency \\
+T2 & Train & DataLoader thread crash in sweep & Resolved & Staggered DataLoader init \\
+T3 & Train & Velocity reward always negative & Resolved & Distance-based potential reward \\
+T4 & Train & LR scheduler division by zero & Resolved & Added max(1, \ldots) guard \\
+T5 & Train & Training data clusters (state imbalance) & Open & Proposed: Sobol + $\omega$ perturbation \\
+T6 & Train & $\omega_z$ poor prediction ($R^2{=}0.23$) & Open & Pending: V2 phase encoding \\
+\addlinespace
+C1 & Compat & Batch structure change (done/reward) & Resolved & \texttt{batch.get("next", batch)} \\
+C2 & Compat & Collector drops unspecced keys & Resolved & Added to observation\_spec \\
+C3 & Compat & Spec class import renames & Resolved & Try/except fallback \\
+C4 & Compat & ClipPPOLoss param renames & Resolved & Updated parameter names \\
+C5 & Compat & close() signature change & Resolved & \texttt{close(self, **kwargs)} \\
+C6 & Compat & SyncDataCollector deprecated & Open & Pending: migrate to Collector \\
+\addlinespace
+S1 & System & Stall detection false positives & Resolved & Grace period ($\geq$1 transition) \\
+S2 & System & Data collection overwrites & Resolved & Append mode + episode offset \\
+S3 & System & Numba thread pool deadlock & Resolved & \texttt{NUMBA\_NUM\_THREADS=1} \\
+S4 & System & Stale bytecache after edits & Resolved & Purge \_\_pycache\_\_ on restart \\
+S5 & System & RFT Python for-loop slow & Resolved & Vectorized with NumPy \\
+S6 & System & Parallel scaling (L3 contention) & Resolved & 16 workers optimal \\
+S7 & System & Worker respawn data loss (19\%) & Open & Proposed: reduce flush interval \\
+S8 & System & Worker respawn investigation & Open & Pending: validate Numba fix \\
+\end{longtable}
+
+\begin{table}[H]
+  \centering
+  \small
+  \renewcommand{\arraystretch}{1.2}
+  \caption{Issue summary by category.}
+  \label{tab:issues-summary}
+  \begin{tabular}{lccc}
+    \toprule
+    Category & Total & Resolved & Open \\
+    \midrule
+    Physics (Phys)     &  9 &  9 & 0 \\
+    Training (Train)   &  6 &  4 & 2 \\
+    Compatibility      &  6 &  5 & 1 \\
+    System             &  8 &  6 & 2 \\
+    \midrule
+    \textbf{Total} & \textbf{29} & \textbf{24} & \textbf{5} \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+% ---------------------------------------------------------------------------
+% Bibliography
+% ---------------------------------------------------------------------------
+\bibliographystyle{plainnat}
+\bibliography{references}
+
+\end{document}

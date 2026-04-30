@@ -1,0 +1,83 @@
+{
+  "project": "snake-hrl-torchrl",
+  "branchName": "ralph/surrogate-data-collection",
+  "description": "Surrogate Data Collection — Healthy Run: pre-flight smoke test, disk safety check, W&B live monitoring, full 10M-transition collection, and post-collection data validation.",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Create pre-flight smoke test script",
+      "description": "As a user, I want a smoke test script that validates the data collection pipeline before committing to a long run, so I don't waste hours on a broken config.",
+      "acceptanceCriteria": [
+        "Create script/smoke_test_collect.py that runs collect_data.py with 2 workers and 1000 transitions to a temp directory",
+        "After collection, load all batch files and verify: states shape (N, 124), actions shape (N, 5), no NaN/Inf values",
+        "Verify episode IDs are non-colliding across workers (unique per worker prefix)",
+        "Measure and print the actual FPS achieved during the smoke test",
+        "Print estimated wall-clock time for a full 10M-transition run based on measured FPS",
+        "Clean up temp directory after all checks pass",
+        "Exit with code 0 if all checks pass, non-zero otherwise",
+        "Script completes in under 2 minutes",
+        "Typecheck passes"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "Baseline FPS from this test will be passed to --baseline-fps for W&B monitoring. The collect_data.py module already exists and works — this script just wraps it with validation. Use data/tmp_smoke_test/ as temp dir."
+    },
+    {
+      "id": "US-002",
+      "title": "Add disk space pre-check to collect_data.py",
+      "description": "As a user, I want the collection to abort with a clear error if there isn't enough disk space, so I don't start a 10-hour run that will fail mid-way.",
+      "acceptanceCriteria": [
+        "In collect_data.py main(), before starting collection, check free disk space on the save_dir filesystem using shutil.disk_usage",
+        "Compute required space estimate: num_transitions * 1024 bytes (1 KB per transition without forces)",
+        "Add a 50% safety margin to the estimate (multiply by 1.5)",
+        "If free space < required estimate, print clear error message showing free space vs required and sys.exit(1)",
+        "Add --skip-disk-check flag to bypass the check if user explicitly wants to",
+        "Typecheck passes"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "Small change — only touches the main() function in collect_data.py. Default config targets 10M transitions ≈ 10 GB; machine has 45 GB free."
+    },
+    {
+      "id": "US-003",
+      "title": "Add W&B live monitoring to collect_data.py",
+      "description": "As a user, I want a live W&B dashboard showing collection progress and whether I'm ahead or behind schedule, so I can monitor remotely.",
+      "acceptanceCriteria": [
+        "Add --baseline-fps CLI argument to collect_data.py (float, no default — user provides from smoke test)",
+        "In _multiprocess_collect, initialize a wandb run with project='surrogate-data-collection' before spawning workers",
+        "Log W&B run config: num_workers, num_transitions, baseline_fps, save_dir, use_sobol_actions, perturbation_fraction, seed",
+        "After spawning workers, run a monitoring loop in the main process that reads the shared mp.Value counter every 30 seconds",
+        "Each loop iteration logs to W&B: transitions_collected, fps_current (last interval), fps_rolling (since start), fps_baseline, schedule_delta_pct ((actual-expected)/expected*100), pct_complete, eta_hours, disk_used_gb (data/surrogate/ size), disk_free_gb",
+        "On normal completion or KeyboardInterrupt, call wandb.finish() before exiting",
+        "W&B is optional: wrap all wandb calls in try/except ImportError. If wandb not installed or WANDB_API_KEY not set, print warning and skip all W&B logging. Collection must still work without wandb.",
+        "Also log the same metrics to stdout every 30s as a single-line progress summary (works even without W&B)",
+        "Typecheck passes"
+      ],
+      "priority": 3,
+      "passes": true,
+      "notes": "The main process currently just does p.join() on all workers. Replace with a polling loop: check shared_counter every 30s, log metrics, then check if workers are still alive. When all workers finish, break. W&B credentials are in ~/.netrc (WANDB_API_KEY env var)."
+    },
+    {
+      "id": "US-004",
+      "title": "Create post-collection data validation script",
+      "description": "As a user, I want to spot-check collected data for integrity and coverage, so I know it's suitable for surrogate training.",
+      "acceptanceCriteria": [
+        "Create script/validate_surrogate_data.py that takes --data-dir argument (default: data/surrogate/)",
+        "Load all batch_*.pt and batch_*.parquet files from the data directory",
+        "Report summary: total transitions, total episodes, total files, total size on disk",
+        "Check for NaN/Inf in states, actions, next_states, serpenoid_times — report count per field",
+        "Verify tensor dimensions: states and next_states are (N, 124), actions are (N, 5)",
+        "Check episode ID uniqueness — report any collisions",
+        "Report per-state-group coverage stats (min/max/mean/std) for: pos_x[0:21], pos_y[21:42], vel_x[42:63], vel_y[63:84], yaw[84:104], omega_z[104:124]",
+        "Report per-action-dimension stats: min/max/mean for each of the 5 action dims",
+        "Report episode length distribution: min/max/mean/median steps per episode",
+        "Print all results as a formatted summary table to stdout",
+        "Exit code 0 if all integrity checks pass (no NaN, correct dims, unique episodes), non-zero otherwise",
+        "Typecheck passes"
+      ],
+      "priority": 4,
+      "passes": true,
+      "notes": "Use state slice constants from aprx_model_elastica/state.py (POS_X, POS_Y, VEL_X, VEL_Y, YAW, OMEGA_Z). Load .pt files with torch.load(..., weights_only=True). For .parquet, use the existing _load_parquet_batch from dataset.py."
+    }
+  ]
+}

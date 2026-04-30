@@ -1,0 +1,76 @@
+<mxGraphModel math="1" dx="1422" dy="762" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1169" pageHeight="827" background="#ffffff">
+  <root>
+    <mxCell id="0"/>
+    <mxCell id="1" parent="0"/>
+
+    <!-- Input -->
+    <mxCell id="input" value="&lt;b&gt;Input&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;$$x \in \mathbb{R}^{B \times d_{in}}$$&lt;/font&gt;"
+      style="rounded=1;whiteSpace=wrap;html=1;fillColor=#2196F3;strokeColor=#1565C0;fontColor=#ffffff;fontSize=12;arcSize=20;"
+      vertex="1" parent="1">
+      <mxGeometry x="200" y="30" width="200" height="70" as="geometry"/>
+    </mxCell>
+
+    <!-- Linear 1 -->
+    <mxCell id="linear1" value="&lt;b&gt;Linear Layer 1&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;$$h = W_1 x + b_1$$&lt;/font&gt;&lt;br&gt;&lt;font style=&quot;font-size:9px;opacity:0.7&quot;&gt;(B, d_in) &amp;rarr; (B, d_h)&lt;/font&gt;"
+      style="rounded=1;whiteSpace=wrap;html=1;fillColor=#9C27B0;strokeColor=#6A1B9A;fontColor=#ffffff;fontSize=12;arcSize=20;"
+      vertex="1" parent="1">
+      <mxGeometry x="200" y="140" width="200" height="80" as="geometry"/>
+    </mxCell>
+
+    <!-- Activation -->
+    <mxCell id="relu" value="&lt;b&gt;ReLU&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;$$\max(0, h)$$&lt;/font&gt;"
+      style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FF5722;strokeColor=#D84315;fontColor=#ffffff;fontSize=12;arcSize=20;"
+      vertex="1" parent="1">
+      <mxGeometry x="200" y="260" width="200" height="60" as="geometry"/>
+    </mxCell>
+
+    <!-- Dropout -->
+    <mxCell id="dropout" value="&lt;b&gt;Dropout&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:9px;opacity:0.7&quot;&gt;p = 0.1&lt;/font&gt;"
+      style="rounded=1;whiteSpace=wrap;html=1;fillColor=#795548;strokeColor=#4E342E;fontColor=#ffffff;fontSize=11;arcSize=20;"
+      vertex="1" parent="1">
+      <mxGeometry x="200" y="360" width="200" height="45" as="geometry"/>
+    </mxCell>
+
+    <!-- Linear 2 -->
+    <mxCell id="linear2" value="&lt;b&gt;Linear Layer 2&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;$$y = W_2 h + b_2$$&lt;/font&gt;&lt;br&gt;&lt;font style=&quot;font-size:9px;opacity:0.7&quot;&gt;(B, d_h) &amp;rarr; (B, d_out)&lt;/font&gt;"
+      style="rounded=1;whiteSpace=wrap;html=1;fillColor=#9C27B0;strokeColor=#6A1B9A;fontColor=#ffffff;fontSize=12;arcSize=20;"
+      vertex="1" parent="1">
+      <mxGeometry x="200" y="445" width="200" height="80" as="geometry"/>
+    </mxCell>
+
+    <!-- Output -->
+    <mxCell id="output" value="&lt;b&gt;Output&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;$$y \in \mathbb{R}^{B \times d_{out}}$$&lt;/font&gt;"
+      style="rounded=1;whiteSpace=wrap;html=1;fillColor=#2196F3;strokeColor=#1565C0;fontColor=#ffffff;fontSize=12;arcSize=20;"
+      vertex="1" parent="1">
+      <mxGeometry x="200" y="565" width="200" height="70" as="geometry"/>
+    </mxCell>
+
+    <!-- ========== Data Flow Edges ========== -->
+
+    <mxCell id="e1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#666666;strokeWidth=2;endArrow=block;endFill=1;"
+      edge="1" parent="1" source="input" target="linear1">
+      <mxGeometry relative="1" as="geometry"/>
+    </mxCell>
+
+    <mxCell id="e2" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#666666;strokeWidth=2;endArrow=block;endFill=1;"
+      edge="1" parent="1" source="linear1" target="relu">
+      <mxGeometry relative="1" as="geometry"/>
+    </mxCell>
+
+    <mxCell id="e3" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#666666;strokeWidth=2;endArrow=block;endFill=1;"
+      edge="1" parent="1" source="relu" target="dropout">
+      <mxGeometry relative="1" as="geometry"/>
+    </mxCell>
+
+    <mxCell id="e4" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#666666;strokeWidth=2;endArrow=block;endFill=1;"
+      edge="1" parent="1" source="dropout" target="linear2">
+      <mxGeometry relative="1" as="geometry"/>
+    </mxCell>
+
+    <mxCell id="e5" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#666666;strokeWidth=2;endArrow=block;endFill=1;"
+      edge="1" parent="1" source="linear2" target="output">
+      <mxGeometry relative="1" as="geometry"/>
+    </mxCell>
+
+  </root>
+</mxGraphModel>

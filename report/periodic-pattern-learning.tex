@@ -1,0 +1,767 @@
+% Periodic Pattern Learning in the Surrogate Neural Network
+% Explains why the CPG's time-varying curvature creates a frequency-domain
+% challenge for the surrogate, reviews approaches, and presents solutions.
+
+\documentclass[11pt]{article}
+
+% ---------------------------------------------------------------------------
+% Font and encoding
+% ---------------------------------------------------------------------------
+\usepackage{palatino}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+
+% ---------------------------------------------------------------------------
+% Page layout
+% ---------------------------------------------------------------------------
+\usepackage[top=1in, bottom=1in, left=1.25in, right=1.25in]{geometry}
+\usepackage{setspace}
+\setstretch{1.15}
+\setlength{\parindent}{1em}
+\setlength{\parskip}{0.4em}
+
+% ---------------------------------------------------------------------------
+% Math
+% ---------------------------------------------------------------------------
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{mathtools}
+\usepackage{bm}
+
+% ---------------------------------------------------------------------------
+% Figures and tables
+% ---------------------------------------------------------------------------
+\usepackage{booktabs}
+\usepackage{float}
+\usepackage{array}
+\usepackage{tabularx}
+\usepackage{multirow}
+
+% ---------------------------------------------------------------------------
+% Colors and hyperlinks
+% ---------------------------------------------------------------------------
+\usepackage{xcolor}
+\usepackage[hidelinks]{hyperref}
+
+% ---------------------------------------------------------------------------
+% Lists
+% ---------------------------------------------------------------------------
+\usepackage{enumitem}
+\setlist[itemize]{nosep, topsep=0.3em, itemsep=0.2em}
+
+% ---------------------------------------------------------------------------
+% Section formatting
+% ---------------------------------------------------------------------------
+\usepackage{titlesec}
+\titlespacing*{\section}{0pt}{1.2em}{0.6em}
+\titlespacing*{\subsection}{0pt}{0.9em}{0.3em}
+
+% ---------------------------------------------------------------------------
+% Custom commands (consistent with system-formulation.tex)
+% ---------------------------------------------------------------------------
+\newcommand{\vect}[1]{\mathbf{#1}}
+\newcommand{\mat}[1]{\mathbf{#1}}
+\newcommand{\Real}{\mathbb{R}}
+
+% ---------------------------------------------------------------------------
+\begin{document}
+% ---------------------------------------------------------------------------
+
+\begin{center}
+  {\Large\bfseries Periodic Pattern Learning in the Surrogate Network} \\[0.5em]
+  {\large Spectral Bias, Fourier Features, and Input Encoding for the CPG-Driven Cosserat Rod} \\[1.5em]
+  \textit{Snake-HRL Project --- Reference Document}
+\end{center}
+
+\vspace{1em}
+
+% ===================================================================
+\section{The Problem}
+\label{sec:problem}
+% ===================================================================
+
+The neural surrogate $f_\theta$ replaces the transition operator
+$T\colon \Real^{129} \to \Real^{124}$ that composes 500 Position Verlet substeps of a
+Cosserat rod simulation.
+During those substeps, the CPG (Central Pattern Generator) produces a
+\emph{time-varying} rest curvature at each Voronoi node:
+
+\begin{equation}
+  \kappa_v^{\mathrm{rest}}(t^n)
+  = A \sin\!\bigl(2\pi k \cdot s_v + 2\pi f \cdot t^n + \phi_0\bigr) + b,
+  \qquad v = 1, \ldots, 19
+  \label{eq:cpg-substep}
+\end{equation}
+
+\noindent
+where $(A, f, k, \phi_0, b) \in \Real^5$ is the RL action, held fixed for the entire
+control interval $\Delta t_{\mathrm{ctrl}} = 0.5$\,s, and
+$t^n = t_{\mathrm{step}} + n \,\Delta t$ advances at every substep.
+Because of the $2\pi f \cdot t^n$ term, the 500 substeps are \emph{not identical}:
+each sees a different curvature configuration, and the rod responds dynamically to
+the propagating wave.
+
+The surrogate must therefore learn the \emph{integrated effect} of this
+oscillatory forcing:
+
+\begin{equation}
+  \vect{s}_{t+1} = T(\vect{s}_t, \vect{a}_t)
+  = \underbrace{V_{\Delta t}\!\bigl(\,\cdot\,;\;\bm{\kappa}^{\mathrm{rest},\,499}\bigr)
+    \;\circ\; \cdots \;\circ\;
+    V_{\Delta t}\!\bigl(\,\cdot\,;\;\bm{\kappa}^{\mathrm{rest},\,0}\bigr)}_{%
+    500 \text{ substeps, each with distinct } \bm{\kappa}^{\mathrm{rest}}}
+  \;\bigl(\vect{s}_t\bigr)
+\end{equation}
+
+\noindent
+This is not a power iteration $V_{\Delta t}^{500}$.
+The qualitative behaviour of $T$ depends strongly on how many oscillation cycles
+fit within $\Delta t_{\mathrm{ctrl}}$:
+
+\begin{equation}
+  n_{\mathrm{cycles}} = f \cdot \Delta t_{\mathrm{ctrl}}
+  \label{eq:ncycles}
+\end{equation}
+
+\begin{table}[H]
+  \centering
+  \renewcommand{\arraystretch}{1.2}
+  \begin{tabular}{ccl}
+    \toprule
+    $f$ (Hz) & $n_{\mathrm{cycles}}$ & Dynamics character \\
+    \midrule
+    0.5 & 0.25 & Slow sweep --- rod barely completes a quarter-wave \\
+    1.0 & 0.50 & Half-cycle --- rod swings in one direction \\
+    2.0 & 1.00 & Full cycle --- rod nearly returns to its initial configuration \\
+    3.0 & 1.50 & One-and-a-half cycles --- rod reverses mid-step \\
+    \bottomrule
+  \end{tabular}
+  \caption{Qualitative effect of the CPG frequency on one RL step.
+    At integer $n_{\mathrm{cycles}}$, the angular velocity $\omega_z$ nearly
+    returns to its initial value; at half-integer $n_{\mathrm{cycles}}$,
+    $\omega_z$ reverses sign.}
+  \label{tab:freq-regimes}
+\end{table}
+
+\noindent
+The mapping $f \mapsto \Delta\omega_z$ is therefore \emph{itself oscillatory}:
+the change in angular velocity is approximately zero when $n_{\mathrm{cycles}}$
+is an integer and maximal when it is a half-integer.
+An MLP with standard activations must approximate this sinusoidal relationship
+from raw scalar inputs --- precisely the setting where \emph{spectral bias}
+becomes problematic.
+
+% ===================================================================
+\section{Spectral Bias}
+\label{sec:spectral-bias}
+% ===================================================================
+
+\textbf{Spectral bias} (the ``frequency principle'') is the well-documented
+tendency of neural networks to learn low-frequency components of a target function
+before high-frequency components~\cite{rahaman2019spectral}.
+Networks with standard activations (ReLU, SiLU, tanh) preferentially fit smooth,
+slowly-varying functions.
+High-frequency patterns in the target require more training time, more parameters,
+or may never be fully learned.
+
+The root cause is that the Neural Tangent Kernel (NTK) of standard MLPs has a rapid
+spectral falloff: the kernel's eigenvalues decay with increasing frequency, so
+gradient descent converges slowly on high-frequency modes.
+
+\paragraph{Relevance to the surrogate.}
+The surrogate's target function contains an oscillatory dependence on the frequency
+parameter $f$.
+Concretely, $\Delta\omega_z$ as a function of $f$ is approximately sinusoidal
+(Table~\ref{tab:freq-regimes}).
+An MLP receiving $f$ as a raw normalized scalar in $[-1, 1]$ must learn this
+periodicity purely from data.
+This is consistent with the poor angular velocity prediction observed empirically
+($R^2 = 0.23$ on $\omega_z$ components).
+
+\paragraph{Severity assessment.}
+The spectral bias risk is \textbf{localised} to the frequency and wavenumber
+dimensions of the action space.
+The spatial CPG phase is already handled by the per-element encoding (Section~\ref{sec:existing}),
+which provides explicit sinusoidal features.
+The remaining gap is the \emph{frequency-domain} relationship between $(f, k)$ and
+the integrated dynamical response.
+
+% ===================================================================
+\section{The Existing Per-Element Phase Encoding}
+\label{sec:existing}
+% ===================================================================
+
+The current input to the surrogate is a 193-dimensional vector:
+
+\begin{equation}
+  \vect{x} = \bigl[\;
+    \underbrace{\vect{s}_{\mathrm{rel}}}_{\Real^{128}}
+    \;\big|\;
+    \underbrace{\vect{a}}_{\Real^{5}}
+    \;\big|\;
+    \underbrace{\vect{\gamma}^{\mathrm{phase}}}_{\Real^{60}}
+  \;\bigr]
+  \;\in \Real^{193}
+  \label{eq:current-input}
+\end{equation}
+
+\noindent
+where $\vect{s}_{\mathrm{rel}}$ is the relative rod state (CoM-subtracted positions,
+heading as $\sin/\cos$, velocities, yaw, $\omega_z$), $\vect{a}$ is the raw action,
+and $\vect{\gamma}^{\mathrm{phase}}$ contains 60 per-element CPG phase features:
+
+\begin{equation}
+  \vect{\gamma}^{\mathrm{phase}} =
+  \bigl[\;
+    \underbrace{\sin(\psi_j)}_{j=1}^{20}
+    \;\big|\;
+    \underbrace{\cos(\psi_j)}_{j=1}^{20}
+    \;\big|\;
+    \underbrace{A \sin(\psi_j)}_{j=1}^{20}
+  \;\bigr]
+  \;\in \Real^{60}
+  \label{eq:phase-enc}
+\end{equation}
+
+\noindent
+with $\psi_j = 2\pi k \cdot s_j + 2\pi f \cdot t_{\mathrm{step}} + \phi_0$
+being the CPG phase angle at element~$j$ at the \emph{start} of the RL step.
+
+\subsection{Strengths}
+
+\begin{enumerate}[label=(\alph*)]
+  \item \textbf{Spatially resolved.}
+    Each element gets its own phase, capturing the traveling wave's spatial structure.
+    The network can distinguish head-to-tail curvature patterns rather than seeing a
+    single global phase.
+
+  \item \textbf{$(\sin, \cos)$ pair avoids phase wrapping.}
+    The two-component representation is continuous everywhere, avoiding the $2\pi$
+    discontinuity that would arise from providing the raw angle~$\psi_j$.
+
+  \item \textbf{Commanded curvature is explicit.}
+    The $A \sin(\psi_j)$ features directly provide the rest curvature
+    $\kappa_j^{\mathrm{rest}}$ at step start --- the actual forcing term that enters
+    the constitutive relation
+    $\bm{\tau}_v^L = \mat{B}_{\mathrm{blk}}\,(\bm{\kappa}_v - \bm{\kappa}_v^{\mathrm{rest}})$.
+
+  \item \textbf{Structurally equivalent to Fourier features.}
+    The encoding is a hand-crafted Fourier feature expansion of the CPG phase at
+    each spatial location, with exactly the right frequency (the CPG fundamental).
+    This directly addresses spectral bias for the spatial-temporal phase.
+\end{enumerate}
+
+\subsection{Limitations}
+\label{sec:existing-limitations}
+
+\begin{enumerate}[label=(\alph*)]
+  \item \textbf{Fundamental frequency only.}
+    The encoding provides $\sin(\psi_j)$ and $\cos(\psi_j)$ at the CPG fundamental.
+    The \emph{integrated response} of 500 nonlinear substeps generates harmonics ---
+    the rod's actual curvature at step end is not a pure sinusoid even when the
+    forcing is.
+    Cross-frequency terms $\sin(2\psi_j)$ and $\sin(\psi_j)\sin(\psi_k)$ are absent.
+
+  \item \textbf{No explicit $n_{\mathrm{cycles}}$ representation.}
+    The number of oscillation cycles per step (Eq.~\ref{eq:ncycles}) is the
+    critical quantity that determines whether $\omega_z$ increases, decreases, or
+    reverses.
+    It is available implicitly from $f$ in the action, but not encoded as a periodic feature.
+
+  \item \textbf{Phase at step start only.}
+    The encoding provides the CPG state at $t_{\mathrm{step}}$, but the integrated
+    response depends on the phase \emph{trajectory} over 500 substeps.
+    The phase sweeps from $\psi_j(0)$ to $\psi_j(0) + 2\pi f \cdot \Delta t_{\mathrm{ctrl}}$.
+    This sweep information must be inferred from the raw scalar~$f$.
+\end{enumerate}
+
+\paragraph{Verdict.}
+The existing encoding is well-designed but has a specific gap: the network must
+learn the oscillatory relationship between $f$ and the integrated dynamical response
+from a raw scalar.
+Fourier-encoding $f$ (and $k$) directly targets this gap.
+
+% ===================================================================
+\section{Approaches Considered and Not Recommended}
+\label{sec:not-recommended}
+% ===================================================================
+
+\subsection{SIREN (Periodic Activation Functions)}
+
+SIREN~\cite{sitzmann2020siren} replaces all activation functions with
+$\sin(\omega_0 \cdot x)$, where $\omega_0$ is a frequency hyperparameter
+(typically 30).
+Its derivatives are also sinusoidal, making it effective for learning signals
+whose derivatives must be accurate (e.g., signed distance functions, PDE solutions).
+
+\paragraph{Why not here.}
+The periodicity in the surrogate's problem is in the \emph{input encoding},
+not in the \emph{target function}.
+The mapping from (body shape + CPG phase features) to (body shape delta)
+is not itself periodic --- it is a complex nonlinear regression where the periodic
+structure has already been factored out via the phase encoding.
+SIREN also produces ringing artifacts when the target contains non-periodic
+components (position drift, friction effects), and requires a specialised
+initialisation scheme that may interact poorly with the existing LayerNorm + residual
+block architecture.
+
+\subsection{Snake Activation}
+
+The Snake activation~\cite{ziyin2020neural}
+$\mathrm{Snake}_a(x) = x + \tfrac{\sin^2(ax)}{a}$ combines ReLU-like monotonicity
+with a periodic inductive bias.
+Its primary advantage is \emph{extrapolation}: given periodic training data,
+Snake networks extend the pattern beyond the training domain.
+
+\paragraph{Why not here.}
+The surrogate operates within a bounded action space and state distribution.
+Extrapolation is not the primary concern --- the body-frame representation and
+dense training coverage address generalisation more fundamentally.
+Switching activations introduces risk (different initialisation, learning rate
+sensitivity) with minimal expected gain since the periodicity is already in the input.
+
+\subsection{Neural ODEs}
+
+Neural ODEs~\cite{chen2018neuralode} learn continuous-time dynamics
+$d\vect{x}/dt = f_\theta(\vect{x}, t)$ and integrate via an ODE solver.
+They are appropriate when the time horizon varies or adaptive step sizes are needed.
+
+\paragraph{Why not here.}
+The surrogate is a \emph{fixed-step, fixed-horizon} map
+($\Real^{193} \to \Real^{128}$).
+The entire point is to replace 500 integration steps with a single forward pass.
+A Neural ODE would reintroduce stepwise integration in the forward pass,
+defeating the purpose.
+
+\subsection{Fourier Neural Operators (FNO)}
+
+FNO~\cite{li2021fno} learns mappings between function spaces via spectral
+convolutions on spatial grids, excelling at parametric PDEs with resolution invariance.
+
+\paragraph{Why not here.}
+The surrogate maps between \emph{finite-dimensional vectors}, not functions.
+The 20-element rod is already discretised at a fixed resolution.
+FNO is architecturally mismatched --- it would add complexity without benefit for
+this specific problem.
+
+% ===================================================================
+\section{Recommended Solutions}
+\label{sec:solutions}
+% ===================================================================
+
+The recommendations target the specific gap identified in
+Section~\ref{sec:existing-limitations}: the raw scalar representation of the
+frequency~$f$ and wavenumber~$k$ in the action.
+
+% -------------------------------------------------------------------
+\subsection{Solution 1: Random Fourier Features on $(f, k)$}
+\label{sec:rff}
+% -------------------------------------------------------------------
+
+\paragraph{Theory.}
+Tancik et al.~\cite{tancik2020fourier} showed that mapping low-dimensional inputs
+through sinusoidal functions before feeding them to an MLP eliminates spectral bias.
+The encoding is:
+
+\begin{equation}
+  \gamma(\vect{v}) =
+  \bigl[\;
+    \sin\!\bigl(2\pi \mat{B}\,\vect{v}\bigr),\;
+    \cos\!\bigl(2\pi \mat{B}\,\vect{v}\bigr)
+  \;\bigr]
+  \;\in \Real^{2m}
+  \label{eq:rff}
+\end{equation}
+
+\noindent
+where $\vect{v} \in \Real^d$ is the input,
+$\mat{B} \in \Real^{m \times d}$ is a random frequency matrix with
+$B_{ij} \sim \mathcal{N}(0, \sigma^2)$, and
+$\sigma$ controls the bandwidth (the range of frequencies represented).
+Each row of $\mat{B}$ defines a random frequency direction in input space;
+the $(\sin, \cos)$ pair at that frequency provides the network with a basis
+function at the corresponding scale.
+
+The connection to the NTK is direct: Fourier features reshape the NTK's spectrum
+to have uniform eigenvalues across a wider frequency band, removing the
+low-frequency preference.
+
+\paragraph{Application.}
+Apply Eq.~\ref{eq:rff} to the frequency and wavenumber components of the action:
+
+\begin{equation}
+  \vect{v} = \bigl(f_{\mathrm{norm}},\; k_{\mathrm{norm}}\bigr) \in [-1, 1]^2
+  \qquad
+  \gamma(\vect{v}) \in \Real^{2m}
+  \label{eq:rff-fk}
+\end{equation}
+
+\noindent
+with $m = 32$ (yielding 64 additional features) and $\mat{B} \in \Real^{32 \times 2}$.
+The bandwidth $\sigma$ is a hyperparameter to be swept.
+
+\paragraph{Bandwidth selection.}
+The target function's characteristic frequency in normalised input space determines
+the optimal~$\sigma$.
+The mapping $f \mapsto \Delta\omega_z$ oscillates on the scale of
+$1 / \Delta t_{\mathrm{ctrl}} = 2$\,Hz in physical units, corresponding to a
+normalised frequency of $\mathcal{O}(1\text{--}10)$ in $[-1, 1]$ space.
+A sweep over $\sigma \in \{1, 3, 10, 30\}$ covers the plausible range:
+
+\begin{table}[H]
+  \centering
+  \renewcommand{\arraystretch}{1.2}
+  \begin{tabular}{cl}
+    \toprule
+    $\sigma$ & Effect \\
+    \midrule
+    1   & Low-frequency features only --- may underfit the oscillatory dependence \\
+    3   & Moderate --- captures the primary oscillation \\
+    10  & High-frequency --- resolves fine structure in $f \mapsto \Delta\omega_z$ \\
+    30  & Very high-frequency --- risk of overfitting to noise \\
+    \bottomrule
+  \end{tabular}
+  \caption{Fourier feature bandwidth $\sigma$ sweep.
+    Expected optimum: $\sigma \in [3, 10]$.}
+  \label{tab:sigma-sweep}
+\end{table}
+
+\paragraph{Implementation.}
+A \texttt{FourierFeatures} module samples $\mat{B}$ once at initialisation
+and registers it as a non-trainable buffer (or optionally as a learnable parameter):
+
+\begin{equation}
+  \boxed{\;
+  \begin{aligned}
+    \mat{B} &\sim \mathcal{N}(\vect{0},\; \sigma^2 \mat{I}),
+      \quad \mat{B} \in \Real^{m \times 2}
+      && [\text{sample once at init}] \\[4pt]
+    \vect{p} &= 2\pi\, \mat{B}\, \vect{v}
+      && [\text{projection, } \vect{p} \in \Real^m] \\[4pt]
+    \gamma(\vect{v}) &= \bigl[\sin(\vect{p}),\; \cos(\vect{p})\bigr]
+      && [\text{output, } \gamma \in \Real^{2m}]
+  \end{aligned}
+  \;}
+  \label{eq:rff-impl}
+\end{equation}
+
+\noindent
+The extended surrogate input becomes:
+
+\begin{equation}
+  \vect{x}' = \bigl[\;
+    \vect{s}_{\mathrm{rel}}
+    \;\big|\;
+    \vect{a}
+    \;\big|\;
+    \vect{\gamma}^{\mathrm{phase}}
+    \;\big|\;
+    \gamma(f_{\mathrm{norm}}, k_{\mathrm{norm}})
+  \;\bigr]
+  \;\in \Real^{193 + 2m}
+  \label{eq:extended-input}
+\end{equation}
+
+\noindent
+For $m = 32$: $\dim(\vect{x}') = 257$.
+
+\paragraph{Why this is the highest-impact change.}
+The Fourier features directly provide the sinusoidal basis functions that the
+MLP would otherwise need to synthesise from the raw scalar $f$.
+Instead of learning $\Delta\omega_z \approx g(\sin(c \cdot f))$ for some
+unknown constant $c$, the network receives $\sin(2\pi b_i \cdot f)$ at
+multiple frequencies $b_i$ and need only learn a \emph{linear combination}
+of these basis functions.
+This converts a hard nonlinear approximation problem into a substantially
+easier regression.
+
+% -------------------------------------------------------------------
+\subsection{Solution 2: Explicit $n_{\mathrm{cycles}}$ Feature}
+\label{sec:ncycles}
+% -------------------------------------------------------------------
+
+Add a derived feature that directly encodes how many oscillation cycles the CPG
+completes within one RL step:
+
+\begin{equation}
+  n_{\mathrm{cycles}} = f \cdot \Delta t_{\mathrm{ctrl}}
+  \qquad
+  \gamma_{\mathrm{cyc}} = \bigl[\sin(2\pi\, n_{\mathrm{cycles}}),\;
+                                 \cos(2\pi\, n_{\mathrm{cycles}})\bigr]
+  \;\in \Real^2
+  \label{eq:ncycles-enc}
+\end{equation}
+
+\noindent
+where $f$ is the denormalised frequency in Hz.
+When $n_{\mathrm{cycles}}$ is an integer (full cycles), $\sin(2\pi n_{\mathrm{cycles}}) = 0$
+and $\cos(2\pi n_{\mathrm{cycles}}) = 1$; when it is a half-integer (reversal),
+$\sin = 0$ and $\cos = -1$.
+This directly tells the network whether the step ends mid-oscillation.
+
+The cost is 2 additional input dimensions.
+The frequency must be denormalised from the action before computing $n_{\mathrm{cycles}}$:
+
+\begin{equation}
+  f = f_{\min} + \frac{f_{\mathrm{norm}} + 1}{2}\,(f_{\max} - f_{\min})
+  = 0.5 + \frac{f_{\mathrm{norm}} + 1}{2} \cdot 2.5
+  \quad [\text{Hz}]
+\end{equation}
+
+This is the simplest change with a clear physical motivation.
+
+% -------------------------------------------------------------------
+\subsection{Solution 3: Harmonic Phase Features}
+\label{sec:harmonics}
+% -------------------------------------------------------------------
+
+The nonlinear rod dynamics generate harmonics of the CPG fundamental.
+Even though the forcing is sinusoidal at frequency $k$, the rod's curvature
+response contains $2k$, $3k$, and higher harmonics due to:
+
+\begin{itemize}
+  \item Geometric nonlinearity (finite rotations couple curvature modes)
+  \item Quadratic velocity terms in the damping forces
+  \item Contact and friction interactions
+\end{itemize}
+
+\noindent
+The current encoding provides only the fundamental.
+Extending to $H$ harmonics:
+
+\begin{equation}
+  \vect{\gamma}^{\mathrm{harm}} =
+  \bigl[\;
+    \underbrace{\sin(h\,\psi_j),\; \cos(h\,\psi_j)}_{\text{for each } h = 1, \ldots, H}
+    \;\big|\;
+    A \sin(\psi_j)
+  \;\bigr]_{j=1}^{20}
+  \;\in \Real^{20(2H + 1)}
+  \label{eq:harmonics}
+\end{equation}
+
+\noindent
+For $H = 3$ (fundamental + 2nd + 3rd harmonic):
+$\dim(\vect{\gamma}^{\mathrm{harm}}) = 20 \times 7 = 140$,
+adding 80 features beyond the current 60.
+
+The $h$-th harmonic provides a basis function that oscillates $h$ times as fast
+along the rod body and in time, letting the network represent the nonlinear
+response without synthesising these harmonics internally.
+
+% ===================================================================
+\section{Combined Input Architecture}
+\label{sec:combined}
+% ===================================================================
+
+Combining all three solutions, the enhanced surrogate input is:
+
+\begin{equation}
+  \vect{x}^{\star} = \bigl[\;
+    \underbrace{\vect{s}_{\mathrm{rel}}}_{\Real^{128}}
+    \;\big|\;
+    \underbrace{\vect{a}}_{\Real^{5}}
+    \;\big|\;
+    \underbrace{\vect{\gamma}^{\mathrm{harm}}}_{\Real^{140}}
+    \;\big|\;
+    \underbrace{\gamma(f, k)}_{\Real^{64}}
+    \;\big|\;
+    \underbrace{\gamma_{\mathrm{cyc}}}_{\Real^{2}}
+  \;\bigr]
+  \;\in \Real^{339}
+  \label{eq:full-input}
+\end{equation}
+
+\noindent
+Compared to the current 193-dimensional input, this adds 146 features.
+The MLP hidden dimension (512) and depth (3 layers) remain unchanged;
+only the input projection layer widens.
+
+\begin{table}[H]
+  \centering
+  \renewcommand{\arraystretch}{1.3}
+  \begin{tabular}{llcc}
+    \toprule
+    \textbf{Component} & \textbf{What it encodes} & \textbf{Current} & \textbf{Proposed} \\
+    \midrule
+    Relative state $\vect{s}_{\mathrm{rel}}$
+      & Rod shape, velocities, heading & 128 & 128 \\
+    Action $\vect{a}$
+      & Raw CPG parameters (normalised) & 5 & 5 \\
+    Per-element phase
+      & CPG phase at each element (fundamental) & 60 & --- \\
+    Harmonic phase $\vect{\gamma}^{\mathrm{harm}}$
+      & CPG phase at each element ($H = 3$ harmonics) & --- & 140 \\
+    Fourier features $\gamma(f, k)$
+      & Frequency-domain encoding of $f$ and $k$ & --- & 64 \\
+    Cycle encoding $\gamma_{\mathrm{cyc}}$
+      & $\sin/\cos$ of oscillation cycles per step & --- & 2 \\
+    \midrule
+    \textbf{Total} & & \textbf{193} & \textbf{339} \\
+    \bottomrule
+  \end{tabular}
+  \caption{Surrogate input dimensions: current vs.\ proposed.
+    The harmonic phase features ($H = 3$) subsume the current fundamental-only
+    encoding ($H = 1$).}
+  \label{tab:input-dims}
+\end{table}
+
+\paragraph{Parameter count impact.}
+The first hidden layer grows from $193 \times 512 = 98{,}816$ to
+$339 \times 512 = 173{,}568$ parameters (a 76\% increase in the first layer).
+Total model parameters increase from $\sim$790k to $\sim$860k ---
+a modest 9\% increase.
+All subsequent layers are unchanged.
+
+% ===================================================================
+\section{Experiment Design}
+\label{sec:experiments}
+% ===================================================================
+
+The three solutions should be tested \emph{independently} before combining,
+to isolate the contribution of each.
+
+\begin{table}[H]
+  \centering
+  \renewcommand{\arraystretch}{1.3}
+  \begin{tabular}{clccc}
+    \toprule
+    \textbf{Priority} & \textbf{Experiment} & \textbf{Extra dims} & \textbf{Expected gain} & \textbf{Risk} \\
+    \midrule
+    1 & $n_{\mathrm{cycles}}$ encoding (Eq.~\ref{eq:ncycles-enc})
+      & +2  & Medium & None \\
+    2 & Fourier features on $(f, k)$, $\sigma$ sweep (Eq.~\ref{eq:rff-fk})
+      & +64 & High & Low \\
+    3 & Harmonic phase features, $H = 3$ (Eq.~\ref{eq:harmonics})
+      & +80 & Medium & Low \\
+    4 & Combined: all three
+      & +146 & High & Low \\
+    \bottomrule
+  \end{tabular}
+  \caption{Experiment priority.
+    Primary metric: validation $R^2$ on $\omega_z$ components
+    (current baseline: 0.23).
+    Secondary metric: validation MSE on all 124 state dimensions.}
+  \label{tab:experiments}
+\end{table}
+
+\paragraph{Fourier feature $\sigma$ sweep.}
+For experiment~2, sweep $\sigma \in \{1, 3, 10, 30\}$ with $m = 32$ fixed.
+All other hyperparameters (learning rate, batch size, epochs) remain at their
+current values to isolate the effect of the encoding.
+
+\paragraph{Ablation.}
+If the combined model (experiment~4) improves $R^2$, ablate by removing one
+component at a time to confirm each contributes independently.
+
+% ===================================================================
+\section{Why Not Fourier-Encode Everything?}
+\label{sec:why-not-all}
+% ===================================================================
+
+A natural question: if Fourier features help for $(f, k)$, why not apply them
+to all 128 state dimensions?
+
+\begin{enumerate}[label=(\arabic*)]
+  \item \textbf{Curse of dimensionality.}
+    Random Fourier features scale as $\mathcal{O}(2m \cdot d)$ in output dimension.
+    For $d = 128$ and $m = 32$, this would add $128 \times 64 = 8{,}192$ features ---
+    an input dimension explosion that dominates the model.
+
+  \item \textbf{The state is not periodic.}
+    Spectral bias is a problem when the \emph{target function} oscillates as a
+    function of the \emph{input coordinates}.
+    The state vector (positions, velocities, yaw angles) does not enter the target
+    as periodic arguments.
+    The target's dependence on the state is smooth and well-captured by standard
+    activations.
+
+  \item \textbf{The bottleneck is localised.}
+    The poor $\omega_z$ prediction is specifically attributable to the
+    frequency-dependent oscillatory dynamics (Section~\ref{sec:problem}).
+    Fourier features on $(f, k)$ target this bottleneck precisely.
+    Applying them elsewhere dilutes the signal.
+\end{enumerate}
+
+% ===================================================================
+\section{Summary}
+\label{sec:summary}
+% ===================================================================
+
+The CPG's time-varying rest curvature creates a frequency-domain challenge for
+the surrogate: the integrated effect of 500 substeps is an oscillatory function
+of the action parameters $(f, k)$, and standard MLPs learn such functions slowly
+(spectral bias).
+
+The existing per-element phase encoding already addresses the
+\emph{spatial-temporal phase} at each element --- it is a well-designed Fourier
+feature expansion of the CPG state.
+But it does not address the \emph{frequency-domain} relationship between
+$(f, k)$ and the integrated dynamical response.
+
+Three targeted solutions are proposed:
+
+\begin{enumerate}
+  \item \textbf{Random Fourier Features on $(f, k)$} (Section~\ref{sec:rff}):
+    Provides sinusoidal basis functions of the frequency parameters, converting
+    a hard nonlinear approximation problem into an easier regression.
+    Highest expected impact.
+
+  \item \textbf{Explicit $n_{\mathrm{cycles}}$ encoding} (Section~\ref{sec:ncycles}):
+    Two features that directly encode how many oscillation cycles fit in the
+    control interval. Trivial to implement, physically motivated.
+
+  \item \textbf{Harmonic phase features} (Section~\ref{sec:harmonics}):
+    Higher harmonics of the per-element phase, capturing the rod's nonlinear
+    response to sinusoidal forcing.
+\end{enumerate}
+
+\noindent
+SIREN, Snake activations, Neural ODEs, and Fourier Neural Operators were
+considered and rejected: the periodicity is in the \emph{input encoding}, not
+the \emph{network architecture}, and the surrogate's fixed-step,
+finite-dimensional structure does not match these approaches' strengths.
+
+% ===================================================================
+% References
+% ===================================================================
+
+\begin{thebibliography}{9}
+
+\bibitem{rahaman2019spectral}
+N.~Rahaman, A.~Baratin, D.~Arpit, F.~Draxler, M.~Lin, F.~Hamprecht,
+Y.~Bengio, and A.~Courville,
+``On the spectral bias of neural networks,''
+in \textit{Proc.\ ICML}, 2019.
+
+\bibitem{tancik2020fourier}
+M.~Tancik, P.~Srinivasan, B.~Mildenhall, S.~Fridovich-Keil, N.~Raghavan,
+U.~Singhal, R.~Ramamoorthi, J.~Barron, and R.~Ng,
+``Fourier features let networks learn high frequency functions in low
+dimensional domains,''
+in \textit{Proc.\ NeurIPS}, 2020.
+
+\bibitem{sitzmann2020siren}
+V.~Sitzmann, J.~N.~P.~Martel, A.~W.~Bergman, D.~B.~Lindell, and G.~Wetzstein,
+``Implicit neural representations with periodic activation functions,''
+in \textit{Proc.\ NeurIPS}, 2020.
+
+\bibitem{ziyin2020neural}
+L.~Ziyin, T.~Hartwig, and M.~Ueda,
+``Neural networks fail to learn periodic functions and how to fix it,''
+in \textit{Proc.\ NeurIPS}, 2020.
+
+\bibitem{chen2018neuralode}
+R.~T.~Q.~Chen, Y.~Rubanova, J.~Bettencourt, and D.~Duveniste,
+``Neural ordinary differential equations,''
+in \textit{Proc.\ NeurIPS}, 2018.
+
+\bibitem{li2021fno}
+Z.~Li, N.~Kovachki, K.~Azizzadenesheli, B.~Liu, K.~Bhattacharya,
+A.~Stuart, and A.~Anandkumar,
+``Fourier neural operator for parametric partial differential equations,''
+in \textit{Proc.\ ICLR}, 2021.
+
+\end{thebibliography}
+
+\end{document}

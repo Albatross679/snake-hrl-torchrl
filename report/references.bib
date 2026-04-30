@@ -1,0 +1,329 @@
+% references.bib
+% Bibliography for: Neural Surrogate Modeling for Snake Robot Locomotion
+% Phase 6: Write Research Report in LaTeX
+
+% ---------------------------------------------------------------------------
+% Reward Shaping
+% ---------------------------------------------------------------------------
+
+@inproceedings{Ng1999,
+  author    = {Ng, Andrew Y. and Harada, Daishi and Russell, Stuart},
+  title     = {Policy Invariance Under Reward Transformations: Theory and Application to Reward Shaping},
+  booktitle = {Proceedings of the Sixteenth International Conference on Machine Learning (ICML)},
+  pages     = {278--287},
+  year      = {1999},
+  publisher = {Morgan Kaufmann},
+}
+
+% ---------------------------------------------------------------------------
+% Neural Surrogates for Cosserat Rod / Soft Robot Dynamics
+% ---------------------------------------------------------------------------
+
+@article{Stolzle2025,
+  author    = {Licher, Johann and Bartholdt, Max and Krauss, Henrik and Habich, Tim-Lukas and Seel, Thomas and Schappler, Moritz},
+  title     = {{DD-PINN}: Domain-Decoupled Physics-Informed Neural Network
+               for Dynamic Cosserat Rod Model-Predictive Control},
+  journal   = {arXiv preprint arXiv:2508.12681},
+  year      = {2025},
+  url       = {https://arxiv.org/abs/2508.12681},
+  note      = {44{,}000$\times$ speedup over numerical integration; MPC at 70 Hz on GPU}
+}
+
+@article{Raissi2019,
+  author    = {Raissi, M. and Perdikaris, P. and Karniadakis, G. E.},
+  title     = {Physics-Informed Neural Networks: A Deep Learning Framework
+               for Solving Forward and Inverse Problems Involving Nonlinear
+               Partial Differential Equations},
+  journal   = {Journal of Computational Physics},
+  volume    = {378},
+  pages     = {686--707},
+  year      = {2019},
+  doi       = {10.1016/j.jcp.2018.10.045}
+}
+
+@article{Krauss2024,
+  author    = {Krauss, H. and Habich, T.-L. and Bartholdt, M. and Seel, T.
+               and Schappler, M.},
+  title     = {Domain-Decoupled Physics-Informed Neural Networks with
+               Closed-Form Gradients for Fast Model Learning of Dynamical
+               Systems},
+  journal   = {arXiv preprint arXiv:2408.14951},
+  year      = {2024},
+  url       = {https://arxiv.org/abs/2408.14951}
+}
+
+@article{Licher2025,
+  author    = {Licher, J. and Bartholdt, M. and Krauss, H. and Habich, T.-L.
+               and Seel, T. and Schappler, M.},
+  title     = {Adaptive Model-Predictive Control of a Soft Continuum Robot
+               Using a Physics-Informed Neural Network Based on {Cosserat}
+               Rod Theory},
+  journal   = {arXiv preprint arXiv:2508.12681},
+  year      = {2025},
+  url       = {https://arxiv.org/abs/2508.12681}
+}
+
+@inproceedings{Bensch2024,
+  author    = {Bensch, M. and Job, S. and Habich, T.-L. and Seel, T.
+               and Schappler, M.},
+  title     = {Physics-Informed Neural Networks for Continuum Robots:
+               Towards Fast Approximation of Static {Cosserat} Rod Theory},
+  booktitle = {Proceedings of the IEEE International Conference on Robotics
+               and Automation (ICRA)},
+  year      = {2024}
+}
+
+@article{Bischof2022,
+  author    = {Bischof, Rafael and Kraus, Michael A.},
+  title     = {Multi-Objective Loss Balancing for Physics-Informed Deep Learning},
+  journal   = {arXiv preprint arXiv:2110.09813},
+  year      = {2022},
+  url       = {https://arxiv.org/abs/2110.09813},
+  note      = {ReLoBRaLo: adaptive loss weighting via softmax over relative loss changes with EMA smoothing}
+}
+
+@article{Hsieh2024,
+  author    = {Jiahao, Tom Z. and Adolf, Ryan and Sung, Cynthia and Hsieh, M. Ani},
+  title     = {{KNODE-Cosserat}: Neural {ODE} Correction of Cosserat Rod Dynamics},
+  journal   = {arXiv preprint arXiv:2408.07776},
+  year      = {2024},
+  url       = {https://arxiv.org/abs/2408.07776},
+  note      = {58.7\% accuracy improvement over physics-only model; trained on PyElastica data}
+}
+
+@article{SoRoLEX2024,
+  author    = {Berdica, Uljad and Jackson, Matthew and Veronese, Niccol\`{o} Enrico and Foerster, Jakob and Maiolino, Perla},
+  title     = {{SoRoLEX}: Learned Environments for Soft Robot Reinforcement Learning},
+  journal   = {arXiv preprint arXiv:2410.18519},
+  year      = {2024},
+  url       = {https://arxiv.org/abs/2410.18519},
+  note      = {LSTM surrogate for Cosserat rod sim; order-of-magnitude speedup for RL}
+}
+
+@article{PINNSoftRobot2025,
+  author    = {Habich, Tim-Lukas and Mohammad, Aran and Ehlers, Simon F. G. and Bensch, Martin and Seel, Thomas and Schappler, Moritz},
+  title     = {Physics-Informed Neural Networks for Articulated Soft Robot
+               Model-Predictive Control at 47 {Hz}},
+  journal   = {arXiv preprint arXiv:2502.01916},
+  year      = {2025},
+  url       = {https://arxiv.org/abs/2502.01916},
+  note      = {467$\times$ speedup; MPC at 47 Hz; as little as 1 training dataset}
+}
+
+@article{Hong2026,
+  author    = {Hong, Taehwa and Lee, Jungjae and Song, Byung-Hyun and Park, Yong-Lae},
+  title     = {Bridging Finite Element Methods and Reinforcement Learning
+               for Deformable Soft Robots},
+  journal   = {Advanced Intelligent Systems},
+  publisher = {Wiley},
+  year      = {2026},
+  doi       = {10.1002/aisy.202500696},
+  url       = {https://doi.org/10.1002/aisy.202500696}
+}
+
+% ---------------------------------------------------------------------------
+% Discrete Elastic Rods (DER) and DisMech
+% ---------------------------------------------------------------------------
+
+@article{Bergou2008,
+  author    = {Bergou, Mikl{\'o}s and Wardetzky, Max and Robinson, Stephen
+               and Audoly, Basile and Grinspun, Eitan},
+  title     = {Discrete Elastic Rods},
+  journal   = {ACM Transactions on Graphics (SIGGRAPH)},
+  volume    = {27},
+  number    = {3},
+  pages     = {63:1--63:12},
+  year      = {2008},
+  doi       = {10.1145/1360612.1360662}
+}
+
+@article{Bergou2010,
+  author    = {Bergou, Mikl{\'o}s and Audoly, Basile and Vouga, Etienne
+               and Wardetzky, Max and Grinspun, Eitan},
+  title     = {Discrete Viscous Threads},
+  journal   = {ACM Transactions on Graphics (SIGGRAPH)},
+  volume    = {29},
+  number    = {4},
+  pages     = {116:1--116:10},
+  year      = {2010},
+  doi       = {10.1145/1778765.1778853}
+}
+
+@article{Choi2024dismech,
+  author    = {Choi, Andrew and Jing, Ran and Sabelhaus, Andrew P. and Jawed, M. Khalid},
+  title     = {{DisMech}: A Discrete Differential Geometry-Based Physical Simulator
+               for Soft Robots and Structures},
+  journal   = {IEEE Robotics and Automation Letters},
+  volume    = {9},
+  number    = {4},
+  pages     = {3483--3490},
+  year      = {2024},
+  doi       = {10.1109/LRA.2024.3365292}
+}
+
+@article{Lahoti2025pydismech,
+  author    = {Lahoti, Radhe Shyam and Choi, Andrew and Jawed, M. Khalid},
+  title     = {{Py-DiSMech}: A Scalable and Efficient Framework for Discrete
+               Differential Geometry-Based Modeling and Control of Soft Robots},
+  journal   = {arXiv preprint arXiv:2512.09911},
+  year      = {2025}
+}
+
+% ---------------------------------------------------------------------------
+% PyElastica Simulator and Cosserat Rod Theory
+% ---------------------------------------------------------------------------
+
+@article{Naughton2021,
+  author    = {Naughton, Noel and Sun, Jiarui and Tekinalp, Arman and
+               Parthasarathy, Tejaswin and Chowdhary, Girish and
+               Gazzola, Mattia},
+  title     = {{PyElastica}: A Compliant Mechanics Environment for Soft
+               Robotic Control},
+  journal   = {IEEE Robotics and Automation Letters},
+  volume    = {6},
+  number    = {2},
+  pages     = {3389--3396},
+  year      = {2021},
+  doi       = {10.1109/LRA.2021.3063698}
+}
+
+@article{Till2019,
+  author    = {Till, John and Aloi, Vincent and Rucker, Caleb},
+  title     = {Real-Time Dynamics of Soft and Continuum Robots Based on
+               {Cosserat} Rod Models},
+  journal   = {The International Journal of Robotics Research},
+  volume    = {38},
+  number    = {6},
+  pages     = {723--746},
+  year      = {2019},
+  doi       = {10.1177/0278364919842269}
+}
+
+% ---------------------------------------------------------------------------
+% Model-Based Reinforcement Learning
+% ---------------------------------------------------------------------------
+
+@inproceedings{Janner2019,
+  author    = {Janner, Michael and Fu, Justin and Zhang, Marvin and Levine, Sergey},
+  title     = {When to Trust Your Model: Model-Based Policy Optimization},
+  booktitle = {Advances in Neural Information Processing Systems (NeurIPS)},
+  volume    = {32},
+  year      = {2019},
+  url       = {https://arxiv.org/abs/1906.08253}
+}
+
+% ---------------------------------------------------------------------------
+% Graph Network Simulators and Mesh-Based Simulation
+% ---------------------------------------------------------------------------
+
+@inproceedings{SanchezGonzalez2020,
+  author    = {Sanchez-Gonzalez, Alvaro and Godwin, Jonathan and
+               Pfaff, Tobias and Ying, Rex and Leskovec, Jure and
+               Battaglia, Peter},
+  title     = {Learning to Simulate Complex Physics with Graph Networks},
+  booktitle = {Proceedings of the 37th International Conference on
+               Machine Learning (ICML)},
+  pages     = {8459--8468},
+  year      = {2020},
+  url       = {https://arxiv.org/abs/2002.09405}
+}
+
+@inproceedings{Pfaff2021,
+  author    = {Pfaff, Tobias and Fortunato, Meire and
+               Sanchez-Gonzalez, Alvaro and Battaglia, Peter},
+  title     = {Learning Mesh-Based Simulation with Graph Networks},
+  booktitle = {International Conference on Learning Representations (ICLR)},
+  year      = {2021},
+  url       = {https://arxiv.org/abs/2010.03409}
+}
+
+% ---------------------------------------------------------------------------
+% Snake Robot Locomotion with CPG and RL
+% ---------------------------------------------------------------------------
+
+@inproceedings{Bing2019,
+  author    = {Bing, Zhenshan and Meschede, Claus and R{\"o}mer, Florian and
+               Huang, Kai and Knoll, Alois},
+  title     = {A Survey of Robotics Control Based on Learning-Inspired
+               Spiking Neural Circuits},
+  booktitle = {Proceedings of the 28th International Joint Conference on
+               Artificial Intelligence (IJCAI)},
+  pages     = {6004--6010},
+  year      = {2019},
+  note      = {Snake locomotion with CPG actuation and RL; source of bing2019/ package in this project}
+}
+
+% ---------------------------------------------------------------------------
+% Replicated Baselines — Snake Robot Locomotion and Navigation
+% ---------------------------------------------------------------------------
+
+@article{Shi2020,
+  author    = {Shi, Qiyang and Dear, Tony and Kelly, S. David},
+  title     = {Deep Reinforcement Learning for Snake Robot Locomotion},
+  journal   = {IFAC-PapersOnLine},
+  volume    = {53},
+  number    = {2},
+  pages     = {9688--9695},
+  year      = {2020},
+  doi       = {10.1016/j.ifacol.2020.12.2619}
+}
+
+@article{Liu2021,
+  author    = {Liu, Xuan and Onal, Cagdas D. and Fu, Jie},
+  title     = {Learning Contact-Aware {CPG}-Based Locomotion in a Soft Snake Robot},
+  journal   = {arXiv preprint arXiv:2105.04608},
+  year      = {2021},
+  url       = {https://arxiv.org/abs/2105.04608}
+}
+
+@article{Liu2022,
+  author    = {Liu, Gang and Guo, Shuxiang and Fang, Li},
+  title     = {A Reinforcement Learning-Based Strategy of Path Following
+               for Snake Robots with an Onboard Camera},
+  journal   = {Sensors},
+  volume    = {22},
+  number    = {24},
+  pages     = {9867},
+  year      = {2022},
+  doi       = {10.3390/s22249867}
+}
+
+@article{Liu2023,
+  author    = {Liu, Xuan and Onal, Cagdas D. and Fu, Jie},
+  title     = {Reinforcement Learning of {CPG}-Regulated Locomotion Controller
+               for a Soft Snake Robot},
+  journal   = {arXiv preprint},
+  year      = {2023}
+}
+
+@article{Zheng2022,
+  author    = {Zheng, Jiangeng and Li, Yuan and Hayashibe, Mitsuhiro},
+  title     = {An Optimization-Based Approach to Locomotion of Underwater
+               Snake Robots with Series Elastic Actuators},
+  journal   = {Frontiers in Robotics and AI},
+  year      = {2022},
+  doi       = {10.3389/frobt.2022.857205}
+}
+
+@article{Jiang2024,
+  author    = {Jiang, Shuo and Salagame, Adarsh and Ramezani, Alireza and Wong, Lawson},
+  title     = {Hierarchical {RL}-Guided Large-Scale Navigation of a Snake Robot},
+  journal   = {arXiv preprint},
+  year      = {2024}
+}
+
+@article{Schaffer2024,
+  author    = {Schaffer, C. Blake and Pamu, Hima Hrithik and Webster-Wood, Victoria A.},
+  title     = {Hitting the Gym: Reinforcement Learning Control of
+               Exercise-Strengthened Biohybrid Robots in Simulation},
+  journal   = {arXiv preprint arXiv:2408.16069},
+  year      = {2024},
+  url       = {https://arxiv.org/abs/2408.16069}
+}
+
+@article{Choi2025,
+  author    = {Choi, Andrew and Tong, Yifan},
+  title     = {Rapidly Learning Soft Robot Control via Implicit Time-Stepping},
+  journal   = {arXiv preprint},
+  year      = {2025}
+}

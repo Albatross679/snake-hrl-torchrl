@@ -1,0 +1,973 @@
+% KNODE-Cosserat Hybrid Physics+NN Surrogate: Research Report
+% Snake-HRL Project — Reference Document
+
+\documentclass[11pt]{article}
+
+% ---------------------------------------------------------------------------
+% Font and encoding
+% ---------------------------------------------------------------------------
+\usepackage{palatino}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+
+% ---------------------------------------------------------------------------
+% Page layout
+% ---------------------------------------------------------------------------
+\usepackage[top=1in, bottom=1in, left=1.25in, right=1.25in]{geometry}
+\usepackage{setspace}
+\setstretch{1.15}
+\setlength{\parindent}{1em}
+\setlength{\parskip}{0.4em}
+
+% ---------------------------------------------------------------------------
+% Math
+% ---------------------------------------------------------------------------
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{mathtools}
+\usepackage{bm}
+
+% ---------------------------------------------------------------------------
+% Algorithms
+% ---------------------------------------------------------------------------
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\algrenewcommand\algorithmicrequire{\textbf{Input:}}
+\algrenewcommand\algorithmicensure{\textbf{Output:}}
+
+% ---------------------------------------------------------------------------
+% Figures and tables
+% ---------------------------------------------------------------------------
+\usepackage{booktabs}
+\usepackage{float}
+\usepackage{array}
+\usepackage{multirow}
+
+% ---------------------------------------------------------------------------
+% Colors and hyperlinks
+% ---------------------------------------------------------------------------
+\usepackage{xcolor}
+\usepackage[hidelinks]{hyperref}
+\definecolor{physicsblue}{RGB}{0,80,160}
+\definecolor{nngreen}{RGB}{0,130,60}
+\definecolor{hybrid}{RGB}{140,60,140}
+
+% ---------------------------------------------------------------------------
+% Lists
+% ---------------------------------------------------------------------------
+\usepackage{enumitem}
+\setlist[itemize]{nosep, topsep=0.3em, itemsep=0.2em}
+
+% ---------------------------------------------------------------------------
+% Section formatting
+% ---------------------------------------------------------------------------
+\usepackage{titlesec}
+\titlespacing*{\section}{0pt}{1.2em}{0.6em}
+\titlespacing*{\subsection}{0pt}{0.9em}{0.3em}
+
+% ---------------------------------------------------------------------------
+% Custom commands
+% ---------------------------------------------------------------------------
+\newcommand{\vect}[1]{\mathbf{#1}}
+\newcommand{\mat}[1]{\mathbf{#1}}
+\newcommand{\Real}{\mathbb{R}}
+\newcommand{\phys}[1]{{\color{physicsblue}#1}}
+\newcommand{\nn}[1]{{\color{nngreen}#1}}
+\newcommand{\hyb}[1]{{\color{hybrid}#1}}
+
+% ---------------------------------------------------------------------------
+\begin{document}
+% ---------------------------------------------------------------------------
+
+\begin{center}
+  {\Large\bfseries KNODE-Cosserat: Hybrid Physics+NN Surrogate} \\[0.3em]
+  {\large for Snake Robot Cosserat Rod Dynamics} \\[1.5em]
+  \textit{Snake-HRL Project --- Research Report} \\[0.3em]
+  \textit{March 2026}
+\end{center}
+
+\vspace{1em}
+
+% ===================================================================
+\section{Introduction and Motivation}
+\label{sec:intro}
+% ===================================================================
+
+The pure MLP surrogate (system-formulation.tex, Section~6) replaces the full Verlet integration pipeline --- all ${\sim}377{,}000$ scalar operations per RL step --- with a single forward pass $f_\theta\colon \Real^{131} \to \Real^{124}$.
+While this achieves ${\sim}17{,}000\times$ throughput improvement, it discards all physics structure and must learn the entire transition operator from data.
+
+The \textbf{KNODE-Cosserat} (Knowledge-based Neural ODE) approach takes a different strategy: embed the known physics structure into the model and train a neural network to correct only the expensive or inaccurate parts.
+The key insight is that many stages of the Verlet substep are \emph{cheap and exact} --- the neural network need not learn them at all.
+
+\subsection{Computational Cost Decomposition}
+
+From the equation count (system-formulation.tex, Table~1), the per-substep cost distributes as:
+
+\begin{table}[H]
+  \centering
+  \renewcommand{\arraystretch}{1.2}
+  \begin{tabular}{lrcc}
+    \toprule
+    \textbf{Stage} & \textbf{Ops/substep} & \textbf{Cheap?} & \textbf{NN replaces?} \\
+    \midrule
+    Stage 1: Half-step positions & 62 & Yes & No \\
+    Stage 2a: Geometry update & 60 & Yes & No \\
+    Stage 2b: Shear--stretch forces & $\sim$120 & \textbf{No} & \textbf{Yes} \\
+    Stage 2c: Bending--twist torques & $\sim$200 & \textbf{No} & \textbf{Yes} \\
+    Stage 2d: External forces & 126 & Yes & No \\
+    Stage 2e: Accelerations & 62 & Yes & No \\
+    Stage 2f: Velocity update & 62 & Yes & No \\
+    Stage 3: Full-step positions & 62 & Yes & No \\
+    \midrule
+    \textbf{Total} & $\sim$754 & & \\
+    \textbf{NN-replaced} & $\sim$320 & & \textbf{42\%} \\
+    \bottomrule
+  \end{tabular}
+  \caption{Per-substep cost decomposition.  Stages 2b--2c (internal force assembly) account for 42\% of the computation and involve the most complex nonlinear operations (constitutive laws, cross products, curvature assembly).  The remaining 58\% consists of cheap linear operations.}
+  \label{tab:cost-decomposition}
+\end{table}
+
+\noindent
+The hybrid approach computes Stages 1, 2a, 2d--2f, and 3 analytically (they are cheap matrix--vector operations) and replaces only Stages 2b--2c with a neural network.
+
+% ===================================================================
+\section{The KNODE-Cosserat Framework}
+\label{sec:knode}
+% ===================================================================
+
+\subsection{Core Equation}
+
+The KNODE framework [1] augments a known (possibly imperfect) physics model with a learned residual:
+
+\begin{equation}
+  \dot{\vect{x}} = \phys{f_{\text{physics}}(\vect{x}, t)} + \nn{g_\theta(\vect{x}, t)}
+  \label{eq:knode-core}
+\end{equation}
+
+\noindent
+where $\phys{f_{\text{physics}}}$ encodes the known Cosserat rod dynamics and $\nn{g_\theta}$ is a neural network that learns the model error.
+
+\subsection{Adaptation to Our Problem}
+
+Rather than correcting spatial derivatives as in the original KNODE-Cosserat paper (which targets a tendon-driven continuum arm), we adapt the framework to our \emph{temporally-discretized} Position Verlet integration of the planar (2D) Cosserat rod.
+
+The key decomposition is:
+
+\begin{equation}
+  \boxed{\;
+  \vect{F}_i^{\text{total}} = \hyb{\underbrace{\nn{h_\theta(\vect{q}^{n+1/2}, \dot{\vect{q}}^n, \vect{a}_t)}}_{\text{learned internal forces (Stages 2b--2c)}}}
+  + \phys{\underbrace{\vect{f}_i^{\text{grav}} + \vect{f}_i^{\text{rft}} + \vect{f}_i^{\text{damp}}}_{\text{analytical external forces (Stage 2d)}}}
+  \;}
+  \label{eq:hybrid-force}
+\end{equation}
+
+\noindent
+where $h_\theta\colon \Real^{d_{\text{in}}} \to \Real^{62}$ predicts the combined internal forces ($\Real^{42}$) and internal torques ($\Real^{20}$) that would be assembled by the full constitutive-law pipeline.
+
+\subsection{What the NN Learns vs.\ What Physics Computes}
+
+\begin{table}[H]
+  \centering
+  \renewcommand{\arraystretch}{1.25}
+  \begin{tabular}{p{5.5cm}cc}
+    \toprule
+    \textbf{Operation} & \textbf{Computed by} & \textbf{Eq.\ ref} \\
+    \midrule
+    Half-step positions & \phys{Physics} & SF\S4.1 \\
+    Tangent vectors, lengths, dilatation & \phys{Physics} & SF\S4.2a \\
+    Strain computation ($\bm{\sigma}$) & --- & --- \\
+    Constitutive law (shear--stretch) & \nn{NN} & SF\S4.2b \\
+    Curvature assembly ($\bm{\kappa}$) & --- & --- \\
+    Constitutive law (bend--twist) & \nn{NN} & SF\S4.2c \\
+    Internal torque (5-term assembly) & \nn{NN} & SF\S4.2c \\
+    Gravity, RFT friction, damping & \phys{Physics} & SF\S4.2d \\
+    Mass-normalized acceleration & \phys{Physics} & SF\S4.2e \\
+    Velocity update & \phys{Physics} & SF\S4.2f \\
+    Full-step positions & \phys{Physics} & SF\S4.3 \\
+    \bottomrule
+  \end{tabular}
+  \caption{Responsibility split.  The NN replaces the internal force/torque assembly (Steps 2b--2c) while all kinematic updates, external forces, and time integration remain analytical.}
+  \label{tab:responsibility}
+\end{table}
+
+
+% ===================================================================
+\section{Architecture}
+\label{sec:architecture}
+% ===================================================================
+
+\subsection{Internal Force Surrogate Network}
+
+The NN $h_\theta$ replaces the constitutive law and internal force assembly:
+
+\begin{equation}
+  h_\theta\colon \Real^{d_{\text{in}}} \to \Real^{62}, \qquad
+  d_{\text{in}} = 62 + 62 + 5 + 2 = 131
+  \label{eq:nn-dims}
+\end{equation}
+
+\noindent
+\textbf{Input features} ($d_{\text{in}} = 131$):
+\begin{itemize}
+  \item Half-step positions $\vect{q}^{n+1/2} \in \Real^{62}$ (21 nodes $\times$ 2 components + 20 yaw angles)
+  \item Current velocities $\dot{\vect{q}}^n \in \Real^{62}$ (21 nodes $\times$ 2 components + 20 angular velocities)
+  \item Action $\vect{a}_t \in \Real^5$ (CPG parameters)
+  \item Phase encoding $[\sin(\omega t), \cos(\omega t)] \in \Real^2$
+\end{itemize}
+
+\noindent
+\textbf{Output} ($d_{\text{out}} = 62$):
+\begin{itemize}
+  \item Internal forces $\vect{F}^{\text{int}} \in \Real^{42}$ (21 nodes $\times$ 2 components)
+  \item Internal torques $\vect{m}^{\text{int}} \in \Real^{20}$ (20 elements)
+\end{itemize}
+
+\noindent
+\textbf{Architecture}:
+\begin{equation}
+  h_\theta = \text{Linear}(131, 256) \to [\text{Linear}(256, 256) + \text{LayerNorm} + \text{SiLU}]^{\times 2} \to \text{Linear}(256, 62)
+  \label{eq:nn-arch}
+\end{equation}
+
+\noindent
+Output layer is zero-initialized so the model initially predicts zero internal forces (rest configuration).
+Total parameters: ${\sim}135$K (vs.\ ${\sim}654$K for the full-state MLP surrogate).
+
+
+\subsection{Alternative: Residual Correction on Simplified Physics}
+
+Instead of replacing Stages 2b--2c entirely, a residual variant uses a \emph{simplified} physics backbone and corrects its errors:
+
+\begin{equation}
+  \vect{F}^{\text{int}} = \phys{\vect{F}^{\text{int}}_{\text{simplified}}} + \nn{\delta_\theta(\vect{q}^{n+1/2}, \dot{\vect{q}}^n)}
+  \label{eq:residual}
+\end{equation}
+
+\noindent
+where $\phys{\vect{F}^{\text{int}}_{\text{simplified}}}$ uses linearized bending (small-angle approximation), drops the unsteady dilatation and Lagrangian transport terms from (SF Eq.~16), and uses a coarser spatial stencil.
+The correction network $\nn{\delta_\theta}$ then only needs to learn:
+
+\begin{itemize}
+  \item Nonlinear bending effects (large-curvature corrections)
+  \item Missing torque terms (transport, unsteady dilatation)
+  \item Discretization errors
+\end{itemize}
+
+\noindent
+This further reduces what the NN must learn, at the cost of implementing and maintaining a simplified physics model.
+
+
+% ===================================================================
+\section{Algorithms}
+\label{sec:algorithms}
+% ===================================================================
+
+\subsection{Hybrid Verlet Substep}
+
+\begin{algorithm}[H]
+\caption{KNODE-Cosserat Hybrid Verlet Substep}
+\label{alg:hybrid-substep}
+\begin{algorithmic}[1]
+\Require State $(\vect{q}^n, \dot{\vect{q}}^n) \in \Real^{124}$, action $\vect{a}_t \in \Real^5$, time $t$, trained network $h_\theta$
+\Ensure Next state $(\vect{q}^{n+1}, \dot{\vect{q}}^{n+1}) \in \Real^{124}$
+
+\Statex \textcolor{physicsblue}{\textbf{--- Stage 1: Kinematic half-step (analytical) ---}}
+\State $\vect{x}^{n+1/2} \gets \vect{x}^n + \tfrac{1}{2}\Delta t\;\dot{\vect{x}}^n$ \Comment{Node positions}
+\State $\bm{\psi}^{n+1/2} \gets \bm{\psi}^n + \tfrac{1}{2}\Delta t\;\bm{\omega}^n$ \Comment{Element yaw angles}
+
+\Statex
+\Statex \textcolor{physicsblue}{\textbf{--- Stage 2a: Geometry update (analytical) ---}}
+\State $\Delta\vect{x} \gets \mat{D}\,\vect{x}^{n+1/2}$ \Comment{Edge vectors via difference operator}
+\State $\bm{\ell} \gets \|\Delta\vect{x}\|_{\text{row}}$ \Comment{Element lengths}
+\State $\bm{\varepsilon} \gets \bm{\ell} \oslash \bm{\ell}^{\text{rest}}$ \Comment{Dilatation}
+\State $\vect{t} \gets \Delta\vect{x} \oslash \bm{\ell}$ \Comment{Unit tangent vectors}
+
+\Statex
+\Statex \textcolor{nngreen}{\textbf{--- Stages 2b--2c: Internal forces via neural network ---}}
+\State $\vect{z}_{\text{phase}} \gets [\sin(\omega t),\; \cos(\omega t)]$ \Comment{Phase encoding}
+\State $\vect{z}_{\text{in}} \gets [\bar{\vect{q}}^{n+1/2} \;\|\; \bar{\dot{\vect{q}}}^n \;\|\; \vect{a}_t \;\|\; \vect{z}_{\text{phase}}]$ \Comment{Concatenate, $z$-normalize}
+\State $[\vect{F}^{\text{int}},\; \vect{m}^{\text{int}}] \gets h_\theta(\vect{z}_{\text{in}})$ \Comment{$\Real^{131} \to \Real^{62}$}
+
+\Statex
+\Statex \textcolor{physicsblue}{\textbf{--- Stage 2d: External forces (analytical) ---}}
+\State $\vect{F}^{\text{grav}} \gets \mat{M}\,\vect{g}$ \Comment{Gravity}
+\State $\vect{v}_t \gets (\vect{t} \cdot \dot{\vect{x}})\,\vect{t}$, \quad $\vect{v}_n \gets \dot{\vect{x}} - \vect{v}_t$ \Comment{Velocity decomposition}
+\State $\vect{F}^{\text{rft}} \gets -c_t\,\vect{v}_t - c_n\,\vect{v}_n$ \Comment{Anisotropic RFT friction}
+\State $\vect{F}^{\text{damp}} \gets -\gamma\,\dot{\vect{x}}$ \Comment{Numerical damping}
+
+\Statex
+\Statex \textcolor{physicsblue}{\textbf{--- Stage 2e--f: Acceleration and velocity update (analytical) ---}}
+\State $\ddot{\vect{x}} \gets \mat{M}^{-1}(\vect{F}^{\text{int}} + \vect{F}^{\text{grav}} + \vect{F}^{\text{rft}} + \vect{F}^{\text{damp}})$
+\State $\dot{\bm{\omega}} \gets \mat{J}^{-1}_{\text{eff}}\,\vect{m}^{\text{int}}$ \Comment{Angular acceleration from NN torques}
+\State $\dot{\vect{x}}^{n+1} \gets \dot{\vect{x}}^n + \Delta t\;\ddot{\vect{x}}$
+\State $\bm{\omega}^{n+1} \gets \bm{\omega}^n + \Delta t\;\dot{\bm{\omega}}$
+
+\Statex
+\Statex \textcolor{physicsblue}{\textbf{--- Stage 3: Full-step positions (analytical) ---}}
+\State $\vect{x}^{n+1} \gets \vect{x}^{n+1/2} + \tfrac{1}{2}\Delta t\;\dot{\vect{x}}^{n+1}$
+\State $\bm{\psi}^{n+1} \gets \bm{\psi}^{n+1/2} + \tfrac{1}{2}\Delta t\;\bm{\omega}^{n+1}$
+
+\State \Return $(\vect{q}^{n+1}, \dot{\vect{q}}^{n+1})$
+\end{algorithmic}
+\end{algorithm}
+
+
+\subsection{Multi-Substep RL Transition}
+
+\begin{algorithm}[H]
+\caption{KNODE-Cosserat RL Environment Step}
+\label{alg:rl-step}
+\begin{algorithmic}[1]
+\Require State $\vect{s}_t \in \Real^{124}$, action $\vect{a}_t \in \Real^5$, number of substeps $n_{\text{sub}}$, trained network $h_\theta$
+\Ensure Next state $\vect{s}_{t+1} \in \Real^{124}$, reward $r_t$, observation $\vect{o}_{t+1}$
+
+\State $(\vect{q}^0, \dot{\vect{q}}^0) \gets \vect{s}_t$ \Comment{Unpack positions and velocities}
+\State $\vect{a}_{\text{phys}} \gets \text{MapAction}(\vect{a}_t)$ \Comment{$[-1,1]^5 \to (A, f, k, \phi, b)$}
+\For{$k = 0, 1, \ldots, n_{\text{sub}} - 1$}
+  \State $t_k \gets t + k \cdot \Delta t$
+  \State $(\vect{q}^{k+1}, \dot{\vect{q}}^{k+1}) \gets \textsc{HybridVerletSubstep}(\vect{q}^k, \dot{\vect{q}}^k, \vect{a}_t, t_k, h_\theta)$
+  \Comment{Alg.~\ref{alg:hybrid-substep}}
+\EndFor
+\State $\vect{s}_{t+1} \gets (\vect{q}^{n_{\text{sub}}}, \dot{\vect{q}}^{n_{\text{sub}}})$
+\State $\vect{o}_{t+1} \gets \text{ExtractObservation}(\vect{s}_{t+1})$ \Comment{FFT features, CoM, heading, etc.}
+\State $r_t \gets \text{ComputeReward}(\vect{s}_t, \vect{s}_{t+1}, \vect{a}_t)$
+\State \Return $(\vect{s}_{t+1}, r_t, \vect{o}_{t+1})$
+\end{algorithmic}
+\end{algorithm}
+
+\noindent
+\textbf{Key difference from the pure MLP surrogate}: the MLP surrogate replaces the entire $n_{\text{sub}}$-substep composition with a single forward pass $f_\theta(\vect{z}_t) \approx T(\vect{s}_t, \vect{a}_t) - \vect{s}_t$.
+The KNODE approach retains the Verlet time-stepping structure and calls the NN \emph{once per substep}, yielding $n_{\text{sub}}$ NN evaluations per RL step.
+This preserves the symplectic integration structure at the cost of $n_{\text{sub}}\times$ more NN forward passes.
+
+
+\subsection{Training the Internal Force Network}
+
+\begin{algorithm}[H]
+\caption{Training the Internal Force Network $h_\theta$}
+\label{alg:training}
+\begin{algorithmic}[1]
+\Require Dataset $\mathcal{D} = \{(\vect{q}^{n+1/2}_i, \dot{\vect{q}}^n_i, \vect{a}_i, t_i, \vect{F}^{\text{int}}_i, \vect{m}^{\text{int}}_i)\}_{i=1}^N$
+\Ensure Trained network parameters $\theta^*$
+
+\Statex \textcolor{physicsblue}{\textbf{--- Phase 0: Data collection from PyElastica ---}}
+\For{each transition in PyElastica rollouts}
+  \State Run full Verlet substep; record intermediate quantities:
+  \State \quad $\vect{q}^{n+1/2}$ (half-step positions after Stage 1)
+  \State \quad $\vect{F}^{\text{int}}$ (internal forces from Stage 2b)
+  \State \quad $\vect{m}^{\text{int}}$ (internal torques from Stage 2c)
+  \State Store $(\vect{q}^{n+1/2}, \dot{\vect{q}}^n, \vect{a}, t, \vect{F}^{\text{int}}, \vect{m}^{\text{int}})$ in $\mathcal{D}$
+\EndFor
+
+\Statex
+\Statex \textcolor{nngreen}{\textbf{--- Phase 1: Single-step supervised training ---}}
+\For{epoch $= 1, \ldots, E_1$}
+  \For{mini-batch $\mathcal{B} \subset \mathcal{D}$}
+    \State $\hat{\vect{y}}_i \gets h_\theta(\bar{\vect{q}}^{n+1/2}_i, \bar{\dot{\vect{q}}}^n_i, \vect{a}_i, \vect{z}_{\text{phase},i})$ for $i \in \mathcal{B}$
+    \State $\mathcal{L}_{\text{single}} \gets \frac{1}{|\mathcal{B}|}\sum_{i \in \mathcal{B}} \bigl\|\hat{\vect{y}}_i - [\vect{F}^{\text{int}}_i \,\|\, \vect{m}^{\text{int}}_i]\bigr\|^2$
+    \State $\theta \gets \theta - \eta\,\nabla_\theta \mathcal{L}_{\text{single}}$ \Comment{Adam optimizer}
+  \EndFor
+\EndFor
+
+\Statex
+\Statex \textcolor{hybrid}{\textbf{--- Phase 2: Multi-step rollout fine-tuning ---}}
+\For{epoch $= E_1+1, \ldots, E_1 + E_2$}
+  \For{trajectory window $(\vect{s}_0, \vect{a}_0, \ldots, \vect{s}_L)$ of length $L$}
+    \State $\hat{\vect{s}}_0 \gets \vect{s}_0$
+    \For{$k = 0, \ldots, L-1$}
+      \State $\hat{\vect{s}}_{k+1} \gets \textsc{HybridVerletSubstep}(\hat{\vect{s}}_k, \vect{a}_k, t_k, h_\theta)$
+      \Comment{Autoregressive}
+    \EndFor
+    \State $\mathcal{L}_{\text{rollout}} \gets \frac{1}{L}\sum_{k=0}^{L-1} \gamma^k \|\hat{\vect{s}}_{k+1} - \vect{s}_{k+1}^{\text{true}}\|^2$
+    \State $\mathcal{L} \gets \mathcal{L}_{\text{single}} + \lambda_r\,\mathcal{L}_{\text{rollout}}$ \Comment{$\lambda_r = 0.1$}
+    \State $\theta \gets \theta - \eta\,\nabla_\theta \mathcal{L}$ \Comment{BPTT through $L$ substeps}
+  \EndFor
+\EndFor
+
+\State \Return $\theta^* \gets \theta$
+\end{algorithmic}
+\end{algorithm}
+
+\noindent
+\textbf{Data collection note}: Unlike the full-state MLP surrogate which collects $(\vect{s}_t, \vect{a}_t, \vect{s}_{t+1})$ pairs, the KNODE approach requires \emph{intermediate} quantities from within the Verlet substep --- specifically the internal forces and torques computed at Stages 2b--2c.
+This requires instrumenting the PyElastica integration loop to expose these intermediate values.
+
+
+\subsection{Residual Correction Variant}
+
+\begin{algorithm}[H]
+\caption{Simplified-Physics + Residual Correction}
+\label{alg:residual}
+\begin{algorithmic}[1]
+\Require Half-step state $\vect{q}^{n+1/2}$, velocities $\dot{\vect{q}}^n$, geometry $(\bm{\ell}, \bm{\varepsilon}, \vect{t})$
+\Ensure Internal forces $\vect{F}^{\text{int}}$ and torques $\vect{m}^{\text{int}}$
+
+\Statex \textcolor{physicsblue}{\textbf{--- Simplified physics backbone ---}}
+\State $\bm{\sigma} \gets \mat{Q}^T_{\text{blk}}\,(\Delta\vect{x} \oslash \bm{\ell}^{\text{rest}})$ \Comment{Strain (same as full model)}
+\State $\vect{n}^L \gets \mat{S}_{\text{blk}}\,(\bm{\sigma} - \bm{\sigma}^{\text{rest}})$ \Comment{Shear--stretch stress}
+\State $\vect{F}^{\text{int}}_{\text{simple}} \gets \mat{D}^T[\operatorname{diag}(\bm{\varepsilon}^{-1})\,\mat{Q}^T_{\text{blk}}\,\vect{n}^L]$
+  \Comment{Full shear--stretch forces (exact)}
+
+\Statex
+\State $\bm{\kappa}_v \gets \text{Curvature}(\mat{Q}_{\text{blk}})$ \Comment{Curvature at Voronoi nodes}
+\State $\bm{\tau}^L_v \gets \mat{B}_{\text{blk}}\,(\bm{\kappa}_v - \bm{\kappa}^{\text{rest}}_v)$ \Comment{Bending--twist stress}
+\State $\vect{m}^{\text{int}}_{\text{simple}} \gets \mat{D}_v[\operatorname{diag}(\hat{\bm{\varepsilon}}^{-3}_v)\,\bm{\tau}^L_v]$
+  \Comment{Bend--twist gradient only (term i)}
+
+\Statex
+\Statex \textcolor{nngreen}{\textbf{--- Neural residual correction ---}}
+\State $\vect{z}_{\text{in}} \gets [\bar{\vect{q}}^{n+1/2} \;\|\; \bar{\dot{\vect{q}}}^n \;\|\; \vect{a}_t \;\|\; \vect{z}_{\text{phase}}]$
+\State $[\delta\vect{F},\; \delta\vect{m}] \gets \delta_\theta(\vect{z}_{\text{in}})$ \Comment{$\Real^{131} \to \Real^{62}$}
+
+\Statex
+\Statex \textcolor{hybrid}{\textbf{--- Combined output ---}}
+\State $\vect{F}^{\text{int}} \gets \phys{\vect{F}^{\text{int}}_{\text{simple}}} + \nn{\delta\vect{F}}$
+\State $\vect{m}^{\text{int}} \gets \phys{\vect{m}^{\text{int}}_{\text{simple}}} + \nn{\delta\vect{m}}$
+
+\State \Return $(\vect{F}^{\text{int}}, \vect{m}^{\text{int}})$
+\end{algorithmic}
+\end{algorithm}
+
+\noindent
+The simplified backbone computes the shear--stretch forces exactly (they are relatively cheap) and approximates the bending--twist torques using only the first of five terms in (SF Eq.~16).
+The residual network $\delta_\theta$ corrects for:
+\begin{enumerate}[label=(\roman*)]
+  \item The four dropped torque terms: curvature$\times$couple, shear--stretch couple, Lagrangian transport, unsteady dilatation
+  \item Nonlinear effects at large curvature
+  \item Discretization artifacts from the staggered grid
+\end{enumerate}
+
+
+% ===================================================================
+\section{Comparison of Approaches}
+\label{sec:comparison}
+% ===================================================================
+
+\begin{table}[H]
+  \centering
+  \renewcommand{\arraystretch}{1.3}
+  \small
+  \begin{tabular}{p{3.2cm}ccccc}
+    \toprule
+    & \textbf{Full MLP} & \textbf{KNODE} & \textbf{KNODE} & \textbf{DD-PINN} & \textbf{PyElastica} \\
+    & \textbf{Surrogate} & \textbf{(Replace)} & \textbf{(Residual)} & & \textbf{(Ground Truth)} \\
+    \midrule
+    NN calls / RL step & 1 & $n_{\text{sub}}$ & $n_{\text{sub}}$ & 1 & 0 \\
+    NN input dim & 131 & 131 & 131 & varies & --- \\
+    NN output dim & 124 & 62 & 62 & varies & --- \\
+    NN parameters & $\sim$654K & $\sim$135K & $\sim$135K & $\sim$100K & --- \\
+    Physics preserved & None & Kinematics, & All of left + & PDE as & Exact \\
+    & & external forces & simplified 2b--c & loss & \\
+    Training data & $\sim$1M & $\sim$100K & $\sim$10K & $\sim$1K & --- \\
+    (transitions) & transitions & substeps & substeps & collocation & \\
+    Rollout stability & Low & Medium & High & High & Perfect \\
+    Throughput gain & $\sim$17{,}000$\times$ & $\sim$30$\times$ & $\sim$20$\times$ & $\sim$1{,}000$\times$ & 1$\times$ \\
+    Implementation & Simple & Medium & Hard & Hard & Existing \\
+    \bottomrule
+  \end{tabular}
+  \caption{Comparison of surrogate approaches.  The KNODE variants trade throughput for physical consistency and data efficiency.  The throughput estimate for KNODE assumes $n_{\text{sub}} = 10$ (reduced from 500 by using a larger $\Delta t$ enabled by the physics backbone).}
+  \label{tab:comparison}
+\end{table}
+
+
+% ===================================================================
+\section{Why Explicit Verlet Cannot Take Larger Timesteps}
+\label{sec:no-larger-dt}
+% ===================================================================
+
+\textbf{Critical observation}: Replacing the force computation with a neural network does \emph{not} change the stability limit of the explicit Verlet integrator.
+
+The CFL condition for explicit symplectic integration depends on the eigenvalues of the force Jacobian $\partial \vect{F}/\partial \vect{q}$, which are governed by the rod's elastic stiffness:
+
+\begin{equation}
+  \Delta t_{\max} \leq \frac{2}{\sqrt{\lambda_{\max}(\mat{M}^{-1}\mat{K})}}
+  \label{eq:cfl}
+\end{equation}
+
+\noindent
+where $\mat{K}$ is the effective stiffness matrix and $\lambda_{\max}$ is its largest eigenvalue.
+If the NN predicts forces with similar magnitudes to the true physics (as it must, to be accurate), the same stability limit applies.
+The 500 substeps at $\Delta t = 0.001$\,s are a \emph{stability requirement of explicit integration}, not a cost issue with force computation.
+
+\textbf{Consequence}: The hybrid Verlet approach (Algorithms~\ref{alg:hybrid-substep}--\ref{alg:rl-step}) requires \textbf{500 NN evaluations per RL step}.
+For a 135K-parameter MLP on GPU, this costs ${\sim}500 \times 0.005\,\text{ms} \approx 2.5$\,ms per environment --- only a ${\sim}20\times$ speedup over PyElastica (46\,ms), and \emph{not} the $17{,}000\times$ of the pure MLP surrogate.
+
+This makes the explicit Verlet hybrid \textbf{impractical for RL training}.
+The solution is to switch to an \emph{implicit} integrator, which is inherently stable at large timesteps.
+
+
+% ===================================================================
+\section{DisMech: Implicit Euler Integration}
+\label{sec:dismech}
+% ===================================================================
+
+DisMech (Discrete Elastic Rods) uses \emph{implicit Euler} with Newton's method, taking $\Delta t = 0.05$\,s --- $50\times$ larger than PyElastica.
+Each RL control step ($\Delta t_{\text{ctrl}} = 0.5$\,s) requires only $n_{\text{sub}} = 10$ implicit steps, each solved by Newton iteration.
+
+\subsection{Implicit Euler Formulation}
+
+At each timestep, DisMech solves the nonlinear system:
+
+\begin{equation}
+  \boxed{\;
+  \vect{r}(\vect{q}^{n+1}) = \mat{M}\,\frac{\vect{q}^{n+1} - 2\vect{q}^n + \vect{q}^{n-1}}{\Delta t^2} + \frac{\partial E}{\partial \vect{q}}\bigg|_{\vect{q}^{n+1}} - \vect{f}_{\text{ext}}(\vect{q}^{n+1}) = \vect{0}
+  \;}
+  \label{eq:implicit-euler}
+\end{equation}
+
+\noindent
+where $\vect{q} \in \Real^{126}$ collects the 3D nodal positions and edge twist angles (21 nodes $\times$ 3 + 20 twists = 83, but in 2D this reduces to ${\sim}62$), and $E(\vect{q})$ is the total elastic energy (stretching + bending + twisting).
+
+\subsection{Newton Solver Loop}
+
+Each implicit step is solved iteratively:
+
+\begin{equation}
+  \mat{J}(\vect{q}^{(k)})\,\Delta\vect{q} = -\vect{r}(\vect{q}^{(k)}), \qquad
+  \vect{q}^{(k+1)} = \vect{q}^{(k)} + \Delta\vect{q}
+  \label{eq:newton}
+\end{equation}
+
+\noindent
+where $\mat{J} = \partial\vect{r}/\partial\vect{q}$ is the Jacobian (tangent stiffness matrix), assembled from the Hessian of the elastic energy plus mass and damping contributions.
+DisMech uses $\text{max\_iter} = 25$, tolerance $10^{-4}$, and typically converges in 3--8 iterations.
+
+\subsection{Where Neural Networks Can Be Injected}
+
+The Newton loop offers \textbf{four distinct injection points} for a neural network:
+
+\begin{table}[H]
+  \centering
+  \renewcommand{\arraystretch}{1.3}
+  \small
+  \begin{tabular}{clp{6.5cm}c}
+    \toprule
+    \# & \textbf{Injection Point} & \textbf{What the NN Does} & \textbf{Section} \\
+    \midrule
+    A & Warm-start initial guess & Predict $\vect{q}^{(0)} \approx \vect{q}^{n+1}$ to reduce Newton iterations & \S\ref{sec:warmstart} \\
+    B & Residual correction & Add $\nn{g_\theta(\vect{q}^{(k)})}$ to the residual $\vect{r}$ at each Newton iteration & \S\ref{sec:residual-newton} \\
+    C & Jacobian approximation & Replace or precondition $\mat{J}$ with a learned approximation & \S\ref{sec:preconditioner} \\
+    D & Replace Newton entirely & Fixed-point implicit layer (DEQ-style) & \S\ref{sec:deq} \\
+    \bottomrule
+  \end{tabular}
+  \caption{Four hybrid architectures for DisMech's implicit Euler solver, ordered from least to most invasive modification of the solver internals.}
+  \label{tab:injection-points}
+\end{table}
+
+
+% ===================================================================
+\section{Hybrid Architecture A: Amortized Warm-Start}
+\label{sec:warmstart}
+% ===================================================================
+
+The simplest hybrid: a neural network predicts a good initial guess for Newton's method, reducing the iteration count without modifying the solver.
+
+\subsection{Motivation}
+
+DisMech's Newton solver uses the previous timestep's solution $\vect{q}^n$ as the initial guess $\vect{q}^{(0)}$, requiring 3--8 iterations to converge.
+A learned warm-start can predict $\vect{q}^{(0)}$ closer to $\vect{q}^{n+1}$, potentially reducing iterations to 1--2.
+
+\subsection{Architecture}
+
+\begin{equation}
+  \vect{q}^{(0)} = \vect{q}^n + \nn{w_\theta(\vect{q}^n, \vect{q}^{n-1}, \vect{a}_t)}
+  \label{eq:warmstart}
+\end{equation}
+
+\noindent
+where $w_\theta\colon \Real^{d} \to \Real^{62}$ is a small MLP predicting the state increment.
+
+\begin{algorithm}[H]
+\caption{Warm-Started Implicit Euler Step}
+\label{alg:warmstart}
+\begin{algorithmic}[1]
+\Require State $(\vect{q}^n, \vect{q}^{n-1})$, action $\vect{a}_t$, network $w_\theta$
+\Ensure Next state $\vect{q}^{n+1}$
+
+\Statex \textcolor{nngreen}{\textbf{--- Neural warm-start ---}}
+\State $\vect{q}^{(0)} \gets \vect{q}^n + w_\theta(\vect{q}^n, \vect{q}^{n-1}, \vect{a}_t)$ \Comment{Predicted initial guess}
+
+\Statex
+\Statex \textcolor{physicsblue}{\textbf{--- Standard Newton solve (unmodified DisMech) ---}}
+\For{$k = 0, 1, \ldots, K_{\max}$}
+  \State $\vect{r}^{(k)} \gets \text{AssembleResidual}(\vect{q}^{(k)}, \vect{q}^n, \vect{q}^{n-1}, \vect{a}_t)$
+  \If{$\|\vect{r}^{(k)}\| < \epsilon$}
+    \State \textbf{break} \Comment{Converged}
+  \EndIf
+  \State $\mat{J}^{(k)} \gets \text{AssembleJacobian}(\vect{q}^{(k)})$
+  \State $\Delta\vect{q} \gets -(\mat{J}^{(k)})^{-1}\,\vect{r}^{(k)}$ \Comment{Linear solve}
+  \State $\vect{q}^{(k+1)} \gets \vect{q}^{(k)} + \Delta\vect{q}$
+\EndFor
+
+\State \Return $\vect{q}^{n+1} \gets \vect{q}^{(K)}$
+\end{algorithmic}
+\end{algorithm}
+
+\noindent
+\textbf{Advantages}: No modification to DisMech internals.  The Newton solver guarantees convergence to the correct solution regardless of NN quality.  Training requires only $(\vect{q}^n, \vect{q}^{n-1}, \vect{a}_t, \vect{q}^{n+1})$ pairs from DisMech rollouts.
+
+\textbf{Expected speedup}: If Newton iterations drop from 5 to 1--2, this is a $2.5$--$5\times$ speedup per implicit step.  At 10 steps per RL action, overall: $2.5$--$5\times$ faster than DisMech.
+Literature reports 40--60\% iteration reduction (Briden et al.\ 2024 [12]; Banerjee et al.\ 2025 [13]).
+
+
+% ===================================================================
+\section{Hybrid Architecture B: Gray-Box Residual Correction}
+\label{sec:residual-newton}
+% ===================================================================
+
+The NN adds a correction to the Newton residual at each iteration, injecting learned physics (e.g., unmodeled friction, muscle dynamics) into the solver.
+
+\subsection{Formulation}
+
+Modify the residual to include a learned term:
+
+\begin{equation}
+  \vect{r}_{\text{hybrid}}(\vect{q}^{(k)}) = \phys{\vect{r}_{\text{physics}}(\vect{q}^{(k)})} + \nn{g_\theta(\vect{q}^{(k)}, \dot{\vect{q}}, \vect{a}_t)}
+  \label{eq:hybrid-residual}
+\end{equation}
+
+\noindent
+The NN $g_\theta$ contributes to both the residual and (via autodiff) the Jacobian:
+
+\begin{equation}
+  \mat{J}_{\text{hybrid}} = \phys{\mat{J}_{\text{physics}}} + \nn{\frac{\partial g_\theta}{\partial \vect{q}}}
+  \label{eq:hybrid-jacobian}
+\end{equation}
+
+\noindent
+The NN Jacobian $\partial g_\theta/\partial \vect{q}$ is computed by PyTorch autograd at each Newton iteration.
+
+\begin{algorithm}[H]
+\caption{Gray-Box Newton Step with Residual Correction}
+\label{alg:graybox}
+\begin{algorithmic}[1]
+\Require State $\vect{q}^{(k)}$ at Newton iteration $k$, action $\vect{a}_t$, network $g_\theta$
+\Ensure Updated state $\vect{q}^{(k+1)}$
+
+\Statex \textcolor{physicsblue}{\textbf{--- Physics residual and Jacobian ---}}
+\State $\vect{r}_{\text{phys}} \gets \text{DisMech.AssembleResidual}(\vect{q}^{(k)})$
+\State $\mat{J}_{\text{phys}} \gets \text{DisMech.AssembleJacobian}(\vect{q}^{(k)})$
+
+\Statex
+\Statex \textcolor{nngreen}{\textbf{--- Neural correction (with autodiff Jacobian) ---}}
+\State $\vect{q}_{\text{torch}} \gets \text{torch.tensor}(\vect{q}^{(k)}, \text{requires\_grad=True})$
+\State $\vect{g} \gets g_\theta(\vect{q}_{\text{torch}}, \dot{\vect{q}}, \vect{a}_t)$
+  \Comment{NN forward pass}
+\State $\mat{J}_{\text{nn}} \gets \text{torch.autograd.functional.jacobian}(g_\theta, \vect{q}_{\text{torch}})$
+
+\Statex
+\Statex \textcolor{hybrid}{\textbf{--- Combined Newton step ---}}
+\State $\vect{r} \gets \vect{r}_{\text{phys}} + \vect{g}$
+\State $\mat{J} \gets \mat{J}_{\text{phys}} + \mat{J}_{\text{nn}}$
+\State $\Delta\vect{q} \gets -\mat{J}^{-1}\,\vect{r}$ \Comment{Linear solve}
+\State $\vect{q}^{(k+1)} \gets \vect{q}^{(k)} + \Delta\vect{q}$
+\end{algorithmic}
+\end{algorithm}
+
+\noindent
+\textbf{What the NN learns}: Unmodeled forces --- anisotropic RFT friction refinement, muscle actuation dynamics, contact forces during coiling, material nonlinearities.
+
+\textbf{Jacobian cost}: For a 62-dimensional output, the full Jacobian $\partial g_\theta/\partial \vect{q} \in \Real^{62 \times 62}$ requires 62 backward passes (one per output dimension).
+At ${\sim}135$K parameters, each backward pass is ${\sim}0.01$\,ms on GPU, so the full Jacobian costs ${\sim}0.6$\,ms per Newton iteration.
+Over 3--5 iterations $\times$ 10 substeps: ${\sim}18$--$30$\,ms per RL step.
+
+This is directly inspired by Agarwal et al.\ (2024) [14], who demonstrate gray-box DNN components in implicit simulation with Newton-compatible Jacobians via autograd.
+
+
+% ===================================================================
+\section{Hybrid Architecture C: Learned Preconditioner}
+\label{sec:preconditioner}
+% ===================================================================
+
+Rather than modifying the residual, a learned preconditioner accelerates the linear solve $\mat{J}\,\Delta\vect{q} = -\vect{r}$ within each Newton iteration.
+
+\subsection{Formulation}
+
+Replace the direct solve with a preconditioned iterative solver:
+
+\begin{equation}
+  \nn{\mat{P}_\theta^{-1}}\,\mat{J}\,\Delta\vect{q} = -\nn{\mat{P}_\theta^{-1}}\,\vect{r}
+  \label{eq:preconditioned}
+\end{equation}
+
+\noindent
+where $\nn{\mat{P}_\theta}$ is a learned preconditioner that approximates $\mat{J}$.
+Chen (2024) [15] demonstrates GNN preconditioners for sparse linear systems that outperform ILU, achieving 40--60\% iteration reduction for CG/GMRES.
+
+For the 62-DOF rod Jacobian (banded/tridiagonal structure), the GNN takes the sparsity graph as input and outputs a sparse approximate inverse.
+
+\textbf{Practical consideration}: At 62 DOFs, the linear solve via direct factorization (LU/Cholesky) costs ${\sim}0.01$\,ms --- already very cheap.
+A learned preconditioner is more impactful at larger DOF counts ($>$1000).
+For our problem, Architectures A and B are more practical.
+
+
+% ===================================================================
+\section{Hybrid Architecture D: Deep Equilibrium (DEQ) Implicit Layer}
+\label{sec:deq}
+% ===================================================================
+
+The most radical approach: replace the entire Newton loop with a learned fixed-point iteration.
+
+\subsection{Formulation}
+
+The implicit Euler equation $\vect{r}(\vect{q}^{n+1}) = \vect{0}$ defines $\vect{q}^{n+1}$ as a fixed point.
+A Deep Equilibrium Model (DEQ) learns a contraction map $\nn{F_\theta}$ whose fixed point approximates $\vect{q}^{n+1}$:
+
+\begin{equation}
+  \vect{q}^* = \nn{F_\theta(\vect{q}^*, \vect{q}^n, \vect{a}_t)}, \qquad
+  \vect{q}^{n+1} \approx \vect{q}^*
+  \label{eq:deq}
+\end{equation}
+
+\noindent
+Forward pass: iterate $\vect{q}^{(k+1)} = F_\theta(\vect{q}^{(k)}, \vect{q}^n, \vect{a}_t)$ until convergence.
+Backward pass: use implicit differentiation (no need to store intermediate iterates), giving $O(1)$ memory.
+
+\begin{algorithm}[H]
+\caption{DEQ Implicit Layer for Rod Dynamics}
+\label{alg:deq}
+\begin{algorithmic}[1]
+\Require State $\vect{q}^n$, action $\vect{a}_t$, DEQ network $F_\theta$
+\Ensure Next state $\vect{q}^{n+1}$
+
+\Statex \textcolor{nngreen}{\textbf{--- Forward: fixed-point iteration ---}}
+\State $\vect{q}^{(0)} \gets \vect{q}^n$ \Comment{Initialize from previous state}
+\For{$k = 0, 1, \ldots, K_{\max}$}
+  \State $\vect{q}^{(k+1)} \gets F_\theta(\vect{q}^{(k)}, \vect{q}^n, \vect{a}_t)$
+  \If{$\|\vect{q}^{(k+1)} - \vect{q}^{(k)}\| < \epsilon$}
+    \State \textbf{break}
+  \EndIf
+\EndFor
+\State $\vect{q}^* \gets \vect{q}^{(K)}$
+
+\Statex
+\Statex \textcolor{hybrid}{\textbf{--- Backward: implicit differentiation ---}}
+\State \Comment{Gradient via $\frac{d\vect{q}^*}{d\theta} = (I - \partial_{\vect{q}} F_\theta|_{\vect{q}^*})^{-1}\,\partial_\theta F_\theta|_{\vect{q}^*}$}
+\State \Comment{Computed by \texttt{torch.autograd} with custom backward hook}
+
+\State \Return $\vect{q}^{n+1} \gets \vect{q}^*$
+\end{algorithmic}
+\end{algorithm}
+
+\noindent
+\textbf{Key advantage}: Automatic warm-starting.
+Consecutive rod configurations during smooth locomotion are very similar, so $\vect{q}^n$ is already close to $\vect{q}^{n+1}$ and the DEQ converges in 1--3 iterations.
+This property was demonstrated by Burger et al.\ (2025) [16] for molecular dynamics force fields (10--20\% speed improvement from temporal warm-starting).
+
+\textbf{Training}: Requires $(\vect{q}^n, \vect{a}_t, \vect{q}^{n+1})$ pairs from DisMech.
+The DEQ learns to satisfy $\vect{q}^{n+1} = F_\theta(\vect{q}^{n+1}, \vect{q}^n, \vect{a}_t)$, enforced by implicit-layer backpropagation through the fixed point (Im-PiNDiff, Akhare et al.\ 2025 [17]).
+
+\textbf{Risk}: If $F_\theta$ is not a contraction, the fixed-point iteration diverges.
+Mitigation: enforce Lipschitz constraint $\|F_\theta\|_{\text{Lip}} < 1$ via spectral normalization.
+
+\subsection{Physics-Conditioned DEQ}
+
+A safer variant: embed known physics into the DEQ iteration:
+
+\begin{equation}
+  \vect{q}^{(k+1)} = \vect{q}^n + \Delta t^2\,\mat{M}^{-1}\bigl[\phys{-\nabla E_{\text{simplified}}(\vect{q}^{(k)})} + \nn{g_\theta(\vect{q}^{(k)}, \vect{q}^n, \vect{a}_t)}\bigr]
+  \label{eq:physics-deq}
+\end{equation}
+
+\noindent
+This combines a simplified elastic energy gradient (providing physically grounded iteration structure) with a learned correction term, similar to the KNODE concept but inside a fixed-point iteration rather than an ODE solve.
+
+
+% ===================================================================
+\section{Additional Relevant Architectures}
+\label{sec:additional}
+% ===================================================================
+
+\subsection{MENO: Matrix Exponential Neural Operator}
+
+Zanardi et al.\ (2025) [18] decompose stiff ODE systems into a linear time-varying part (handled by \emph{matrix exponential}, which is A-stable) and a nonlinear residual (handled by a neural operator).
+For the Cosserat rod:
+
+\begin{equation}
+  \vect{q}^{n+1} = \exp(\Delta t\,\phys{\mat{A}(\vect{q}^n)})\,\vect{q}^n + \nn{\text{NeuralOp}_\theta(\vect{q}^n, \vect{a}_t)}
+  \label{eq:meno}
+\end{equation}
+
+\noindent
+where $\phys{\mat{A}}$ is the linearized elastic stiffness matrix (banded, $62 \times 62$).
+At this size, the matrix exponential via Pad\'{e} approximation costs ${\sim}0.1$\,ms --- much cheaper than Newton iteration --- while providing unconditional A-stability.
+
+\subsection{Differentiable DER (DEFORM)}
+
+Chen et al.\ (2024, CoRL) [19] present a fully differentiable Discrete Elastic Rod implementation that enables end-to-end gradient-based learning through the implicit DER solve.
+This is the closest existing work to our DisMech problem and provides:
+
+\begin{itemize}
+  \item Differentiable elastic energy computation
+  \item Differentiable implicit Euler with adjoint-based backpropagation
+  \item Parameter identification from trajectory data
+  \item Code available (CoRL 2024)
+\end{itemize}
+
+\noindent
+DEFORM could serve as a differentiable replacement for DisMech, enabling direct policy gradient computation through the physics simulation without a surrogate.
+
+\subsection{Py-DiSMech (2025)}
+
+Lahoti and Jawed (2025) [20] release a Python-native DDG simulator for rods and shells with explicit ML library hooks, penalty-based implicit contact, and modular energy definitions.
+This is a potential drop-in replacement for our C++ DisMech dependency, with native PyTorch integration for hybrid architectures.
+
+
+% ===================================================================
+\section{Comprehensive Comparison}
+\label{sec:full-comparison}
+% ===================================================================
+
+\begin{table}[H]
+  \centering
+  \renewcommand{\arraystretch}{1.25}
+  \scriptsize
+  \begin{tabular}{p{2.5cm}cccccc}
+    \toprule
+    & \textbf{Pure MLP} & \textbf{Warm-Start} & \textbf{Gray-Box} & \textbf{DEQ} & \textbf{MENO} & \textbf{DisMech} \\
+    & \textbf{Surrogate} & \textbf{(Arch.\ A)} & \textbf{(Arch.\ B)} & \textbf{(Arch.\ D)} & & \textbf{(Baseline)} \\
+    \midrule
+    Integrator & None & Implicit & Implicit & Learned & MatExp & Implicit \\
+    NN calls / RL step & 1 & 10 & 30--50 & 10--30 & 10 & 0 \\
+    Modifies solver? & N/A & No & Yes & Replaces & N/A & --- \\
+    Physics guaranteed? & No & Yes & Yes & Partial & Partial & Yes \\
+    Accuracy & $\sim$95\% & $\sim$100\% & $\sim$99\% & $\sim$97\% & $\sim$96\% & 100\% \\
+    Training data & 1M trans. & 100K steps & 100K steps & 100K steps & 100K steps & --- \\
+    Implementation & Simple & Simple & Medium & Hard & Medium & Existing \\
+    Throughput gain & $17{,}000\times$ & $3$--$5\times$ & $1.5$--$2\times$ & $5$--$10\times$ & $5$--$10\times$ & $1\times$ \\
+    Rollout stability & Low & Perfect & High & Medium & Medium & Perfect \\
+    \bottomrule
+  \end{tabular}
+  \caption{Comprehensive comparison of all hybrid architectures.  ``Accuracy'' refers to single-step state prediction relative to ground truth.  ``Throughput gain'' is relative to DisMech baseline (27\,ms per implicit step in C++).}
+  \label{tab:full-comparison}
+\end{table}
+
+
+% ===================================================================
+\section{Literature Context}
+\label{sec:literature}
+% ===================================================================
+
+\subsection{KNODE-Cosserat (Hsieh et al., 2024)}
+
+The original KNODE-Cosserat [1] targets a \emph{tendon-driven continuum arm} (fixed-base cantilever, 10 segments, 3D).
+The NN corrects \emph{spatial} derivatives in a shooting-method BVP solver.
+Key results: 87\% average DTW improvement in simulation, 58.7\% in real-world experiments.
+However, the architecture requires a shooting method at each timestep (15--50 NN evaluations per timestep), making it slower than our proposed approach.
+
+\textbf{Adaptation gap}: Our snake robot has free-body boundary conditions, curvature (not tendon) actuation, RFT friction, and uses a Verlet integrator (not BVP shooting).
+The \emph{concept} transfers directly; the \emph{implementation} must be built from scratch.
+
+\subsection{DD-PINN for Cosserat MPC (Licher et al., 2025)}
+
+Domain-Decomposed PINNs [2] achieve $44{,}000\times$ speedup for Cosserat rod simulation by encoding the rod PDEs as loss constraints.
+The approach uses closed-form differentiation (no autodiff at inference) and satisfies initial conditions automatically.
+Open-source code available from the Habich et al. [3] companion paper (467$\times$ speedup on articulated soft robots with PINN surrogate for MPC at 47\,Hz).
+
+\subsection{Augmented Neural ODE with Cosserat Prior (Kasaei et al., 2025)}
+
+Kasaei et al. [4,\,5] propose coupled Augmented Neural ODEs (ANODEs) for tendon-driven continuum robots.
+The Shape-NODE integrates Cosserat rod theory as a structural prior; the Control-NODE optimizes policy via MPC.
+Achieves millimeter-level accuracy, outperforming pure Neural ODEs and RNNs.
+
+\subsection{Structure-Preserving Networks}
+
+CLPNets [7] learn Hamiltonian dynamics on Lie groups $SE(3)$ while preserving all Casimir invariants.
+Theoretically ideal for Cosserat rods (a discretized rod is a chain of $SE(3)$ bodies), but only validated on 2-body systems.
+Port-Hamiltonian neural networks [7b] guarantee energy-preserving dynamics in latent coordinates but have not been applied to rods.
+
+\subsection{Sim-to-Real Residual Learning (Gao et al., 2024)}
+
+Gao et al. [6] learn a residual force field on top of an FEM backbone for sim-to-real transfer of soft robots.
+Outperforms system identification by 60\%.
+The architecture (physics backbone + learned force correction) is conceptually identical to our KNODE residual variant.
+
+
+% ===================================================================
+\section{Decision Framework}
+\label{sec:decision}
+% ===================================================================
+
+\subsection{When to Use Each Approach}
+
+\begin{itemize}
+  \item \textbf{Pure MLP surrogate} (current implementation): Best when throughput is the primary concern and single-step accuracy $>$99\% is achievable.  Preferred for short-horizon tasks.
+  \item \textbf{KNODE (replace Stages 2b--c)}: Best when MLP surrogate accumulates unacceptable drift over multi-step rollouts.  The physics backbone prevents catastrophic divergence.
+  \item \textbf{KNODE (residual correction)}: Best when very high accuracy is needed with minimal training data.  The simplified physics handles the bulk of the dynamics; the NN only patches errors.  Highest implementation complexity.
+  \item \textbf{DD-PINN}: Best for offline surrogate training where inference speed $>$1{,}000$\times$ is required and the Cosserat PDEs are well-characterized.  Requires PINN expertise.
+\end{itemize}
+
+\subsection{Recommended Path}
+
+\begin{enumerate}
+  \item \textbf{Start with pure MLP surrogate} (already implemented).  Evaluate multi-step rollout accuracy.
+  \item \textbf{If rollout drift is unacceptable} ($>$5\% state error at episode end):
+    \begin{enumerate}[label=(\alph*)]
+      \item \textbf{Architecture A (warm-start)}: Lowest risk.  Train an MLP to predict Newton initial guesses from DisMech rollout data.  No solver modifications needed.  Expected $3$--$5\times$ speedup.
+      \item \textbf{Architecture B (gray-box residual)}: If unmodeled physics is the bottleneck (e.g., contact, friction).  Inject learned force corrections into the Newton residual with autodiff Jacobians.
+    \end{enumerate}
+  \item \textbf{If maximum speed with physics structure is needed}:
+    \begin{enumerate}[label=(\alph*)]
+      \item \textbf{Architecture D (DEQ)}: Replace Newton entirely with a learned fixed-point iteration.  Highest throughput ($5$--$10\times$) but requires careful Lipschitz constraint enforcement.
+      \item \textbf{MENO (matrix exponential)}: Decompose into linear (A-stable matrix exponential) + nonlinear (NN) parts.  Natural for elastic rod stiffness.
+    \end{enumerate}
+  \item \textbf{If differentiability through the simulator is needed} (for gradient-based policy optimization):
+    \begin{enumerate}[label=(\alph*)]
+      \item Investigate DEFORM [19] or Py-DiSMech [20] as differentiable DER backends
+      \item Combine with short-horizon differentiable rollouts + RL value function estimation
+    \end{enumerate}
+\end{enumerate}
+
+
+% ===================================================================
+\section*{References}
+% ===================================================================
+
+\begin{enumerate}[label={[\arabic*]}, leftmargin=2em, nosep, itemsep=0.3em]
+  \item \label{ref:hsieh} Jiahao, T.Z., Adolf, R., Sung, C., Hsieh, M.A. (2024). ``KNODE-Cosserat: A Knowledge-based Neural ODE Framework for Cosserat Rod-based Soft Robots.'' \textit{arXiv:2408.07776}. \label{cite:knode}
+
+  \item \label{ref:licher} Licher, J., Bartholdt, M., Krauss, H., Habich, T.-L., Seel, T., Schappler, M. (2025). ``Adaptive Model-Predictive Control of a Soft Continuum Robot Using a Physics-Informed Neural Network Based on Cosserat Rod Theory.'' \textit{arXiv:2508.12681}. \label{cite:ddpinn}
+
+  \item \label{ref:habich} Habich, T.-L., Mohammad, A., Ehlers, S.F.G., Bensch, M., Seel, T., Schappler, M. (2025). ``Generalizable and Fast Surrogates: MPC of Articulated Soft Robots using PINNs.'' \textit{arXiv:2502.01916}. Code: \texttt{tlhabich.github.io/sponge/pinn\_mpc}. \label{cite:habich}
+
+  \item \label{ref:kasaei1} Kasaei, M., Alambeigi, F., Khadem, M. (2025). ``A Synergistic Framework for Learning Shape Estimation and Shape-Aware Whole-Body Control Policy for Continuum Robots.'' \textit{arXiv:2501.03859}. \label{cite:kasaei1}
+
+  \item \label{ref:kasaei2} Kasaei, M., Ghobadi, M., Khadem, M. (2025). ``Shape-Aware Whole-Body Control for Continuum Robots.'' \textit{arXiv:2510.12332}. \label{cite:kasaei2}
+
+  \item \label{ref:gao} Gao, J., Michelis, M.Y., Spielberg, A., Katzschmann, R.K. (2024). ``Sim-to-Real of Soft Robots with Learned Residual Physics.'' \textit{IEEE RA-L}. \textit{arXiv:2402.01086}. \label{cite:gao}
+
+  \item \label{ref:clpnets} Eldred, C., Gay-Balmaz, F., Putkaradze, V. (2024). ``Coupled Lie-Poisson Neural Networks.'' \textit{arXiv:2408.16160}. \label{cite:clpnets}
+
+  \item \label{ref:sorolex} ``SoRoLEX: Learned Environments for Soft Robot RL.'' (2024). \textit{arXiv:2410.18519}. \label{cite:sorolex}
+
+  \item \label{ref:chen} Chen, R.T.Q., Rubanova, Y., Bettencourt, J., Duvenaud, D. (2018). ``Neural Ordinary Differential Equations.'' \textit{NeurIPS 2018} (Best Paper). \textit{arXiv:1806.07366}. \label{cite:node}
+
+  \item \label{ref:wang} Wang, X., Realmuto, J. (2026). ``Physics-Embedded Neural ODEs for Learning Antagonistic Pneumatic Artificial Muscle Dynamics.'' \textit{arXiv:2602.23670}. \label{cite:wang}
+
+  \item \label{ref:zheng} Zheng, H., Sukhija, B., Li, C., Iten, K., Krause, A., Katzschmann, R.K. (2025). ``Learning Soft Robotic Dynamics with Active Exploration.'' \textit{arXiv:2510.27428}. \label{cite:softae}
+
+  \item \label{ref:briden} Briden, J., Choi, C., Yun, K., Linares, R., Cauligi, A. (2024). ``Constraint-Informed Learning for Warm Starting Trajectory Optimization.'' \textit{arXiv:2312.14336}. \label{cite:toast}
+
+  \item \label{ref:banerjee} Banerjee, S., Cauligi, A., Pavone, M. (2025). ``Deep Learning Warm Starts for Trajectory Optimization on the ISS.'' \textit{arXiv:2505.05588}. \label{cite:iss}
+
+  \item \label{ref:agarwal} Agarwal, A., Ruan, Y., Pileggi, L. (2024). ``A Hybrid Simulation of DNN-based Gray Box Models.'' \textit{arXiv:2410.17103}. \label{cite:graybox}
+
+  \item \label{ref:gnnprecond} Chen, J. (2024). ``Graph Neural Preconditioners for Iterative Solutions of Sparse Linear Systems.'' \textit{arXiv:2406.00809} (ICLR 2025). \label{cite:gnnprecond}
+
+  \item \label{ref:dequify} Burger, A., Thiede, L., Aspuru-Guzik, A., Vijaykumar, N. (2025). ``DEQuify: Deep Equilibrium Force Fields for Molecular Dynamics.'' \textit{arXiv:2509.08734}. \label{cite:deq}
+
+  \item \label{ref:impindiff} Akhare, D., Du, P., Luo, T., Wang, J.-X. (2025). ``Im-PiNDiff: Implicit Neural Differential Model for Spatiotemporal Dynamics.'' \textit{arXiv:2504.02260}. \label{cite:impindiff}
+
+  \item \label{ref:meno} Zanardi, I., Venturi, S., Panesi, M. (2025). ``MENO: Hybrid Matrix Exponential-based Neural Operator for Stiff ODEs.'' \textit{arXiv:2507.14341}. \label{cite:meno}
+
+  \item \label{ref:deform} Chen, Y., Zhang, Y., Brei, Z., Zhang, T., Chen, Y., Wu, J., Vasudevan, R. (2024). ``DEFORM: Differentiable Discrete Elastic Rods.'' \textit{CoRL 2024}. \textit{arXiv:2406.05931}. \label{cite:deform}
+
+  \item \label{ref:pydismech} Lahoti, R., Chaiyakul, R., Jawed, M.K. (2025). ``Py-DiSMech: Scalable DDG Framework for Soft Robots.'' \textit{arXiv:2512.09911}. \label{cite:pydismech}
+
+  \item \label{ref:margenberg} Margenberg, N., Mehlmann, C. (2025). ``Hybrid NN-FEM for Viscous-Plastic Sea-Ice.'' \textit{arXiv:2512.09118}. \label{cite:margenberg}
+\end{enumerate}
+
+
+% ---------------------------------------------------------------------------
+\end{document}
+% ---------------------------------------------------------------------------

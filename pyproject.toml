@@ -1,0 +1,104 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "snake-hrl"
+version = "0.1.0"
+description = "Hierarchical Reinforcement Learning for Snake Predation using TorchRL"
+readme = "README.md"
+requires-python = ">=3.12"
+license = {text = "MIT"}
+authors = [
+    {name = "Snake HRL Team"}
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = [
+    "torch>=2.6.0",
+    "torchrl>=0.7.0",
+    "tensordict>=0.7.0",
+    "gymnasium>=1.0.0",
+    "mujoco>=3.2.0",
+    "numpy>=2.0.0",
+    "scipy>=1.14.0",
+    "matplotlib>=3.9.0",
+    "tqdm>=4.66.0",
+    "pyyaml>=6.0",
+    "pyelastica>=0.3.0",
+    "wandb>=0.18.0",
+    "dismech-python",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-cov>=6.0.0",
+    "black>=24.0.0",
+    "ruff>=0.8.0",
+]
+monitoring = ["psutil>=5.9.0"]
+dismech-cpp = [
+    "dismech-rods",
+]
+
+[tool.uv.sources]
+dismech-python = {git = "https://github.com/StructuresComp/dismech-python.git"}
+dismech-rods = {git = "https://github.com/StructuresComp/dismech-rods.git"}
+
+[tool.setuptools.packages.find]
+where = [".", "papers"]
+include = [
+    "src", "src.*",
+    "bing2019*",
+    "choi2025*",
+    "locomotion*",
+    "locomotion_elastica*",
+    "aprx_model_elastica*",
+    "aprx_model_dismech*",
+    "jiang2024*",
+    "licher2025*",
+    "liu2021*",
+    "liu2022*",
+    "liu2023*",
+    "naughton2021*",
+    "schaffer2024*",
+    "shi2020*",
+    "zheng2022*",
+]
+
+[tool.setuptools.package-dir]
+choi2025 = "papers/choi2025"
+jiang2024 = "papers/jiang2024"
+liu2021 = "papers/liu2021"
+liu2022 = "papers/liu2022"
+liu2023 = "papers/liu2023"
+shi2020 = "papers/shi2020"
+zheng2022 = "papers/zheng2022"
+naughton2021 = "papers/naughton2021"
+schaffer2024 = "papers/schaffer2024"
+licher2025 = "papers/licher2025"
+locomotion = "papers/locomotion"
+locomotion_elastica = "papers/locomotion_elastica"
+aprx_model_elastica = "papers/aprx_model_elastica"
+aprx_model_dismech = "papers/aprx_model_dismech"
+
+[tool.black]
+line-length = 100
+target-version = ['py312']
+
+[tool.ruff]
+line-length = 100
+select = ["E", "F", "I", "N", "W"]
+ignore = ["E501"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-v --tb=short"
